@@ -1,0 +1,27 @@
+# Build output
+build/
+*.bin
+*.elf
+*.map
+node_modules/
+dist/
+.wrangler/
+
+# Released flasher images ARE the deliverable — track them.
+!flasher/scoredeck-merged.bin
+!flasher/scoredeck-ota.bin
+
+# NEVER COMMITTED — third-party trademarks and personal likenesses.
+# See docs/OPEN_SOURCE.md §1. Built on the user's machine, into their own Worker.
+assets/logos/
+assets/players/
+
+# Secrets
+.dev.vars
+.env
+.env.*
+wrangler.toml.local
+
+# macOS / tooling
+.DS_Store
+.playwright-mcp/

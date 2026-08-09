@@ -1,0 +1,51 @@
+# Hardware — Waveshare ESP32-S3-Touch-LCD-7 (Rev 1.2)
+
+Identical to the AirRadar unit. Transcribed so ScoreDeck is self-contained.
+
+## Module
+ESP32-S3-WROOM-1-N16R8: 16 MB QIO flash, 8 MB **OPI** PSRAM. CH343P USB-UART
+(macOS needs the WCH CH34x driver cask). An onboard UART slide switch gates
+flashing.
+
+## RGB565 panel pins
+- Blue  B0–B4: 14, 38, 18, 17, 10
+- Green G0–G5: 39, 0, 45, 48, 47, 21
+- Red   R0–R4: 1, 2, 42, 41, 40
+- DE=5, VSYNC=3, HSYNC=46, PCLK=7
+- Timings: hsync 8/4/8, vsync 16/4/16, `pclk_active_neg=1`, `freq_write=14 MHz`
+
+## I2C bus (SDA=8, SCL=9)
+- **CH422G expander:** mode reg `0x24` (write `0x01` = push-pull out), output reg
+  `0x38`. Bits: b1 TP_RST, b2 DISP/backlight (on/off only — no PWM dimming),
+  b3 LCD_RST, b4 SD_CS. Normal value `0x1E`.
+- **GT911 touch:** addr `0x5D` (pinned by the reset sequence; `0x14` is the
+  alternate), INT = GPIO4, RST on expander b1. LovyanGFX `Touch_GT911`,
+  i2c_port 0, 400 kHz.
+
+## GT911 reset sequence
+Drive GPIO4 (INT) low as output → TP_RST low (out reg `0x1C`) → 12 ms → TP_RST
+high (`0x1E`) → 60 ms (address-latch window, INT held low ⇒ `0x5D`) → release INT
+to input → `Wire.end()` so LovyanGFX's I2C driver owns the bus.
+
+## No audio
+This board has **no onboard speaker, codec or buzzer**. Only the
+ESP32-S3-Touch-LCD-7C variant carries the ES8389 codec. Score alerts on this unit
+are visual only unless a piezo is added to a spare GPIO — and "spare" needs
+verifying against the 16 RGB data lines plus DE/VSYNC/HSYNC/PCLK before
+soldering.
+
+## Backlight
+The CH422G exposes DISP as on/off only. There is no hardware brightness control,
+so a "dim at night" feature has to be a software overlay (a scrim, or a darker
+theme), not a PWM duty cycle.
+
+## Toolchain
+- arduino-esp32 core pinned at **3.3.10**.
+- `lv_conf.h` must be copied *beside* the lvgl library folder or the build fails
+  with missing symbols.
+- On core 3.3.x the FQBN no longer takes `FlashFreq` — `FlashMode=qio` already
+  means QIO 80 MHz.
+- PSRAM setting must be **OPI PSRAM**.
+
+## Flash layout (planned)
+16 MB: 2× ~3.5 MB OTA app slots + ~6 MB FATFS for the logo and roster cache.
