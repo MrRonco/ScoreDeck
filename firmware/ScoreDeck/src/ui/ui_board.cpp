@@ -105,20 +105,36 @@ static void buildTile(TileUI& t, int idx) {
   lv_obj_add_flag(t.edge, LV_OBJ_FLAG_HIDDEN);
 
   const int rowH = (d.tileH - 2 * TILE_PAD_Y - STATUS_H) / 2;
+  // Everything in a row hangs off one midline. Sizes here must track the font
+  // scale in theme.cpp: the score face is 38 px, and positioning it as if it
+  // were 28 left it riding high against the badge.
+  const int scoreH = 38, abbrH = 17, recH = 11, textH = abbrH + 3 + recH;
   for (int i = 0; i < 2; i++) {
-    const int ry = TILE_PAD_Y + i * rowH;
+    const int ry  = TILE_PAD_Y + i * rowH;
+    const int mid = ry + rowH / 2;
+
     t.badge[i] = lv_obj_create(t.root);
     lv_obj_remove_style_all(t.badge[i]);
     lv_obj_set_size(t.badge[i], d.badge, d.badge);
-    lv_obj_set_pos(t.badge[i], TILE_PAD_X, ry + (rowH - d.badge) / 2);
+    lv_obj_set_pos(t.badge[i], TILE_PAD_X, mid - d.badge / 2);
     lv_obj_set_style_radius(t.badge[i], 7, 0);
     lv_obj_set_style_bg_opa(t.badge[i], LV_OPA_COVER, 0);
     lv_obj_clear_flag(t.badge[i], LV_OBJ_FLAG_SCROLLABLE);
+
+    // Logos are 48 px on the wire and drawn smaller. Do NOT set an explicit
+    // object size: in LVGL 8.3 that CLIPS the source rather than scaling it,
+    // and the zoom then draws around a centre pivot — which is what made the
+    // icons look cropped and offset from their row.
+    //
+    // SIZE_MODE_REAL makes the object take the zoomed size, and a 0,0 pivot
+    // scales from the top-left into that box, so it lands exactly where the
+    // colour badge would.
     t.logo[i] = lv_img_create(t.root);
-    lv_obj_set_pos(t.logo[i], TILE_PAD_X, ry + (rowH - d.badge) / 2);
-    lv_obj_set_size(t.logo[i], d.badge, d.badge);
-    lv_img_set_zoom(t.logo[i], (uint16_t)(256 * d.badge / 48));
     lv_img_set_antialias(t.logo[i], true);
+    lv_img_set_zoom(t.logo[i], (uint16_t)((256 * d.badge) / 48));
+    lv_img_set_pivot(t.logo[i], 0, 0);
+    lv_img_set_size_mode(t.logo[i], LV_IMG_SIZE_MODE_REAL);
+    lv_obj_set_pos(t.logo[i], TILE_PAD_X, mid - d.badge / 2);
     lv_obj_add_flag(t.logo[i], LV_OBJ_FLAG_HIDDEN);
     t.cLogo[i] = nullptr;
 
@@ -129,15 +145,15 @@ static void buildTile(TileUI& t, int idx) {
     lv_obj_center(t.badgeLbl[i]);
 
     const int tx = TILE_PAD_X + d.badge + 10;
-    t.abbr[i]  = microLabel(t.root, tx, ry + 2, C_INK, F_ABBR);
-    t.rec[i]   = microLabel(t.root, tx, ry + 21, C_INK3, F_MICRO);
+    t.abbr[i] = microLabel(t.root, tx, mid - textH / 2, C_INK, F_ABBR);
+    t.rec[i]  = microLabel(t.root, tx, mid - textH / 2 + abbrH + 3, C_INK3, F_MICRO);
 
     t.score[i] = lv_label_create(t.root);
     lv_obj_set_style_text_font(t.score[i], F_SCORE, 0);
     lv_obj_set_style_text_color(t.score[i], C_INK, 0);
     lv_obj_set_style_text_align(t.score[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(t.score[i], 74);
-    lv_obj_set_pos(t.score[i], d.tileW - TILE_PAD_X - 74, ry + (rowH - 28) / 2);
+    lv_obj_set_pos(t.score[i], d.tileW - TILE_PAD_X - 74, mid - scoreH / 2);
     lv_label_set_text(t.score[i], "");
   }
 
