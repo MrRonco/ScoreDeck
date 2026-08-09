@@ -84,6 +84,9 @@ to a data file** — no code, no firmware.
 3. **First boot** asks for Wi-Fi on the panel, because there is no network yet
    to serve a browser over. If you are coming from AirRadar it reads your
    existing credentials out of NVS and skips that step.
+4. **Everything else in the browser** — `http://scoredeck.local/` for proxy URL
+   and token, favourites, leagues, region, density, alerts, quiet hours and
+   firmware updates.
 
 ---
 
@@ -109,9 +112,10 @@ to a data file** — no code, no firmware.
 - [x] Self-hosted container: Unraid template, multi-arch image, VLAN placement
 - [x] Game detail on tap, with linescore, scoring plays and win probability
 - [x] Standings — generic table, labelled cut lines
-- [ ] Density setting UI · league filter chips
+- [x] League filter chips with live counts
+- [x] Browser setup portal + OTA — no cable needed to configure or update
 - [ ] Real fonts (tabular figures, Latin Extended-A) · logos
-- [ ] Browser setup portal · OTA
+- [ ] News · team page
 - [ ] Lineups, player cards, headshots
 - [ ] Tennis / golf / F1
 

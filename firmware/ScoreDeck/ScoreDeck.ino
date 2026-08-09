@@ -18,6 +18,7 @@
 #include "src/ui/theme.h"
 #include "src/ui/ui.h"
 #include "src/net/api.h"
+#include "src/svc/web.h"
 
 static uint32_t s_nextPollMs = 0;
 static uint16_t s_pollGapS   = POLL_DEFAULT_S;
@@ -266,6 +267,7 @@ void setup() {
 
 void loop() {
   lv_timer_handler();
+  webLoop();
   serialConsole();
   tickClock();
   uiAlertTick();
@@ -281,6 +283,7 @@ void loop() {
       static bool announced = false;
       if (!announced) {
         announced = true;
+        webBegin();
         Serial.printf("[net] wifi up, ip=%s rssi=%d heap=%u largest=%u\n",
                       WiFi.localIP().toString().c_str(), WiFi.RSSI(),
                       (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
