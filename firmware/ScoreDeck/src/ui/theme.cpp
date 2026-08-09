@@ -3,13 +3,27 @@
 #include "theme.h"
 #include "../config.h"
 
-// Phase 0 uses the stock Montserrat faces so the board is testable before the
-// Archivo/IBM Plex generation runs. UI.md §9 is the target; swapping these
-// pointers is the whole change.
-const lv_font_t* F_SCORE = &lv_font_montserrat_28;
-const lv_font_t* F_ABBR  = &lv_font_montserrat_16;
-const lv_font_t* F_BODY  = &lv_font_montserrat_14;
-const lv_font_t* F_MICRO = &lv_font_montserrat_12;
+// Generated faces — UI.md §9. Archivo Condensed for display, IBM Plex for text.
+//
+// Two things are load-bearing here and neither is taste:
+//   * tnum is FROZEN on every face that renders changing numbers, or the digits
+//     visibly jitter as scores tick over.
+//   * body carries Latin-1 Supplement AND Latin Extended-A (~350 glyphs).
+//     Doncic, Odegaard, Konate and Vlasic are boxes in a 7-bit ASCII face, and
+//     the lineup screens are made of exactly those names.
+//
+// Both families are OFL-1.1 — see THIRD-PARTY-NOTICES.md.
+LV_FONT_DECLARE(font_score46)
+LV_FONT_DECLARE(font_score38)
+LV_FONT_DECLARE(font_abbr17)
+LV_FONT_DECLARE(font_body15)
+LV_FONT_DECLARE(font_micro11)
+
+const lv_font_t* F_SCORE = &font_score38;
+const lv_font_t* F_SCORE_BIG = &font_score46;
+const lv_font_t* F_ABBR  = &font_abbr17;
+const lv_font_t* F_BODY  = &font_body15;
+const lv_font_t* F_MICRO = &font_micro11;
 
 static lv_style_t s_glass;
 static lv_style_t s_badge;

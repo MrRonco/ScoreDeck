@@ -23,7 +23,8 @@
 #define OPA_PRE   ((lv_opa_t)184)   // 72%
 #define OPA_FINAL ((lv_opa_t)140)   // 55%
 
-extern const lv_font_t* F_SCORE;   // tabular, the big numerals
+extern const lv_font_t* F_SCORE;      // tabular, Standard/Dense density
+extern const lv_font_t* F_SCORE_BIG;  // tabular, Roomy density
 extern const lv_font_t* F_ABBR;
 extern const lv_font_t* F_BODY;
 extern const lv_font_t* F_MICRO;
