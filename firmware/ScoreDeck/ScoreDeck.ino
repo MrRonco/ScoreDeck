@@ -55,6 +55,10 @@ static void applyPending() {
   xSemaphoreGive(g_dataMux);
 
   uiBoardRefresh();
+  uiIdleRefresh();
+  // Most of the day nothing is live. A board of dimmed finals is a sad object,
+  // so the panel becomes a countdown instead. UI.md §7.
+  if (!uiSetupActive()) uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
 }
 
 /**
@@ -122,11 +126,13 @@ static void serialConsole() {
   else if (cmd == "favs")   { g_set.favs = arg;   settingsSave(); }
   else if (cmd == "lgs")    { g_set.leagues = arg; settingsSave(); }
   else if (cmd == "region") { g_set.region = arg; settingsSave(); }
+  else if (cmd == "tz")     { g_set.tz = arg; settingsSave();
+                              setenv("TZ", g_set.tz.c_str(), 1); tzset(); }
   else if (cmd == "poll")   { s_nextPollMs = 0; Serial.println("[cli] poll queued"); return; }
   else if (cmd == "reboot") { Serial.println("[cli] rebooting"); delay(50); ESP.restart(); }
   else if (cmd == "shot")   { dumpScreen(); return; }
   else if (cmd == "games")  { dumpGames(); return; }
-  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|poll|show|games|shot|reboot"); return; }
+  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|shot|reboot"); return; }
 
   Serial.printf("[cli] proxy='%s' token=%s favs='%s' lgs='%s' rgn=%s games=%u net=%d\n",
                 g_set.proxy.c_str(), g_set.token.length() ? "set" : "none",
@@ -146,6 +152,7 @@ static void tickClock() {
   strftime(hhmm, sizeof hhmm, "%H:%M", &lt);
   strftime(date, sizeof date, "%a %b %e", &lt);
   uiSetClock(hhmm, date);
+  uiIdleTick();
 }
 
 void setup() {
@@ -161,6 +168,7 @@ void setup() {
   }
   themeInit();
   uiInit();
+  uiIdleInit(lv_scr_act());
 
   if (g_set.tz.length()) setenv("TZ", g_set.tz.c_str(), 1);
   tzset();

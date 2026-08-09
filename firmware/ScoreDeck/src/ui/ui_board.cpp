@@ -284,6 +284,12 @@ void uiSetStatus() {
   lv_label_set_text(s_lblStatus, buf);
 }
 
+bool uiShouldIdle() {
+  for (uint8_t i = 0; i < g_gameCount; i++)
+    if (g_board[i].state == GS_LIVE) return false;
+  return true;
+}
+
 void uiShow(Screen s) {
   s_screen = s;
   // Flag writes are change-caching-exempt here because uiShow() is called on
@@ -293,6 +299,9 @@ void uiShow(Screen s) {
   lv_obj_t* setup = uiSetupRoot();
   if (setup) (s == SCR_SETUP) ? lv_obj_clear_flag(setup, LV_OBJ_FLAG_HIDDEN)
                               : lv_obj_add_flag(setup, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* idle = uiIdleRoot();
+  if (idle) (s == SCR_IDLE) ? lv_obj_clear_flag(idle, LV_OBJ_FLAG_HIDDEN)
+                            : lv_obj_add_flag(idle, LV_OBJ_FLAG_HIDDEN);
 }
 Screen uiCurrent() { return s_screen; }
 
