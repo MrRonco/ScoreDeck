@@ -12,6 +12,8 @@ uint8_t     g_gameCount = 0;
 LeagueCount g_leagues[MAX_LEAGUES];
 uint8_t     g_leagueCount = 0;
 int8_t      g_leagueFilter = -1;
+FieldSet    g_fields[FLD_POOL];
+uint8_t     g_fieldCount = 0;
 uint8_t     g_page = 0;
 
 SemaphoreHandle_t g_dataMux = nullptr;

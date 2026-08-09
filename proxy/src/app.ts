@@ -4,10 +4,11 @@ import {
   fetchScoreboard, normalizeBoard, sortAndCap, fetchStandings, normalizeStandings,
   fetchTeams, normalizeTeams, fetchSummary, normalizeGame, fetchNews, normalizeNews,
   normalizeLineup, fetchAthlete, normalizePlayer,
+  normalizeTennis, normalizeGolf, normalizeF1,
 } from './espn.ts';
 import { diffBoard, nextPollSeconds } from './diff.ts';
 import { MemoryStore, loadDiff, saveDiff, type Store } from './store.ts';
-import { GS, type Game, type ScoreEvent, type StateResponse, type NewsItem } from './types.ts';
+import { GS, SM, type Game, type ScoreEvent, type StateResponse, type NewsItem } from './types.ts';
 
 export interface Env {
   store: Store;
@@ -107,7 +108,13 @@ export function createApp(env: Env) {
       if (!games) {
         try {
           const raw = await fetchScoreboard(lg, date, doFetch);
-          games = normalizeBoard(raw, lg, { region, tz, favTeamKeys, favAbbrs });
+          const opts = { region, tz, favTeamKeys, favAbbrs };
+          // Three sports break the two-sided assumption; each gets its own
+          // normalizer rather than bending normalizeBoard out of shape.
+          games = lg.model === SM.SET         ? normalizeTennis(raw, lg, opts)
+                : lg.model === SM.LEADERBOARD ? normalizeGolf(raw, lg, opts)
+                : lg.model === SM.GRID        ? normalizeF1(raw, lg, opts)
+                :                               normalizeBoard(raw, lg, opts);
           await env.store.put(cacheKey, games, 20);
         } catch {
           // Upstream failed. Say so rather than silently showing an empty board.

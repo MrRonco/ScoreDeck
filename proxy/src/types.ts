@@ -64,6 +64,25 @@ export interface Game {
   lh?: boolean;
   /** Involves a followed team — drives sort order and alerting. */
   f?: boolean;
+
+  /**
+   * Field events. Golf and F1 are not two-sided: they are a leaderboard or a
+   * grid, so away/home carry the event name instead and the standings live
+   * here. Top few only — the tile shows three and the detail screen ten.
+   */
+  fld?: {
+    /** Position, already formatted: "1", "T4", "DNF". */
+    p: string;
+    /** Athlete or driver, clamped. */
+    n: string;
+    /** The headline number: "-22" to par, or "+1:24.331" gap. */
+    v: string;
+    /** Secondary: "F" / "thru 14" for golf, "L52" for F1. */
+    d?: string;
+  }[];
+
+  /** SET model: per-set scores, away then home. */
+  sets?: [number[], number[]];
 }
 
 /** A scoring event the device may raise as an alert takeover. */

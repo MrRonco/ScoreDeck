@@ -48,6 +48,10 @@ static void buildFilter(JsonDocument& f) {
   f["stale"] = true;
   JsonObject g = f["games"].createNestedObject();
   for (const char* k : { "i", "l", "m", "g", "st", "sit", "t", "b", "wp", "lh", "f", "p" }) g[k] = true;
+  JsonObject fl = g["fld"].createNestedObject();
+  for (const char* k : { "p", "n", "v", "d" }) fl[k] = true;
+  g["sets"][0][0] = true;
+  g["sets"][1][0] = true;
   for (const char* side : { "away", "home" }) {
     JsonObject s = g.createNestedObject(side);
     for (const char* k : { "a", "n", "s", "c", "r", "k", "id" }) s[k] = true;
@@ -138,6 +142,7 @@ static bool pollOnce(const PollJob& job) {
   if (xSemaphoreTake(g_dataMux, pdMS_TO_TICKS(400)) != pdTRUE) return false;
 
   g_pendCount = 0;
+  g_fieldCount = 0;
   for (JsonObjectConst gj : doc["games"].as<JsonArrayConst>()) {
     if (g_pendCount >= MAX_GAMES) break;
     Game& g = g_pendBoard[g_pendCount];
@@ -154,6 +159,34 @@ static bool pollOnce(const PollJob& job) {
     g.isFav       = gj["f"] | false;
     parseSide(gj["away"], g.away);
     parseSide(gj["home"], g.home);
+
+    // SET: per-set scores.
+    g.setCount = 0;
+    JsonArrayConst sa = gj["sets"][0], sh = gj["sets"][1];
+    for (JsonVariantConst v : sa) {
+      if (g.setCount >= 5) break;
+      g.setsAway[g.setCount] = v | 0;
+      g.setsHome[g.setCount] = sh[g.setCount] | 0;
+      g.setCount++;
+    }
+
+    // LEADERBOARD / GRID: take a slot from the pool while one is free.
+    g.fieldIdx = -1;
+    JsonArrayConst fld = gj["fld"];
+    if (!fld.isNull() && fld.size() && g_fieldCount < FLD_POOL) {
+      FieldSet& F = g_fields[g_fieldCount];
+      F.count = 0;
+      for (JsonObjectConst r : fld) {
+        if (F.count >= FLD_ROWS) break;
+        copyStr(F.rows[F.count].pos,    sizeof F.rows[0].pos,    r["p"]);
+        copyStr(F.rows[F.count].name,   sizeof F.rows[0].name,   r["n"]);
+        copyStr(F.rows[F.count].val,    sizeof F.rows[0].val,    r["v"]);
+        copyStr(F.rows[F.count].detail, sizeof F.rows[0].detail, r["d"]);
+        F.count++;
+      }
+      g.fieldIdx = (int8_t)g_fieldCount;
+      g_fieldCount++;
+    }
     g_pendCount++;
   }
 

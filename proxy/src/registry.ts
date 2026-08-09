@@ -28,6 +28,17 @@ export const LEAGUES: LeagueDef[] = [
   { slug: 'mls',    path: 'soccer/usa.1',           model: SM.CLOCK, label: 'MLS',    family: 'soccer' },
   { slug: 'nwsl',   path: 'soccer/usa.nwsl',        model: SM.CLOCK, label: 'NWSL',   family: 'soccer' },
 
+  // ── SET ──────────────────────────────────────────────────────────────────
+  { slug: 'atp',  path: 'tennis/atp', model: SM.SET, label: 'ATP', family: 'other' },
+  { slug: 'wta',  path: 'tennis/wta', model: SM.SET, label: 'WTA', family: 'other' },
+
+  // ── LEADERBOARD ──────────────────────────────────────────────────────────
+  { slug: 'pga',  path: 'golf/pga',   model: SM.LEADERBOARD, label: 'PGA',  family: 'other' },
+  { slug: 'lpga', path: 'golf/lpga',  model: SM.LEADERBOARD, label: 'LPGA', family: 'other' },
+
+  // ── GRID ─────────────────────────────────────────────────────────────────
+  { slug: 'f1',   path: 'racing/f1',  model: SM.GRID, label: 'F1', family: 'other' },
+
   // ── INNING ───────────────────────────────────────────────────────────────
   { slug: 'mlb',    path: 'baseball/mlb',               model: SM.INNING, label: 'MLB',  family: 'baseball' },
   // Softball lives under baseball/ — softball/college-softball returns 400.

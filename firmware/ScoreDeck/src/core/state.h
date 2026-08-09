@@ -40,6 +40,8 @@ extern uint8_t     g_gameCount;
 extern LeagueCount g_leagues[MAX_LEAGUES];
 extern uint8_t     g_leagueCount;
 extern int8_t      g_leagueFilter;   // -1 = all
+extern FieldSet    g_fields[FLD_POOL];
+extern uint8_t     g_fieldCount;
 extern uint8_t     g_page;
 
 // ── pending buffers, written by tasks under g_dataMux ───────────────────────

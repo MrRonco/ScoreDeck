@@ -18,6 +18,24 @@ struct Side {
   char     id[12];
 };
 
+// Field events (golf, F1) carry a leaderboard instead of two scores. Storing
+// one inline per Game would cost 440 bytes x 48 games; a board realistically
+// shows one or two, so they live in a small side pool that Game indexes.
+#define FLD_ROWS  5
+#define FLD_POOL  4
+
+struct FieldEntry {
+  char pos[5];
+  char name[21];
+  char val[11];
+  char detail[7];
+};
+
+struct FieldSet {
+  uint8_t    count;
+  FieldEntry rows[FLD_ROWS];
+};
+
 struct Game {
   char       id[12];
   char       league[8];
@@ -31,6 +49,14 @@ struct Game {
   uint8_t    winProbHome;  // 255 = unavailable
   bool       leaderHome;
   bool       isFav;
+
+  // SET: per-set scores. Only tennis populates these.
+  uint8_t    setCount;
+  uint8_t    setsAway[5];
+  uint8_t    setsHome[5];
+
+  // LEADERBOARD / GRID: index into g_fields, or -1.
+  int8_t     fieldIdx;
 };
 
 struct AlertEvent {

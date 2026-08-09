@@ -23,6 +23,19 @@
 #define OPA_PRE   ((lv_opa_t)184)   // 72%
 #define OPA_FINAL ((lv_opa_t)140)   // 55%
 
+// ── FONT COVERAGE — read before choosing a face ────────────────────────────
+//
+// These are generated with the narrowest glyph range each job needs, which is
+// why the whole set costs less flash than LVGL's built-in Montserrat. The cost
+// is that picking the wrong face renders hollow boxes, silently. Three separate
+// bugs have been exactly this.
+//
+//   F_SCORE   digits, '-', ':' only          NEVER for text
+//   F_ABBR    CAPS + digits, no lowercase    team abbreviations ONLY
+//   F_BODY    0x20-7E + Latin-1 + Ext-A      anything with a person or place
+//   F_MICRO   0x20-7E ASCII only             labels, clocks, stat keys
+//
+// Rule of thumb: if the string can come from upstream, it needs F_BODY.
 extern const lv_font_t* F_SCORE;      // tabular, Standard/Dense density
 extern const lv_font_t* F_SCORE_BIG;  // tabular, Roomy density
 extern const lv_font_t* F_ABBR;

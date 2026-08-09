@@ -51,7 +51,7 @@ of a live tile that swaps ends when the lead changes.
 
 ## Leagues
 
-20 in the registry today — NFL, NBA, WNBA, NHL, MLB, the NCAA men's and women's
+25 in the registry today — NFL, NBA, WNBA, NHL, MLB, the NCAA men's and women's
 sports, and eleven soccer competitions including NWSL and the Women's Champions
 League. Adding one is a row in `proxy/src/registry.ts` plus a logo build: **no
 firmware change**, because the device implements five *score models*, not thirty
@@ -61,7 +61,9 @@ leagues.
 |---|---|---|
 | `CLOCK` | period + running clock | shipped |
 | `INNING` | inning, bases, outs | shipped |
-| `SET` · `LEADERBOARD` · `GRID` | tennis · golf · F1 | planned |
+| `SET` | per-set boxes, sets won | shipped |
+| `LEADERBOARD` | to-par, position, thru | shipped |
+| `GRID` | position, gap, lap | shipped |
 
 ## Broadcast is regional
 
@@ -119,7 +121,7 @@ to a data file** — no code, no firmware.
 - [x] Team logos — build pipeline, proxy route, PSRAM cache
 - [ ] Team page · lineups · player cards
 
-- [ ] Tennis / golf / F1
+- [x] Tennis, golf and F1 — all five score models shipped
 
 ## Licence
 

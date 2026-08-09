@@ -66,7 +66,7 @@ $(BUILD)/lv/%.c.o: $(LVGL)/%.c
 # Render every scenario to a BMP without a display attached.
 shots: $(BIN)
 	@mkdir -p shots
-	@i=0; while [ $$i -lt 8 ]; do ./$(BIN) --shot shots/scn$$i.bmp --scenario $$i; i=$$((i+1)); done
+	@i=0; while [ $$i -lt 9 ]; do ./$(BIN) --shot shots/scn$$i.bmp --scenario $$i; i=$$((i+1)); done
 
 clean:
 	@rm -rf $(BUILD) $(BIN) shots shot.bmp

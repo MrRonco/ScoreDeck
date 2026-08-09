@@ -174,6 +174,58 @@ void scenarioApply(int n) {
       }
       break;
     }
+    case SCN_FIELD: {
+      // Tennis, golf and F1 on one board. F1's field cannot be checked against
+      // live data outside a race weekend, so this is the only way to see the
+      // GRID tile at all before Sunday.
+      league("atp", 2); league("pga", 1); league("f1", 1);
+
+      Game& t1 = push("atp", GS_LIVE, "2nd set", "SHEL", 1, 0x5D6D7E, "FONS", 0, 0x5D6D7E, "TSN");
+      t1.model = SM_SET;
+      strncpy(t1.away.name, "B. Shelton", sizeof t1.away.name - 1);
+      strncpy(t1.home.name, "J. Fonseca", sizeof t1.home.name - 1);
+      t1.setCount = 2;
+      t1.setsAway[0] = 6; t1.setsHome[0] = 4;
+      t1.setsAway[1] = 3; t1.setsHome[1] = 5;
+
+      Game& t2 = push("atp", GS_LIVE, "3rd set", "DJOK", 2, 0x5D6D7E, "ALCA", 1, 0x5D6D7E, "TSN");
+      t2.model = SM_SET;
+      strncpy(t2.away.name, "N. Djokovic", sizeof t2.away.name - 1);
+      strncpy(t2.home.name, "C. Alcaraz", sizeof t2.home.name - 1);
+      t2.setCount = 3;
+      t2.setsAway[0] = 7; t2.setsHome[0] = 6;
+      t2.setsAway[1] = 4; t2.setsHome[1] = 6;
+      t2.setsAway[2] = 6; t2.setsHome[2] = 2;
+
+      Game& gf = push("pga", GS_LIVE, "R4 thru 16", "", 0, 0x5D6D7E, "", 0, 0x5D6D7E, "CBS");
+      gf.model = SM_LEADERBOARD;
+      strncpy(gf.away.name, "Wyndham Champ", sizeof gf.away.name - 1);
+      gf.fieldIdx = 0;
+      g_fields[0].count = 3;
+      static const char* kGolf[3][3] = {
+        { "1", "M. Brennan", "-22" }, { "2", "B. Hossler", "-19" }, { "T3", "B. James", "-18" },
+      };
+      for (int i = 0; i < 3; i++) {
+        strncpy(g_fields[0].rows[i].pos,  kGolf[i][0], 4);
+        strncpy(g_fields[0].rows[i].name, kGolf[i][1], 20);
+        strncpy(g_fields[0].rows[i].val,  kGolf[i][2], 10);
+      }
+
+      Game& f1 = push("f1", GS_LIVE, "Lap 52/72", "", 0, 0x5D6D7E, "", 0, 0x5D6D7E, "SN");
+      f1.model = SM_GRID;
+      strncpy(f1.away.name, "Dutch GP", sizeof f1.away.name - 1);
+      f1.fieldIdx = 1;
+      g_fields[1].count = 3;
+      static const char* kF1[3][3] = {
+        { "1", "M. Verstappen", "LEADER" }, { "2", "L. Norris", "+4.281" }, { "3", "C. Leclerc", "+11.9" },
+      };
+      for (int i = 0; i < 3; i++) {
+        strncpy(g_fields[1].rows[i].pos,  kF1[i][0], 4);
+        strncpy(g_fields[1].rows[i].name, kF1[i][1], 20);
+        strncpy(g_fields[1].rows[i].val,  kF1[i][2], 10);
+      }
+      break;
+    }
   }
   uiInit();
   uiBoardRefresh();
@@ -191,6 +243,7 @@ const char* scenarioName(int n) {
     case SCN_NO_PROXY: return "no proxy configured";
     case SCN_STALE:    return "stale upstream";
     case SCN_ACCENTS:  return "accented names — font range";
+    case SCN_FIELD:    return "tennis, golf, F1 — SET/LEADERBOARD/GRID";
     default:           return "?";
   }
 }

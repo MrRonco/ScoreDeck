@@ -38,8 +38,16 @@ struct TileUI {
   lv_obj_t* score[2];
   lv_obj_t* status;
   lv_obj_t* bcast;
+  // Field variants (LEADERBOARD / GRID) reuse the tile with a different shape:
+  // an event title and three ranked rows instead of two sides and a score.
+  lv_obj_t* fldTitle;
+  lv_obj_t* fldPos[3];
+  lv_obj_t* fldName[3];
+  lv_obj_t* fldVal[3];
+  // SET adds a row of per-set boxes under each player.
+  lv_obj_t* setLbl[2];
   // change cache — the whole point of this struct
-  char     cAbbr[2][5];
+  char     cAbbr[2][20];   // holds an abbreviation OR a tennis name
   char     cRec[2][10];
   int32_t  cScore[2];
   uint32_t cColor[2];
@@ -155,6 +163,36 @@ static void buildTile(TileUI& t, int idx) {
     lv_obj_set_width(t.score[i], 74);
     lv_obj_set_pos(t.score[i], d.tileW - TILE_PAD_X - 74, mid - scoreH / 2);
     lv_label_set_text(t.score[i], "");
+  }
+
+  // ── field variant ────────────────────────────────────────────────────────
+  t.fldTitle = microLabel(t.root, TILE_PAD_X, TILE_PAD_Y - 2, C_INK, F_BODY);  // mixed case
+  lv_obj_set_width(t.fldTitle, d.tileW - 2 * TILE_PAD_X);
+  lv_label_set_long_mode(t.fldTitle, LV_LABEL_LONG_DOT);
+  for (int i = 0; i < 3; i++) {
+    const int y = TILE_PAD_Y + 24 + i * 19;
+    t.fldPos[i]  = microLabel(t.root, TILE_PAD_X, y, C_INK3, F_MICRO);
+    t.fldName[i] = microLabel(t.root, TILE_PAD_X + 26, y, C_INK2, F_MICRO);
+    lv_obj_set_width(t.fldName[i], d.tileW - 2 * TILE_PAD_X - 26 - 56);
+    lv_label_set_long_mode(t.fldName[i], LV_LABEL_LONG_DOT);
+    t.fldVal[i]  = lv_label_create(t.root);
+    lv_obj_set_style_text_font(t.fldVal[i], F_MICRO, 0);
+    lv_obj_set_style_text_color(t.fldVal[i], C_INK, 0);
+    lv_obj_set_style_text_align(t.fldVal[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_width(t.fldVal[i], 54);
+    lv_obj_set_pos(t.fldVal[i], d.tileW - TILE_PAD_X - 54, y);
+    lv_label_set_text(t.fldVal[i], "");
+  }
+  // ── set boxes ────────────────────────────────────────────────────────────
+  for (int i = 0; i < 2; i++) {
+    t.setLbl[i] = lv_label_create(t.root);
+    lv_obj_set_style_text_font(t.setLbl[i], F_MICRO, 0);
+    lv_obj_set_style_text_color(t.setLbl[i], C_INK2, 0);
+    lv_obj_set_style_text_align(t.setLbl[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_width(t.setLbl[i], 92);
+    lv_obj_set_pos(t.setLbl[i], d.tileW - TILE_PAD_X - 92,
+                   TILE_PAD_Y + i * ((d.tileH - 2 * TILE_PAD_Y - STATUS_H) / 2) + 8);
+    lv_label_set_text(t.setLbl[i], "");
   }
 
   t.status = microLabel(t.root, TILE_PAD_X, d.tileH - TILE_PAD_Y - 13, C_INK2, F_MICRO);
@@ -344,9 +382,47 @@ void uiBoardRefresh() {
     const lv_opa_t opa = g.state == GS_LIVE ? OPA_LIVE : g.state == GS_PRE ? OPA_PRE : OPA_FINAL;
     if (t.cOpa != opa) { t.cOpa = opa; lv_obj_set_style_opa(t.root, opa, 0); }
 
+    // Three models do not have two sides and a score. Show/hide the two
+    // shapes rather than building separate tiles: the grid, the frost and the
+    // edge light are identical, only the contents differ.
+    const bool isField = (g.model == SM_LEADERBOARD || g.model == SM_GRID);
+    const bool isSet   = (g.model == SM_SET);
+    lv_obj_t* const twoSided[] = { t.badge[0], t.badge[1], t.abbr[0], t.abbr[1],
+                                   t.rec[0], t.rec[1], t.score[0], t.score[1] };
+    for (lv_obj_t* o : twoSided)
+      isField ? lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t* const fieldOnly[] = { t.fldTitle, t.fldPos[0], t.fldPos[1], t.fldPos[2],
+                                    t.fldName[0], t.fldName[1], t.fldName[2],
+                                    t.fldVal[0], t.fldVal[1], t.fldVal[2] };
+    for (lv_obj_t* o : fieldOnly)
+      isField ? lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+
+    if (isField) {
+      lv_label_set_text(t.fldTitle, g.away.name);
+      const FieldSet* F = (g.fieldIdx >= 0 && g.fieldIdx < FLD_POOL) ? &g_fields[g.fieldIdx] : nullptr;
+      for (int k = 0; k < 3; k++) {
+        const bool on = F && k < F->count;
+        lv_label_set_text(t.fldPos[k],  on ? F->rows[k].pos : "");
+        lv_label_set_text(t.fldName[k], on ? F->rows[k].name : (k == 0 && !F ? g.home.name : ""));
+        lv_label_set_text(t.fldVal[k],  on ? F->rows[k].val : "");
+      }
+      setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
+      setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
+      const lv_opa_t fo = g.state == GS_LIVE ? OPA_LIVE : g.state == GS_PRE ? OPA_PRE : OPA_FINAL;
+      if (t.cOpa != fo) { t.cOpa = fo; lv_obj_set_style_opa(t.root, fo, 0); }
+      setHiddenCached(t.edge, &t.cEdgeVis, true);
+      slot++;
+      continue;
+    }
+
     const Side* side[2] = { &g.away, &g.home };
     for (int k = 0; k < 2; k++) {
-      setTextCached(t.abbr[k], t.cAbbr[k], sizeof t.cAbbr[k], side[k]->abbr);
+      // Tennis needs "B. Shelton", which does not fit the 4-char abbr field —
+      // the proxy puts the readable form in `name` for SET. It also needs a
+      // different FACE: F_ABBR has no lowercase glyphs (see theme.h).
+      lv_obj_set_style_text_font(t.abbr[k], isSet ? F_BODY : F_ABBR, 0);
+      setTextCached(t.abbr[k], t.cAbbr[k], sizeof t.cAbbr[k],
+                    isSet ? side[k]->name : side[k]->abbr);
       setTextCached(t.rec[k],  t.cRec[k],  sizeof t.cRec[k],  side[k]->rec);
       if (g.state == GS_PRE) {
         if (t.cScore[k] != -2) { t.cScore[k] = -2; lv_label_set_text(t.score[k], "-"); }
@@ -377,6 +453,20 @@ void uiBoardRefresh() {
           lv_obj_add_flag(t.logo[k], LV_OBJ_FLAG_HIDDEN);
           lv_obj_clear_flag(t.badge[k], LV_OBJ_FLAG_HIDDEN);
         }
+      }
+    }
+
+    // Tennis: the per-set scores go where the record line sits, so they never
+    // collide with the score, and a club record is not invented for a player.
+    for (int k = 0; k < 2; k++) lv_obj_add_flag(t.setLbl[k], LV_OBJ_FLAG_HIDDEN);
+    if (isSet) {
+      for (int k = 0; k < 2; k++) {
+        char sb[32] = "";
+        char* w = sb;
+        for (uint8_t si = 0; si < g.setCount && (w - sb) < 24; si++)
+          w += snprintf(w, sizeof sb - (w - sb), "%u  ",
+                        k == 0 ? g.setsAway[si] : g.setsHome[si]);
+        lv_label_set_text(t.rec[k], sb);
       }
     }
 
