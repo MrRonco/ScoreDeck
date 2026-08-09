@@ -9,3 +9,6 @@
  * Returns false when it declined (already in flight, no proxy, gate shut).
  */
 bool apiPollStart();
+
+/** Fetch one game's detail. Loop context only; same gate rules as apiPollStart. */
+bool apiGameStart(const char* league, const char* id);

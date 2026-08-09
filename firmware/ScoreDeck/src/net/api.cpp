@@ -195,6 +195,107 @@ static void pollTask(void*) {
   vTaskDelete(nullptr);                        // never returns
 }
 
+// ── game detail ────────────────────────────────────────────────────────────
+static char s_gameUrl[300];
+static char s_gameToken[80];
+volatile bool g_gameInFlight = false;
+GameDetail g_pendGame;
+volatile bool g_pendGameReady = false;
+
+static void gameFilter(JsonDocument& f) {
+  for (const char* k : { "i", "st", "live", "wp", "sit", "venue" }) f[k] = true;
+  for (const char* side : { "away", "home" }) {
+    JsonObject o = f.createNestedObject(side);
+    o["a"] = true; o["s"] = true; o["c"] = true;
+  }
+  JsonObject ls = f.createNestedObject("ls");
+  ls["cols"][0] = true; ls["a"][0] = true; ls["h"][0] = true;
+  JsonObject pl = f["plays"].createNestedObject();
+  for (const char* k : { "t", "x", "s", "hm" }) pl[k] = true;
+  JsonObject st = f["stats"].createNestedObject();
+  for (const char* k : { "k", "a", "h" }) st[k] = true;
+}
+
+static bool gameOnce(const char* url, const char* token) {
+  WiFiClient plain; WiFiClientSecure secure;
+  const bool https = strncmp(url, "https:", 6) == 0;
+  if (https) secure.setInsecure();
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setReuse(false);
+  if (!(https ? http.begin(secure, url) : http.begin(plain, url))) return false;
+  http.setUserAgent("ScoreDeck/" SD_VERSION);
+  if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
+  if (http.GET() != 200) { http.end(); return false; }
+  const String body = http.getString();   // decodes chunked; see pollOnce
+  http.end();
+  if (body.length() < 8) return false;
+
+  DynamicJsonDocument filter(1024); gameFilter(filter);
+  DynamicJsonDocument doc(12 * 1024);
+  if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) return false;
+
+  GameDetail& d = g_pendGame;
+  memset(&d, 0, sizeof d);
+  copyStr(d.id,     sizeof d.id,     doc["i"]);
+  copyStr(d.status, sizeof d.status, doc["st"]);
+  copyStr(d.venue,  sizeof d.venue,  doc["venue"]);
+  copyStr(d.awayAbbr, sizeof d.awayAbbr, doc["away"]["a"]);
+  copyStr(d.homeAbbr, sizeof d.homeAbbr, doc["home"]["a"]);
+  d.awayScore = doc["away"]["s"] | 0;   d.homeScore = doc["home"]["s"] | 0;
+  d.awayColor = doc["away"]["c"] | 0x5D6D7E;
+  d.homeColor = doc["home"]["c"] | 0x5D6D7E;
+  d.live = doc["live"] | false;
+  d.winProbHome = doc["wp"] | 255;
+  d.situation = doc["sit"] | 0;
+
+  JsonArrayConst cols = doc["ls"]["cols"], la = doc["ls"]["a"], lh = doc["ls"]["h"];
+  for (JsonVariantConst v : cols) {
+    if (d.lsCount >= GD_LS_COLS) break;
+    copyStr(d.lsCols[d.lsCount], sizeof d.lsCols[0], v);
+    d.lsCount++;
+  }
+  for (uint8_t i = 0; i < d.lsCount; i++) {
+    // Values may be numbers or strings depending on the sport.
+    if (la[i].is<const char*>()) copyStr(d.lsA[i], sizeof d.lsA[0], la[i]);
+    else snprintf(d.lsA[i], sizeof d.lsA[0], "%d", la[i] | 0);
+    if (lh[i].is<const char*>()) copyStr(d.lsH[i], sizeof d.lsH[0], lh[i]);
+    else snprintf(d.lsH[i], sizeof d.lsH[0], "%d", lh[i] | 0);
+  }
+
+  for (JsonObjectConst p : doc["plays"].as<JsonArrayConst>()) {
+    if (d.playCount >= GD_PLAYS) break;
+    const uint8_t i = d.playCount;
+    copyStr(d.playT[i], sizeof d.playT[0], p["t"]);
+    copyStr(d.playX[i], sizeof d.playX[0], p["x"]);
+    snprintf(d.playS[i], sizeof d.playS[0], "%d-%d", (int)(p["s"][0] | 0), (int)(p["s"][1] | 0));
+    d.playHome[i] = p["hm"] | false;
+    d.playCount++;
+  }
+
+  for (JsonObjectConst st : doc["stats"].as<JsonArrayConst>()) {
+    if (d.statCount >= GD_STATS) break;
+    const uint8_t i = d.statCount;
+    copyStr(d.statK[i], sizeof d.statK[0], st["k"]);
+    copyStr(d.statA[i], sizeof d.statA[0], st["a"]);
+    copyStr(d.statH[i], sizeof d.statH[0], st["h"]);
+    d.statCount++;
+  }
+
+  g_pendGameReady = true;
+  return true;
+}
+
+static void gameTask(void*) {
+  const uint32_t t0 = millis();
+  const bool ok = gameOnce(s_gameUrl, s_gameToken);
+  Serial.printf("[net] game %s in %lu ms\n", ok ? "ok" : "FAIL",
+                (unsigned long)(millis() - t0));
+  g_gameInFlight = false;
+  vTaskDelete(nullptr);
+}
+
 static void urlEncodeInto(String& dst, const String& src) {
   for (size_t i = 0; i < src.length(); i++) {
     const char c = src[i];
@@ -206,6 +307,30 @@ static void urlEncodeInto(String& dst, const String& src) {
       dst += b;
     }
   }
+}
+
+bool apiGameStart(const char* league, const char* id) {
+  if (g_gameInFlight) return false;
+  if (g_set.proxy.isEmpty() || WiFi.status() != WL_CONNECTED) return false;
+  if (!netGateOpen()) return false;
+  String url = g_set.proxy;
+  if (url.endsWith("/")) url.remove(url.length() - 1);
+  url += "/v1/game/";
+  url += league;
+  url += "/";
+  url += id;
+  url += "?rgn=" + g_set.region;
+  if (url.length() >= sizeof s_gameUrl) return false;
+  strncpy(s_gameUrl, url.c_str(), sizeof s_gameUrl - 1);
+  s_gameUrl[sizeof s_gameUrl - 1] = '\0';
+  strncpy(s_gameToken, g_set.token.c_str(), sizeof s_gameToken - 1);
+  s_gameToken[sizeof s_gameToken - 1] = '\0';
+  g_gameInFlight = true;
+  if (xTaskCreatePinnedToCore(gameTask, "sdGame", NET_TASK_STACK, nullptr, 1, nullptr, 0) != pdPASS) {
+    g_gameInFlight = false;
+    return false;
+  }
+  return true;
 }
 
 bool apiPollStart() {

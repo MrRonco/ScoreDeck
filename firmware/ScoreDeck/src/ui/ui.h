@@ -4,7 +4,7 @@
 #include <lvgl.h>
 #include "../core/types.h"
 
-enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_SETUP };
+enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_SETUP };
 
 void uiInit();
 /** Rebuild from g_board. Loop context only. Every write is change-cached. */
@@ -39,3 +39,15 @@ bool uiAlertActive();
 lv_obj_t* uiAlertRoot();
 /** Highest sequence safe to persist: never past an alert not yet seen. */
 uint32_t uiAlertSafeSeq(uint32_t proxySeq);
+
+// Game detail — UI.md §4. Header reuses the tile's anatomy.
+void uiGameInit(lv_obj_t* parent);
+void uiGameOpen(const Game& g);
+void uiGameApply(const GameDetail& d);
+void uiGameClose();
+bool uiGameIsOpen();
+const char* uiGameOpenId();
+lv_obj_t* uiGameRoot();
+
+/** Page the board. Returns false when there is nowhere to go. */
+bool uiBoardPage(int delta);

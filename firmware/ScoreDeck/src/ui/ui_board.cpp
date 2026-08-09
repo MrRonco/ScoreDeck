@@ -41,6 +41,7 @@ struct TileUI {
   bool     cEdgeVis;
   lv_opa_t cOpa;
   bool     cUsed;
+  int8_t   gameIdx;   // index into g_board, -1 when the slot is empty
 };
 static TileUI s_tile[TILES_PER_PAGE];
 
@@ -179,22 +180,47 @@ static uint8_t visibleCount() {
   return n;
 }
 
-static void onTilePressed(lv_event_t* e) {
-  // Phase 3 target: open game detail. For now cycle density on long press so
-  // the setting is reachable and testable without a settings screen.
-  if (lv_event_get_code(e) == LV_EVENT_LONG_PRESSED) {
+bool uiBoardPage(int delta) {
+  const uint8_t per = spec().cols * spec().rows;
+  const uint8_t pages = (visibleCount() + per - 1) / per;
+  if (pages <= 1) return false;
+  const int next = (int)g_page + delta;
+  g_page = (uint8_t)((next % pages + pages) % pages);
+  uiBoardRefresh();
+  return true;
+}
+
+static void onTileEvent(lv_event_t* e) {
+  const lv_event_code_t code = lv_event_get_code(e);
+  TileUI* t = (TileUI*)lv_event_get_user_data(e);
+  if (!t) return;
+
+  if (code == LV_EVENT_LONG_PRESSED) {
+    // Density has no settings screen yet; long-press keeps it reachable.
     g_set.density = (g_set.density + 1) % 3;
     settingsSave();
-    uiInit();            // rebuild at the new geometry
+    uiInit();
     uiBoardRefresh();
+    return;
+  }
+  if (code == LV_EVENT_SHORT_CLICKED) {
+    if (t->gameIdx >= 0 && t->gameIdx < g_gameCount) uiGameOpen(g_board[t->gameIdx]);
   }
 }
 
-static void onBoardPressed(lv_event_t* e) {
-  if (lv_event_get_code(e) != LV_EVENT_SHORT_CLICKED) return;
-  const uint8_t per = spec().cols * spec().rows;
-  const uint8_t pages = (visibleCount() + per - 1) / per;
-  if (pages > 1) { g_page = (g_page + 1) % pages; uiBoardRefresh(); }
+/**
+ * Swipe paging.
+ *
+ * The tiles cover almost the whole board and are clickable, so they swallow
+ * taps before the background ever sees them — which is why tapping to page
+ * did not work. LVGL raises GESTURE on the *indev's* active object, so the
+ * handler has to live on every tile as well as the background, and each one
+ * must clear the scroll-propagation flag or the gesture is eaten too.
+ */
+static void onGesture(lv_event_t*) {
+  const lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+  if (dir == LV_DIR_LEFT)  uiBoardPage(+1);
+  else if (dir == LV_DIR_RIGHT) uiBoardPage(-1);
 }
 
 // ── refresh ────────────────────────────────────────────────────────────────
@@ -211,6 +237,7 @@ void uiBoardRefresh() {
     if (seen++ < g_page * per) continue;
 
     TileUI& t = s_tile[slot];
+    t.gameIdx = (int8_t)i;
     setHiddenCached(t.root, &t.cUsed, false);
 
     // Luminance encodes state — live 100%, scheduled 72%, final 55%.
@@ -252,10 +279,18 @@ void uiBoardRefresh() {
     slot++;
   }
 
-  for (; slot < per; slot++) setHiddenCached(s_tile[slot].root, &s_tile[slot].cUsed, true);
+  for (; slot < per; slot++) {
+    s_tile[slot].gameIdx = -1;
+    setHiddenCached(s_tile[slot].root, &s_tile[slot].cUsed, true);
+  }
 
-  char pg[24] = "";
-  if (pages > 1) snprintf(pg, sizeof pg, "%u / %u", g_page + 1, pages);
+  char pg[40] = "";
+  if (pages > 1) {
+    // Dots read as "there is more" far better than "1 / 3" does.
+    char* w = pg;
+    for (uint8_t p = 0; p < pages && p < 8; p++)
+      w += snprintf(w, sizeof pg - (w - pg), "%s", p == g_page ? "*  " : "-  ");
+  }
   lv_label_set_text(s_lblPage, pg);
   uiSetStatus();
 }
@@ -302,6 +337,9 @@ void uiShow(Screen s) {
   lv_obj_t* idle = uiIdleRoot();
   if (idle) (s == SCR_IDLE) ? lv_obj_clear_flag(idle, LV_OBJ_FLAG_HIDDEN)
                             : lv_obj_add_flag(idle, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* game = uiGameRoot();
+  if (game) (s == SCR_GAME) ? lv_obj_clear_flag(game, LV_OBJ_FLAG_HIDDEN)
+                            : lv_obj_add_flag(game, LV_OBJ_FLAG_HIDDEN);
 }
 Screen uiCurrent() { return s_screen; }
 
@@ -317,7 +355,7 @@ void uiInit() {
   lv_obj_set_style_bg_opa(s_board, LV_OPA_COVER, 0);
   lv_obj_clear_flag(s_board, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(s_board, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(s_board, onBoardPressed, LV_EVENT_SHORT_CLICKED, nullptr);
+  lv_obj_add_event_cb(s_board, onGesture, LV_EVENT_GESTURE, nullptr);
 
   buildBar();
   const uint8_t per = spec().cols * spec().rows;
@@ -325,7 +363,11 @@ void uiInit() {
     if (i < per) {
       buildTile(s_tile[i], i);
       lv_obj_add_flag(s_tile[i].root, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_add_event_cb(s_tile[i].root, onTilePressed, LV_EVENT_LONG_PRESSED, nullptr);
+      // Without this the tile absorbs the gesture and swiping does nothing.
+      lv_obj_clear_flag(s_tile[i].root, LV_OBJ_FLAG_GESTURE_BUBBLE);
+      lv_obj_add_event_cb(s_tile[i].root, onTileEvent, LV_EVENT_SHORT_CLICKED, &s_tile[i]);
+      lv_obj_add_event_cb(s_tile[i].root, onTileEvent, LV_EVENT_LONG_PRESSED, &s_tile[i]);
+      lv_obj_add_event_cb(s_tile[i].root, onGesture, LV_EVENT_GESTURE, nullptr);
     } else {
       s_tile[i].root = nullptr;
       s_tile[i].cUsed = false;

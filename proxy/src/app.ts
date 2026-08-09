@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { LEAGUES, league } from './registry.ts';
 import {
   fetchScoreboard, normalizeBoard, sortAndCap, fetchStandings, normalizeStandings,
-  fetchTeams, normalizeTeams,
+  fetchTeams, normalizeTeams, fetchSummary, normalizeGame,
 } from './espn.ts';
 import { diffBoard, nextPollSeconds } from './diff.ts';
 import { MemoryStore, loadDiff, saveDiff, type Store } from './store.ts';
@@ -148,6 +148,27 @@ export function createApp(env: Env) {
 
   // Team directory. This is how you discover the ids that go in `favs`:
   //   GET /v1/teams/nhl  ->  [{ id: "21", a: "TOR", n: "Toronto Maple Leafs" }, ...]
+  app.get('/v1/game/:league/:id', async (c) => {
+    const lg = league(c.req.param('league'));
+    if (!lg) return c.json({ error: 'unknown league' }, 404);
+    const id = c.req.param('id');
+    if (!/^\d{1,12}$/.test(id)) return c.json({ error: 'bad id' }, 400);
+    const region = /^[a-z]{2}$/.test(c.req.query('rgn') ?? '') ? c.req.query('rgn')! : 'us';
+
+    const key = `game:${lg.slug}:${id}:${region}`;
+    const hit = await env.store.get(key);
+    if (hit) return c.json(hit);
+    try {
+      const detail = normalizeGame(await fetchSummary(lg, id, doFetch), lg, region);
+      if (!detail) return c.json({ error: 'no such game' }, 404);
+      // Short TTL: a live game's linescore and plays move constantly.
+      await env.store.put(key, detail, detail.live ? 12 : 300);
+      return c.json(detail);
+    } catch {
+      return c.json({ error: 'upstream' }, 502);
+    }
+  });
+
   app.get('/v1/teams/:league', async (c) => {
     const lg = league(c.req.param('league'));
     if (!lg) return c.json({ error: 'unknown league' }, 404);

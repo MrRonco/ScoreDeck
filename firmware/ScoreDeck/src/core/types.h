@@ -45,6 +45,40 @@ struct AlertEvent {
   char     status[16];
 };
 
+/** GET /v1/game/:league/:id — mirrors proxy/src/types.ts GameDetail. */
+#define GD_LS_COLS   14
+#define GD_PLAYS      5
+#define GD_STATS      6
+
+struct GameDetail {
+  char     id[12];
+  char     status[16];
+  char     venue[29];
+  char     awayAbbr[5], homeAbbr[5];
+  uint16_t awayScore, homeScore;
+  uint32_t awayColor, homeColor;
+  bool     live;
+
+  uint8_t  lsCount;
+  char     lsCols[GD_LS_COLS][4];
+  char     lsA[GD_LS_COLS][4];
+  char     lsH[GD_LS_COLS][4];
+
+  uint8_t  playCount;
+  char     playT[GD_PLAYS][11];
+  char     playX[GD_PLAYS][73];
+  char     playS[GD_PLAYS][10];
+  bool     playHome[GD_PLAYS];
+
+  uint8_t  statCount;
+  char     statK[GD_STATS][10];
+  char     statA[GD_STATS][10];
+  char     statH[GD_STATS][10];
+
+  uint8_t  winProbHome;   // >100 = unavailable
+  uint16_t situation;
+};
+
 struct LeagueCount {
   char    slug[8];
   uint8_t live;

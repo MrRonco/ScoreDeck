@@ -58,6 +58,11 @@ extern bool          g_pendStale;
 
 extern volatile bool g_pollInFlight;   // one of its kind at a time
 
+// Game detail, written by its own task, read in loop context.
+extern GameDetail    g_pendGame;
+extern volatile bool g_pendGameReady;
+extern volatile bool g_gameInFlight;
+
 // ── status, for the top bar ─────────────────────────────────────────────────
 enum NetStatus : uint8_t { NET_BOOT = 0, NET_NOWIFI, NET_NOPROXY, NET_ERR, NET_OK, NET_STALE };
 extern NetStatus g_net;

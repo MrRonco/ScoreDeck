@@ -76,7 +76,9 @@ static void applyPending() {
   uiIdleRefresh();
   // Most of the day nothing is live. A board of dimmed finals is a sad object,
   // so the panel becomes a countdown instead. UI.md §7.
-  if (!uiSetupActive()) uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
+  // Never navigate away from a game the user is reading.
+  if (!uiSetupActive() && !uiGameIsOpen())
+    uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
   if (uiAlertActive()) lv_obj_move_foreground(uiAlertRoot());
 }
 
@@ -151,6 +153,14 @@ static void serialConsole() {
   else if (cmd == "reboot") { Serial.println("[cli] rebooting"); delay(50); ESP.restart(); }
   else if (cmd == "shot")   { dumpScreen(); return; }
   else if (cmd == "games")  { dumpGames(); return; }
+  else if (cmd == "open") {
+    const int n = arg.toInt();
+    if (n >= 0 && n < g_gameCount) { uiGameOpen(g_board[n]); Serial.printf("[cli] opened %s\n", g_board[n].id); }
+    else Serial.println("[cli] no such game");
+    return;
+  }
+  else if (cmd == "back")  { uiGameClose(); return; }
+  else if (cmd == "page")  { Serial.printf("[cli] paged=%d page=%u\n", uiBoardPage(arg.toInt() ? arg.toInt() : 1), g_page); return; }
   else if (cmd == "testalert") {
     AlertEvent e{};
     e.seq = 0;                       // 0 = never advances the committed sequence
@@ -169,13 +179,32 @@ static void serialConsole() {
     Serial.println("[cli] alert queued");
     return;
   }
-  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|shot|testalert|reboot"); return; }
+  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|open|back|page|shot|testalert|reboot"); return; }
 
   Serial.printf("[cli] proxy='%s' token=%s favs='%s' lgs='%s' rgn=%s games=%u net=%d\n",
                 g_set.proxy.c_str(), g_set.token.length() ? "set" : "none",
                 g_set.favs.c_str(), g_set.leagues.c_str(), g_set.region.c_str(),
                 g_gameCount, (int)g_net);
   if (cmd != "show") s_nextPollMs = 0;
+}
+
+static void applyGame() {
+  if (!g_pendGameReady) return;
+  g_pendGameReady = false;
+  uiGameApply(g_pendGame);
+}
+
+/** Refresh the open game roughly as often as the board polls. */
+static void tickOpenGame() {
+  static uint32_t next = 0;
+  if (!uiGameIsOpen()) { next = 0; return; }
+  if (millis() < next) return;
+  next = millis() + 15000;
+  for (uint8_t i = 0; i < g_gameCount; i++)
+    if (strcmp(g_board[i].id, uiGameOpenId()) == 0) {
+      apiGameStart(g_board[i].league, g_board[i].id);
+      return;
+    }
 }
 
 static void tickClock() {
@@ -207,6 +236,7 @@ void setup() {
   uiInit();
   uiIdleInit(lv_scr_act());
   uiAlertInit(lv_scr_act());
+  uiGameInit(lv_scr_act());
 
   if (g_set.tz.length()) setenv("TZ", g_set.tz.c_str(), 1);
   tzset();
@@ -261,6 +291,8 @@ void loop() {
       }
     }
     applyPending();
+    applyGame();
+    tickOpenGame();
     uiSetStatus();
   }
 

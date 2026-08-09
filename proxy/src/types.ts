@@ -117,6 +117,40 @@ export interface Table {
   cuts?: { after: number; label: string }[];
 }
 
+/** GET /v1/game/:league/:id — the tap-through detail. */
+export interface GameDetail {
+  v: 1;
+  i: string;
+  l: string;
+  /** Short status, same shape as the board's. */
+  st: string;
+  /** True while in progress. */
+  live: boolean;
+  away: Side;
+  home: Side;
+  /** Period/inning columns plus a total. cols[] labels, then two score rows. */
+  ls?: { cols: string[]; a: (string | number)[]; h: (string | number)[] };
+  /** Most recent scoring plays, newest first, already trimmed. */
+  plays?: {
+    /** "3rd 04:21" | "Top 8" */
+    t: string;
+    /** Play text, clamped. */
+    x: string;
+    /** Score after: away, home. */
+    s: [number, number];
+    /** True when the home side scored. */
+    hm: boolean;
+  }[];
+  /** Team comparison, rendered generically — the firmware never learns what a faceoff is. */
+  stats?: { k: string; a: string; h: string }[];
+  /** Home win probability 0-100. */
+  wp?: number;
+  /** Packed live situation, same encoding as the board. */
+  sit?: number;
+  venue?: string;
+  b?: string;
+}
+
 export interface LeagueDef {
   /** Registry key and wire value. */
   slug: string;
