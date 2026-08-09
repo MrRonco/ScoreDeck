@@ -5,11 +5,18 @@ shared instance — see [`OPEN_SOURCE.md`](OPEN_SOURCE.md) §2 for why.
 
 Pick one of three paths. They all run the same code.
 
-| Path | Best when | Cost | Works away from home |
-|---|---|---|---|
-| **A — Raspberry Pi / NAS** | You already have a box on the LAN | £0 | No |
-| **B — Cloudflare Workers** | You want it to just work, anywhere | £0 (maybe $5/mo) | Yes |
-| **C — Laptop** | Development only | £0 | No |
+| Path | Best when | Cost | CPU limits | Works away from home |
+|---|---|---|---|---|
+| **A — Unraid / NAS / Pi** | You already run a box that is always on | £0 | none | No |
+| **B — Cloudflare Workers** | The panel must work off your network | £0 (maybe $5/mo) | 10 ms/request | Yes |
+| **C — Laptop** | Development only | £0 | none | No |
+
+**For a desk panel, self-hosting is usually the better call.** Cloudflare's real
+advantage is working away from home, and a 7-inch display never leaves the desk.
+Meanwhile the Workers free tier caps CPU at 10 ms per request, which is the one
+unresolved risk for the golf and tennis normalisers (1.2 MB and 658 KB
+payloads). On your own hardware that risk simply does not exist — every league
+is viable on day one.
 
 ---
 
@@ -30,10 +37,84 @@ the Pi is down.
 
 ---
 
-## Path A — Raspberry Pi (recommended here)
+## Path A — Unraid (recommended here)
+
+Unraid is the best fit if you have it: always on, proper Docker management, and
+none of the CPU ceilings. The container is ~60 MB and idles at close to nothing.
+
+### Check reachability first
+
+This is the only thing that can rule Unraid out. Your panel sits on the IoT VLAN
+and **cannot reach the main LAN** — so if Unraid lives on the same subnet as your
+Mac, it needs a firewall rule just as the Mac would. Test it from the panel over
+USB before you build anything:
+
+```
+proxy http://<UNRAID-IP>:8787
+```
+
+Read the failure on serial:
+
+- **`HTTP -1` in a few milliseconds** → the packet arrived and nothing is
+  listening. Reachable. Carry on.
+- **`HTTP -1` after seconds** → the firewall is dropping it. You need a pass rule
+  from the panel's VLAN to `<UNRAID-IP>:8787`, or put the container on a
+  reachable network.
+
+### Option 1 — Compose Manager plugin (cleanest)
+
+Install **Compose Manager** from Community Applications, then add a stack:
+
+```bash
+# on Unraid, via terminal
+mkdir -p /mnt/user/appdata/scoredeck && cd /mnt/user/appdata/scoredeck
+git clone https://github.com/MrRonco/ScoreDeck.git .
+cd proxy
+echo "SD_TOKEN=$(openssl rand -hex 24)" > .env
+echo "TZ=America/Toronto" >> .env
+docker compose up -d --build
+cat .env          # copy the token, the panel needs it
+```
+
+### Option 2 — Unraid Docker tab, no compose
+
+Once the image is published you can add it as a container without cloning
+anything:
+
+| Field | Value |
+|---|---|
+| Repository | `ghcr.io/mrronco/scoredeck-proxy:latest` |
+| Network Type | `Bridge` |
+| Port | Container `8787` → Host `8787` |
+| Variable | `SD_TOKEN` = your token |
+| Variable | `TZ` = e.g. `America/Toronto` |
+
+> While the repository is private the image is private too, so Unraid needs a
+> one-off `docker login ghcr.io` with a GitHub personal access token that has
+> `read:packages`. Option 1 avoids that entirely by building locally.
+
+The container declares a `HEALTHCHECK`, so Unraid's health dot reflects whether
+the proxy is actually answering rather than just running.
+
+### Why this beats Cloudflare for this device
+
+- **No CPU ceiling** — golf and tennis normalise fine, and the whole
+  free-vs-$5/mo question disappears.
+- **No cron needed.** The Worker warms a cache every 2 minutes to dodge the 10 ms
+  budget; self-hosted, the request path just does the work.
+- **No account, no vendor**, and your viewing habits stay on your own hardware.
+
+The trade: it is one more thing you maintain, and the panel goes blank if the
+server is down. The device degrades honestly when that happens — it shows the
+failure and keeps retrying rather than hanging.
+
+---
+
+## Path A2 — Raspberry Pi
 
 The Pi already running adsb.im/tar1090 is fine; the proxy is a few MB of Node
-and idles at almost nothing.
+and idles at almost nothing. **Measured: your panel can already reach this
+host** (see the table above), which makes it the zero-firewall-change option.
 
 ### 1. Install Node 22+
 

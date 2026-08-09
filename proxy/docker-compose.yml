@@ -1,10 +1,13 @@
 services:
   scoredeck-proxy:
+    # Build locally, or swap for: image: ghcr.io/mrronco/scoredeck-proxy:latest
     build: .
+    image: scoredeck-proxy:local
     container_name: scoredeck-proxy
     restart: unless-stopped
     ports:
       - "8787:8787"
     environment:
-      # Generate with:  openssl rand -hex 24
-      SD_TOKEN: "${SD_TOKEN:?set SD_TOKEN in .env or the environment}"
+      # openssl rand -hex 24
+      SD_TOKEN: "${SD_TOKEN:?set SD_TOKEN in .env}"
+      TZ: "${TZ:-UTC}"
