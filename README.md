@@ -8,9 +8,10 @@ Runs on the **Waveshare ESP32-S3-Touch-LCD-7** (800×480 RGB565, GT911 touch,
 16 MB flash / 8 MB OPI PSRAM) — the same board as
 [AirRadar](https://github.com/MrRonco/AirRadar).
 
-> **Status: early.** The board screen renders live games on real hardware. Game
-> detail, alerts, standings, lineups and the setup portal are not built yet.
-> See [Roadmap](#roadmap).
+> **Status: early but working.** The board renders live games on real hardware,
+> score alerts fire, and the panel falls back to an idle countdown when nothing
+> is on. Game detail, standings, lineups and the browser setup portal are not
+> built yet. See [Roadmap](#roadmap).
 
 ---
 
@@ -103,8 +104,12 @@ to a data file** — no code, no firmware.
 - [x] Panel, touch, LVGL, Wi-Fi bring-up
 - [x] Proxy: registry, `CLOCK`/`INNING`, score diffing, regional broadcast
 - [x] Board screen at 9-up, live data on hardware
-- [ ] Density setting · game detail · alert takeover
-- [ ] Idle screen · standings · news
+- [x] Alert takeover, with the sequence held back until a card is actually seen
+- [x] Idle screen — the face the panel wears most of the day
+- [x] Self-hosted container: Unraid template, multi-arch image, VLAN placement
+- [ ] Game detail on tap · standings screen · density setting UI
+- [ ] Real fonts (tabular figures, Latin Extended-A) · logos
+- [ ] Browser setup portal · OTA
 - [ ] Lineups, player cards, headshots
 - [ ] Tennis / golf / F1
 

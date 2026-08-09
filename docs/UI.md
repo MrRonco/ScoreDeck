@@ -6,6 +6,10 @@ document is what the firmware is built against.
 
 Direction: **Route B — glass as material**, at **Standard 9-up** density.
 
+**Built so far:** the board, the idle screen and the alert takeover, all running
+on hardware. Fonts are still LVGL's stock Montserrat placeholders — §9 is the
+target and swapping the pointers in `theme.cpp` is the whole change.
+
 ---
 
 ## 1. The rule that shapes everything
