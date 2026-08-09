@@ -6,7 +6,9 @@ Runs ScoreDeck's UI in a window on a Mac, or renders it headless to a BMP.
 brew install sdl2
 make            # build
 ./scoredeck-ui  # interactive window
-make shots      # render every scenario to shots/*.bmp
+make shots      # render every scenario to shots/scn*.bmp
+make screens    # render every screen   to shots/scr-*.bmp
+make lint       # every label, every screen: can its font draw its text?
 ```
 
 ## Why this exists
@@ -40,6 +42,33 @@ fetch would overwrite what the scenario is trying to show.
 is the correct default — it is what every install renders before running the
 asset build, and the harness has no proxy to fetch from.
 
+## Reaching the secondary screens
+
+Six of the nine screens clear their state inside `Open()` and then wait on a
+fetch, which in the harness never lands — so they would only ever render
+"loading". `scenarioReapply()` fills standings, news, lineups, player cards and
+game detail *after* the screen has opened. The player card is not a screen at
+all but an overlay on the lineup, so `--screen player` opens both.
+
+```bash
+./scoredeck-ui --screen standings          # any of the nine
+./scoredeck-ui --shot out.bmp --scenario 8 # headless, tennis/golf/F1
+```
+
+## The font lint
+
+`make lint` walks the live LVGL object tree across every screen on every
+scenario, and for each visible label asks its assigned font whether it has a
+glyph for every codepoint the label is holding. It exits non-zero on a miss.
+
+This exists because the faces are generated with the narrowest glyph range each
+job needs, so pointing a label at the wrong one renders hollow boxes and
+reports nothing — and static analysis cannot catch it, because the face is
+chosen where the object is built and the text arrives from upstream at runtime,
+usually in another file. Six labels had shipped that way, including `GOAL` on
+the alert card and the wordmark on the first-boot screen. See `theme.h` for
+what each face actually covers.
+
 ## Shims
 
 `shim/` provides Arduino, `Preferences`, `WiFi`, `esp_heap_caps`,
@@ -62,11 +91,12 @@ anything true about the real heap; that measurement only exists on the device.
 | 5 | no proxy configured | first-run state |
 | 6 | stale upstream | must say so, not present stale as live |
 | 7 | accented names | font range — Latin Extended-A |
+| 8 | tennis, golf, F1 | the SET / LEADERBOARD / GRID tiles |
 
 ## Keys
 
 ```
-1..8    scenario          SPACE  next scenario
+1..9    scenario          SPACE  next scenario
 b i g   board idle game   s n l  standings news lineup
 p       write shot.bmp    q      quit
 ```
@@ -87,3 +117,11 @@ does — including the gestures that page the board.
 - **Every accented name rendered as boxes.** The font carried Latin Extended-A;
   the labels used `F_MICRO` and `F_ABBR`, which do not. Verifying the font file
   proved nothing about the screens.
+
+## And on day two
+
+Once the harness could reach all nine screens, it found six more of the same
+kind — including `GOAL` on the alert card and `ScoreDeck` on the first-boot
+screen, both set in a face with no letters in it at all. That is what turned
+the pattern into `make lint`: the fix for a bug you have now made four times is
+not another fix, it is a check.
