@@ -78,7 +78,7 @@ void uiGameInit(lv_obj_t* parent) {
   lv_obj_add_event_cb(s_back, onBack, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* bl = lv_label_create(s_back);
   lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_ABBR, 0);
+  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
   lv_obj_set_style_text_color(bl, C_INK, 0);
   lv_obj_center(bl);
 
@@ -121,7 +121,7 @@ void uiGameInit(lv_obj_t* parent) {
     lv_obj_set_style_bg_opa(s_playBar[i], LV_OPA_COVER, 0);
     lv_obj_set_style_radius(s_playBar[i], 2, 0);
     s_playT[i] = lb(pc, 26, y, C_INK3, F_MICRO);
-    s_playX[i] = lb(pc, 92, y, C_INK2, F_MICRO);
+    s_playX[i] = lb(pc, 92, y, C_INK2, F_BODY);   // play text names players
     lv_obj_set_width(s_playX[i], 300);
     lv_label_set_long_mode(s_playX[i], LV_LABEL_LONG_DOT);
     s_playS[i] = lb(pc, 396, y, C_INK, F_MICRO, LV_TEXT_ALIGN_RIGHT, 56);

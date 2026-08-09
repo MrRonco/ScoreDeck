@@ -85,7 +85,7 @@ void uiAlertInit(lv_obj_t* parent) {
   // The verb is the largest type anywhere in the product, deliberately.
   s_verb   = lbl(s_card, 146, 30, C_INK, F_SCORE);
   s_who    = lbl(s_card, 146, 78, C_INK, F_BODY);
-  s_detail = lbl(s_card, 146, 100, C_INK3, F_MICRO);
+  s_detail = lbl(s_card, 146, 100, C_INK3, F_BODY);   // assist names carry accents
 
   s_awayAbbr  = lbl(s_card, 40, 168, C_INK3, F_MICRO);
   s_awayScore = lbl(s_card, 40, 186, C_INK2, F_SCORE);

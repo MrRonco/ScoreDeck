@@ -174,7 +174,11 @@ static void buildTile(TileUI& t, int idx) {
   t.cScore[0] = t.cScore[1] = -1;
   t.cColor[0] = t.cColor[1] = 0xFFFFFFFF;
   t.cEdge = 0xFFFFFFFF;
-  t.cEdgeVis = true;
+  // MUST match the object's real state at build time (hidden), or the first
+  // setHiddenCached(false) sees a match and returns without ever showing it.
+  // A change-cache that disagrees with reality is worse than no cache: it
+  // suppresses exactly the update it was meant to make cheap.
+  t.cEdgeVis = false;
   t.cOpa = 0;
   t.cUsed = true;
 }

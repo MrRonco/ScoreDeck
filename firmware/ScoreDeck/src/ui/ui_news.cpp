@@ -85,7 +85,7 @@ void uiNewsInit(lv_obj_t* parent) {
   lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* bl = lv_label_create(back);
   lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_ABBR, 0);
+  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
   lv_obj_set_style_text_color(bl, C_INK, 0);
   lv_obj_center(bl);
   lv_obj_t* ttl = lb(bar, 74, 15, C_INK, F_ABBR);
@@ -108,7 +108,7 @@ void uiNewsInit(lv_obj_t* parent) {
     lv_obj_set_width(s_head[i], 600);
     lv_label_set_long_mode(s_head[i], LV_LABEL_LONG_DOT);
 
-    s_desc[i] = lb(s_card[i], 52, 36, C_INK3, F_MICRO);
+    s_desc[i] = lb(s_card[i], 52, 36, C_INK3, F_BODY);   // upstream prose
     lv_obj_set_width(s_desc[i], 690);
     lv_label_set_long_mode(s_desc[i], LV_LABEL_LONG_WRAP);
 

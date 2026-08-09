@@ -80,7 +80,7 @@ void uiStandingsInit(lv_obj_t* parent) {
   lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* bl = lv_label_create(back);
   lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_ABBR, 0);
+  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
   lv_obj_set_style_text_color(bl, C_INK, 0);
   lv_obj_center(bl);
 

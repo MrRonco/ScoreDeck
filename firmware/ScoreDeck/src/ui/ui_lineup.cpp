@@ -119,7 +119,7 @@ void uiLineupInit(lv_obj_t* parent) {
   lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* bl = lv_label_create(back);
   lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_ABBR, 0);
+  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
   lv_obj_set_style_text_color(bl, C_INK, 0);
   lv_obj_center(bl);
   s_title = lb(bar, 74, 15, C_INK, F_ABBR);
@@ -154,7 +154,7 @@ void uiLineupInit(lv_obj_t* parent) {
 
     s_rowGroup[r] = lb(s_rowObj[r], 6, 9, C_INK3, F_MICRO);
     s_rowPos[r]   = lb(s_rowObj[r], 6, 8, C_INK3, F_MICRO, LV_TEXT_ALIGN_LEFT, 34);
-    s_rowName[r]  = lb(s_rowObj[r], 46, 7, C_INK, F_MICRO);
+    s_rowName[r]  = lb(s_rowObj[r], 46, 6, C_INK, F_BODY);   // names carry accents
     for (uint8_t c = 0; c < LU_COLS; c++)
       s_rowVal[r][c] = lb(s_rowObj[r], 0, 8, C_INK2, F_MICRO, LV_TEXT_ALIGN_RIGHT, 70);
   }
@@ -190,7 +190,7 @@ void uiLineupInit(lv_obj_t* parent) {
   lv_obj_set_pos(s_shPhoto, 18, 16);
   lv_obj_add_flag(s_shPhoto, LV_OBJ_FLAG_HIDDEN);
 
-  s_shName  = lb(sc, 100, 20, C_INK, F_ABBR);
+  s_shName  = lb(sc, 100, 20, C_INK, F_BODY);   // Archivo caps face has no accents
   lv_obj_set_width(s_shName, 286);
   lv_label_set_long_mode(s_shName, LV_LABEL_LONG_DOT);
   s_shMeta1 = lb(sc, 100, 44, C_INK3, F_MICRO);

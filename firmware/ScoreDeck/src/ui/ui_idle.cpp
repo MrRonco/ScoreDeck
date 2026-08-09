@@ -158,7 +158,11 @@ static const Game* nextGame() {
 }
 
 void uiIdleTick() {
-  if (!s_root || lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN)) return;
+  // Deliberately NOT gated on visibility. uiIdleRefresh() runs before
+  // uiShow(SCR_IDLE), so an early return here left the clock, the countdown
+  // and the next-up matchup blank on the first frame the screen appeared.
+  // Every write below is change-cached, so running while hidden is nearly free.
+  if (!s_root) return;
 
   const time_t now = time(nullptr);
   struct tm lt;
