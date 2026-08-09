@@ -100,8 +100,11 @@ void uiSetupInit(lv_obj_t* parent) {
   lv_obj_t* card = glassPanel(s_root, 40, 24, SCR_W - 80, 236, 14);
 
   lv_obj_t* h = lv_label_create(card);
-  lv_label_set_text(h, "ScoreDeck");
-  lv_obj_set_style_text_font(h, F_SCORE, 0);
+  // The wordmark is set in caps because the display face has no lowercase, and
+  // this is the first thing anyone ever sees on the panel — it rendered as nine
+  // hollow boxes.
+  lv_label_set_text(h, "SCOREDECK");
+  lv_obj_set_style_text_font(h, F_DISPLAY, 0);
   lv_obj_set_style_text_color(h, C_INK, 0);
   lv_obj_set_pos(h, 22, 14);
 

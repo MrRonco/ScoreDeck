@@ -9,6 +9,9 @@
 #     visibly jitter as they tick over.
 #   * body carries Latin-1 Supplement AND Latin Extended-A. Doncic, Odegaard,
 #     Konate and Vlasic are boxes in a 7-bit ASCII face.
+#   * body also carries seven General Punctuation codepoints. ESPN's prose is
+#     typeset, not typed: play-by-play arrives with em dashes and curly quotes,
+#     and none of them are in Latin-1.
 set -euo pipefail
 OUT="$(cd "$(dirname "$0")/.." && pwd)/firmware/ScoreDeck/src/assets"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
@@ -40,11 +43,12 @@ gen() { lv_font_conv --font "$1" -r "$2" --size "$3" --bpp 4 --no-compress \
 
 gen Archivo-CondBold-tnum.ttf '0x30-0x3A,0x2D,0x20'                              38 font_score38
 gen Archivo-CondBold-tnum.ttf '0x30-0x3A,0x2D,0x20'                              46 font_score46
+gen Archivo-CondBold.ttf      '0x20,0x27,0x2E,0x30-0x39,0x41-0x5A'                30 font_display30
 gen Archivo-CondSemi.ttf      '0x20,0x23,0x25,0x2A-0x2F,0x30-0x39,0x3A,0x41-0x5A' 17 font_abbr17
-gen PlexSans-Regular.ttf      '0x20-0x7E,0xB0,0xB7,0xC0-0xFF,0x100-0x17F'         15 font_body15
+gen PlexSans-Regular.ttf      '0x20-0x7E,0xB0,0xB7,0xC0-0xFF,0x100-0x17F,0x2013,0x2014,0x2018,0x2019,0x201C,0x201D,0x2026' 15 font_body15
 gen PlexMono-tnum.ttf         '0x20-0x7E,0xB0,0xB7'                               11 font_micro11
 
 # lv_font_conv emits "lvgl/lvgl.h"; the Arduino library resolves as <lvgl.h>.
 sed -i '' 's|#include "lvgl/lvgl.h"|#include <lvgl.h>|' "$OUT"/font_*.c 2>/dev/null || \
   sed -i    's|#include "lvgl/lvgl.h"|#include <lvgl.h>|' "$OUT"/font_*.c
-echo "regenerated 5 faces into $OUT"
+echo "regenerated 6 faces into $OUT"

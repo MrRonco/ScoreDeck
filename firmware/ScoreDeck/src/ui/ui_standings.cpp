@@ -13,6 +13,7 @@
 #include "../config.h"
 #include "../core/state.h"
 #include "../net/api.h"
+#include <ctype.h>
 
 #define ST_VIS_ROWS 10
 
@@ -125,7 +126,13 @@ void uiStandingsInit(lv_obj_t* parent) {
 void uiStandingsRender() {
   const Standings& t = g_standings;
   char buf[48];
-  snprintf(buf, sizeof buf, "STANDINGS  %s", s_league);
+  // League slugs are lowercase ("nhl", "eng.1") and the title face is caps-only,
+  // so the slug rendered as boxes. Upper-case it rather than change the face —
+  // the title reads as a caps label by design.
+  char slug[sizeof s_league];
+  for (size_t i = 0; i < sizeof slug; i++) slug[i] = (char)toupper((unsigned char)s_league[i]);
+  slug[sizeof slug - 1] = '\0';
+  snprintf(buf, sizeof buf, "STANDINGS  %s", slug);
   lv_label_set_text(s_title, buf);
 
   if (!t.rowCount) {

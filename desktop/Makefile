@@ -36,7 +36,7 @@ FW_CXX = $(SRC)/ui/ui_board.cpp $(SRC)/ui/ui_idle.cpp $(SRC)/ui/ui_game.cpp \
          $(SRC)/core/state.cpp
 FW_C   = $(wildcard $(SRC)/assets/*.c)
 LV_C   = $(shell find $(LVGL)/src -name '*.c')
-OWN    = main.cpp fakes.cpp scenarios.cpp
+OWN    = main.cpp fakes.cpp scenarios.cpp lint_fonts.cpp
 
 OBJ = $(patsubst %,$(BUILD)/%.o,$(notdir $(OWN)) $(notdir $(FW_CXX)) $(notdir $(FW_C))) \
       $(patsubst $(LVGL)/%,$(BUILD)/lv/%.o,$(LV_C))
@@ -68,9 +68,19 @@ shots: $(BIN)
 	@mkdir -p shots
 	@i=0; while [ $$i -lt 9 ]; do ./$(BIN) --shot shots/scn$$i.bmp --scenario $$i; i=$$((i+1)); done
 
+# Every secondary screen, on the typical board. These are unreachable from a
+# scenario alone: each one clears its state in Open() and waits on a fetch.
+SCREENS = board idle game standings news lineup player alert setup
+screens: $(BIN)
+	@mkdir -p shots
+	@for s in $(SCREENS); do ./$(BIN) --shot shots/scr-$$s.bmp --screen $$s; done
+
+lint: $(BIN)
+	@./$(BIN) --lint
+
 clean:
 	@rm -rf $(BUILD) $(BIN) shots shot.bmp
 
 -include $(OBJ:.o=.d)
 
-.PHONY: all clean shots
+.PHONY: all clean shots screens lint

@@ -82,8 +82,10 @@ void uiAlertInit(lv_obj_t* parent) {
   lv_obj_set_style_radius(s_badge, 14, 0);
   s_badgeLbl = lv_obj_get_child(s_badge, 0);
 
-  // The verb is the largest type anywhere in the product, deliberately.
-  s_verb   = lbl(s_card, 146, 30, C_INK, F_SCORE);
+  // The verb is the largest type anywhere in the product, deliberately — and
+  // it is TEXT, so it cannot use F_SCORE. It did, and "GOAL" rendered as four
+  // hollow boxes on every alert the product has ever raised.
+  s_verb   = lbl(s_card, 146, 30, C_INK, F_DISPLAY);
   s_who    = lbl(s_card, 146, 78, C_INK, F_BODY);
   s_detail = lbl(s_card, 146, 100, C_INK3, F_BODY);   // assist names carry accents
 

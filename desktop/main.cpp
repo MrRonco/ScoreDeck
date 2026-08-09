@@ -17,6 +17,7 @@
 #include <lvgl.h>
 #include "Arduino.h"
 #include "scenarios.h"
+#include "lint_fonts.h"
 #include "../firmware/ScoreDeck/src/config.h"
 #include "../firmware/ScoreDeck/src/core/state.h"
 #include "../firmware/ScoreDeck/src/ui/ui.h"
@@ -98,7 +99,13 @@ static void showScreen(const char* name) {
   else if (!strcmp(name, "idle"))      uiShow(SCR_IDLE);
   else if (!strcmp(name, "standings")) uiStandingsOpen("nhl");
   else if (!strcmp(name, "news"))      uiNewsOpen();
-  else if (!strcmp(name, "lineup"))    uiLineupOpen("eng.1", "900000");
+  else if (!strcmp(name, "lineup"))    uiLineupOpen("nhl", "900000");
+  // The player sheet is an overlay on the lineup screen, not a screen of its
+  // own — open the lineup underneath it or the sheet has nothing to sit on.
+  else if (!strcmp(name, "player"))  { uiLineupOpen("nhl", "900000");
+                                       uiPlayerOpen("nhl", "3024"); }
+  else if (!strcmp(name, "setup"))     uiShow(SCR_SETUP);
+  else if (!strcmp(name, "alert"))     scenarioFireAlert();
   else if (!strcmp(name, "game") && g_gameCount) uiGameOpen(g_board[0]);
   else fprintf(stderr, "unknown screen '%s'\n", name);
 }
@@ -113,15 +120,17 @@ static void help() {
 int main(int argc, char** argv) {
   const char* shot = nullptr;
   const char* screen = nullptr;
+  bool lint = false;
   for (int i = 1; i < argc; i++) {
     if      (!strcmp(argv[i], "--shot") && i + 1 < argc)     shot = argv[++i];
     else if (!strcmp(argv[i], "--scenario") && i + 1 < argc) s_scenario = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--screen") && i + 1 < argc)   screen = argv[++i];
+    else if (!strcmp(argv[i], "--lint"))                     lint = true;
     else if (!strcmp(argv[i], "--help")) { help(); return 0; }
   }
   if (s_scenario < 0 || s_scenario >= SCN_COUNT) s_scenario = SCN_TYPICAL;
 
-  if (SDL_Init(shot ? 0 : SDL_INIT_VIDEO) != 0) {
+  if (SDL_Init((shot || lint) ? 0 : SDL_INIT_VIDEO) != 0) {
     fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
     return 1;
   }
@@ -138,7 +147,7 @@ int main(int argc, char** argv) {
   dd.ver_res = SCR_H;
   lv_disp_drv_register(&dd);
 
-  if (!shot) {
+  if (!shot && !lint) {
     s_win = SDL_CreateWindow("ScoreDeck", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                              SCR_W, SCR_H, SDL_WINDOW_ALLOW_HIGHDPI);
     s_ren = SDL_CreateRenderer(s_win, -1, SDL_RENDERER_ACCELERATED);
@@ -160,10 +169,34 @@ int main(int argc, char** argv) {
   uiStandingsInit(lv_scr_act());
   uiNewsInit(lv_scr_act());
   uiLineupInit(lv_scr_act());
+  uiSetupInit(lv_scr_act());
 
   scenarioApply(s_scenario);
   showScreen(screen);
   scenarioReapply(s_scenario);
+
+  if (lint) {
+    // Every screen, on every scenario. A face is only wrong for the text it is
+    // actually holding, so coverage here means visiting both.
+    static const char* kScreens[] = { "board", "idle", "game", "standings",
+                                      "news", "lineup", "player", "alert", "setup" };
+    for (int s = 0; s < SCN_COUNT; s++) {
+      scenarioApply(s);
+      for (const char* sc : kScreens) {
+        showScreen(sc);
+        scenarioReapply(s);
+        uiIdleTick();
+        lv_refr_now(nullptr);
+        char label[64];
+        snprintf(label, sizeof label, "%-10s  %s", sc, scenarioName(s));
+        lintScreen(label);
+      }
+    }
+    const int bad = lintTotal();
+    printf("\n%d label%s the assigned face cannot render\n", bad, bad == 1 ? "" : "s");
+    SDL_Quit();
+    return bad ? 1 : 0;
+  }
 
   if (shot) {
     // Two passes: the first lays out, the second paints everything the layout

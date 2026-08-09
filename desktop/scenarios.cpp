@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <unistd.h>
 #include "scenarios.h"
 #include "../firmware/ScoreDeck/src/core/state.h"
 #include "../firmware/ScoreDeck/src/ui/ui.h"
@@ -65,13 +66,249 @@ static void reset() {
   memset(&g_standings, 0, sizeof g_standings);
 }
 
+// ── secondary-screen fills ───────────────────────────────────────────────────
+// Every one of these screens clears its state inside Open() and then waits on a
+// fetch that never lands here, so a --screen shot of standings, news, a game
+// detail or a player card would otherwise only ever show "loading". These run
+// afterwards, from scenarioReapply().
+
+static void fillStandings() {
+  Standings& t = g_standings;
+  memset(&t, 0, sizeof t);
+  t.colCount = 5;
+  static const char* kCols[5] = { "GP", "W", "L", "OTL", "PTS" };
+  for (int c = 0; c < 5; c++) strncpy(t.cols[c], kCols[c], sizeof t.cols[0] - 1);
+
+  struct R { const char* abbr; const char* name; uint32_t col; int gp, w, l, otl; };
+  static const R kRows[] = {
+    { "FLA", "Panthers",     0xC8102E, 68, 44, 19,  5 },
+    { "TOR", "Maple Leafs",  0x00205B, 67, 42, 20,  5 },
+    { "TBL", "Lightning",    0x002868, 68, 40, 22,  6 },
+    { "BOS", "Bruins",       0xFFB81C, 69, 38, 24,  7 },
+    { "OTT", "Senators",     0xDA1A32, 68, 36, 26,  6 },
+    { "MTL", "Canadiens",    0xAF1E2D, 68, 33, 28,  7 },
+    { "DET", "Red Wings",    0xCE1126, 69, 32, 30,  7 },
+    { "BUF", "Sabres",       0x003087, 68, 30, 32,  6 },
+    { "NYR", "Rangers",      0x0038A8, 67, 29, 31,  7 },
+    { "PHI", "Flyers",       0xF74902, 68, 27, 34,  7 },
+    { "PIT", "Penguins",     0x000000, 68, 26, 35,  7 },
+    { "NJD", "Devils",       0xCE1126, 68, 25, 36,  7 },
+  };
+  t.rowCount = (uint8_t)(sizeof kRows / sizeof kRows[0]);
+  for (uint8_t i = 0; i < t.rowCount; i++) {
+    StandingRow& r = t.rows[i];
+    strncpy(r.abbr, kRows[i].abbr, sizeof r.abbr - 1);
+    strncpy(r.name, kRows[i].name, sizeof r.name - 1);
+    r.color = kRows[i].col;
+    snprintf(r.cells[0], sizeof r.cells[0], "%d", kRows[i].gp);
+    snprintf(r.cells[1], sizeof r.cells[1], "%d", kRows[i].w);
+    snprintf(r.cells[2], sizeof r.cells[2], "%d", kRows[i].l);
+    snprintf(r.cells[3], sizeof r.cells[3], "%d", kRows[i].otl);
+    snprintf(r.cells[4], sizeof r.cells[4], "%d", kRows[i].w * 2 + kRows[i].otl);
+  }
+  t.cutCount = 2;
+  t.cutAfter[0] = 2; strncpy(t.cutLabel[0], "PLAYOFF LINE",  sizeof t.cutLabel[0] - 1);
+  t.cutAfter[1] = 7; strncpy(t.cutLabel[1], "WILD CARD CUT", sizeof t.cutLabel[1] - 1);
+  t.loading = false;
+}
+
+static void fillNews() {
+  NewsFeed& n = g_news;
+  memset(&n, 0, sizeof n);
+  const uint32_t now = (uint32_t)time(nullptr);
+  struct I { const char* h; const char* d; const char* abbr; uint32_t col; uint32_t ago; };
+  static const I kItems[] = {
+    { "Matthews returns to practice, questionable for Saturday",
+      "The captain skated in a regular sweater for the first time since the "
+      "upper-body injury that has kept him out eleven games.", "TOR", 0x00205B, 900 },
+    { "Canadiens recall Demidov from Laval on emergency basis",
+      "Montreal is down to eleven forwards after Thursday's collision and has "
+      "burned through its taxi squad.", "MTL", 0xAF1E2D, 5400 },
+    { "Ødegaard's late free kick rescues a point at Anfield",
+      "Arsenal had been second best for an hour before the captain curled one "
+      "over the wall in the third minute of added time.", "ARS", 0xEF0107, 14400 },
+    { "Bills sign veteran tackle ahead of divisional round",
+      "A one-year deal, fully guaranteed, filling the hole left by last week's "
+      "ankle injury.", "BUF", 0x00338D, 43200 },
+    { "Verstappen takes pole by four hundredths at Zandvoort",
+      "A final sector that nobody else got close to, on a track where passing "
+      "is close to theoretical.", "", 0x5D6D7E, 90000 },
+    { "Judge homers twice as New York opens a four-game lead",
+      "Two swings, both to the opposite field, and a division race that looked "
+      "tight on Tuesday no longer does.", "NYY", 0x132448, 176000 },
+  };
+  n.count = (uint8_t)(sizeof kItems / sizeof kItems[0]);
+  for (uint8_t i = 0; i < n.count; i++) {
+    NewsItem& it = n.items[i];
+    strncpy(it.headline, kItems[i].h, sizeof it.headline - 1);
+    strncpy(it.desc,     kItems[i].d, sizeof it.desc - 1);
+    strncpy(it.abbr,     kItems[i].abbr, sizeof it.abbr - 1);
+    it.color = kItems[i].col;
+    it.when  = now - kItems[i].ago;
+  }
+  n.loading = false;
+}
+
+static void fillDetail() {
+  GameDetail d;
+  memset(&d, 0, sizeof d);
+  strncpy(d.id, g_gameCount ? g_board[0].id : "900000", sizeof d.id - 1);
+  strncpy(d.status, "3rd 04:21", sizeof d.status - 1);
+  strncpy(d.venue, "Scotiabank Arena", sizeof d.venue - 1);
+  strncpy(d.awayAbbr, "MTL", sizeof d.awayAbbr - 1);
+  strncpy(d.homeAbbr, "TOR", sizeof d.homeAbbr - 1);
+  d.awayScore = 2; d.homeScore = 3;
+  d.awayColor = 0xAF1E2D; d.homeColor = 0x00205B;
+  d.live = true;
+  d.winProbHome = 71;
+
+  d.lsCount = 4;
+  static const char* kCols[4] = { "1", "2", "3", "T" };
+  static const char* kA[4]    = { "1", "1", "0", "2" };
+  static const char* kH[4]    = { "0", "2", "1", "3" };
+  for (int i = 0; i < 4; i++) {
+    strncpy(d.lsCols[i], kCols[i], sizeof d.lsCols[0] - 1);
+    strncpy(d.lsA[i],    kA[i],    sizeof d.lsA[0] - 1);
+    strncpy(d.lsH[i],    kH[i],    sizeof d.lsH[0] - 1);
+  }
+
+  d.playCount = 5;
+  static const char* kT[5] = { "3rd 04:21", "3rd 07:58", "2nd 12:30", "2nd 15:02", "1st 03:44" };
+  static const char* kX[5] = {
+    "Auston Matthews scores on a wrist shot from the slot, assisted by Nylander",
+    "Nick Suzuki penalty for tripping — 2 minutes",
+    "Cole Caufield scores short-handed, unassisted",
+    "William Nylander scores on the power play, assisted by Rielly and Marner",
+    "Juraj Slafkovsky scores on a tip-in, assisted by Hutson",
+  };
+  static const char* kS[5] = { "2-3", "2-2", "2-2", "1-2", "1-1" };
+  static const bool  kHm[5] = { true, false, false, true, false };
+  for (int i = 0; i < 5; i++) {
+    strncpy(d.playT[i], kT[i], sizeof d.playT[0] - 1);
+    strncpy(d.playX[i], kX[i], sizeof d.playX[0] - 1);
+    strncpy(d.playS[i], kS[i], sizeof d.playS[0] - 1);
+    d.playHome[i] = kHm[i];
+  }
+
+  d.statCount = 5;
+  static const char* kK[5] = { "SOG", "PP", "FO%", "HITS", "PIM" };
+  static const char* kSA[5] = { "24", "1/3", "47.2", "18", "6" };
+  static const char* kSH[5] = { "31", "2/4", "52.8", "22", "4" };
+  for (int i = 0; i < 5; i++) {
+    strncpy(d.statK[i], kK[i],  sizeof d.statK[0] - 1);
+    strncpy(d.statA[i], kSA[i], sizeof d.statA[0] - 1);
+    strncpy(d.statH[i], kSH[i], sizeof d.statH[0] - 1);
+  }
+  uiGameApply(d);
+}
+
+static void fillPlayer() {
+  PlayerCard& p = g_player;
+  memset(&p, 0, sizeof p);
+  strncpy(p.id,     "3024", sizeof p.id - 1);
+  strncpy(p.name,   "Auston Matthews", sizeof p.name - 1);
+  strncpy(p.pos,    "Center", sizeof p.pos - 1);
+  strncpy(p.team,   "TOR", sizeof p.team - 1);
+  strncpy(p.jersey, "34", sizeof p.jersey - 1);
+  strncpy(p.height, "6' 3\"", sizeof p.height - 1);
+  strncpy(p.weight, "208 lbs", sizeof p.weight - 1);
+  p.color = 0x00205B;
+  p.age = 28;
+  p.statCount = 5;
+  static const char* kK[5] = { "G",  "A",  "P",  "+/-", "TOI" };
+  static const char* kV[5] = { "41", "33", "74", "+18", "21:14" };
+  static const char* kR[5] = { "2nd NHL", "31st", "9th", "22nd", "6th on TOR" };
+  for (int i = 0; i < 5; i++) {
+    strncpy(p.statK[i], kK[i], sizeof p.statK[0] - 1);
+    strncpy(p.statV[i], kV[i], sizeof p.statV[0] - 1);
+    strncpy(p.statR[i], kR[i], sizeof p.statR[0] - 1);
+  }
+  p.loading = false;
+}
+
+static void fillLineup() {
+  Lineup& L = g_lineup;
+  memset(&L, 0, sizeof L);
+  L.sideCount = 2;
+  struct P { const char* name; const char* pos; const char* jersey; const char* g; const char* a; };
+  static const P kAway[] = {
+    { "Sam Montembeault", "G",  "35", "0", "0" }, { "Lane Hutson",   "D", "48", "0", "2" },
+    { "Kaiden Guhle",     "D",  "21", "0", "0" }, { "Mike Matheson", "D", "8",  "1", "0" },
+    { "Nick Suzuki",      "C",  "14", "1", "1" }, { "Cole Caufield", "RW","13", "1", "0" },
+    { "Juraj Slafkovsky", "LW", "20", "0", "1" }, { "Alex Newhook",  "C", "15", "0", "0" },
+  };
+  static const P kHome[] = {
+    { "Joseph Woll",       "G",  "60", "0", "0" }, { "Morgan Rielly",  "D", "44", "0", "1" },
+    { "Chris Tanev",       "D",  "8",  "0", "0" }, { "Jake McCabe",    "D", "22", "0", "0" },
+    { "Auston Matthews",   "C",  "34", "1", "1" }, { "William Nylander","RW","88", "1", "0" },
+    { "Matthew Knies",     "LW", "23", "0", "0" }, { "John Tavares",   "C", "91", "0", "1" },
+  };
+  const char* kAbbr[2] = { "MTL", "TOR" };
+  const uint32_t kCol[2] = { 0xAF1E2D, 0x00205B };
+  for (uint8_t s = 0; s < 2; s++) {
+    LineSide& S = L.sides[s];
+    strncpy(S.abbr, kAbbr[s], sizeof S.abbr - 1);
+    S.color = kCol[s];
+    S.groupCount = 1;
+    LineGroup& G = S.groups[0];
+    strncpy(G.name, "SKATERS", sizeof G.name - 1);
+    G.colCount = 2;
+    strncpy(G.cols[0], "G", sizeof G.cols[0] - 1);
+    strncpy(G.cols[1], "A", sizeof G.cols[1] - 1);
+    const P* src = s ? kHome : kAway;
+    G.count = 8;
+    for (uint8_t i = 0; i < 8; i++) {
+      LinePlayer& pl = G.players[i];
+      memset(&pl, 0, sizeof pl);
+      snprintf(pl.id, sizeof pl.id, "%u", 3000u + s * 100 + i);
+      strncpy(pl.name,   src[i].name,   sizeof pl.name - 1);
+      strncpy(pl.pos,    src[i].pos,    sizeof pl.pos - 1);
+      strncpy(pl.jersey, src[i].jersey, sizeof pl.jersey - 1);
+      strncpy(pl.vals[0], src[i].g, sizeof pl.vals[0] - 1);
+      strncpy(pl.vals[1], src[i].a, sizeof pl.vals[0] - 1);
+      pl.starter = i < 6;
+    }
+  }
+  L.loading = false;
+}
+
+void scenarioFireAlert() {
+  AlertEvent e;
+  memset(&e, 0, sizeof e);
+  e.seq = 1;
+  strncpy(e.gameId, g_gameCount ? g_board[0].id : "900000", sizeof e.gameId - 1);
+  strncpy(e.verb,   "GOAL", sizeof e.verb - 1);
+  strncpy(e.abbr,   "TOR",  sizeof e.abbr - 1);
+  e.color = 0x00205B;
+  strncpy(e.who,    "Auston Matthews (41)", sizeof e.who - 1);
+  strncpy(e.detail, "Nylander, Rielly", sizeof e.detail - 1);
+  strncpy(e.status, "3rd 04:21", sizeof e.status - 1);
+  e.scoreAway = 2;
+  e.scoreHome = 3;
+  uiAlertEnqueue(e);
+  // The card fades in over four discrete steps ~70 ms apart, so a single tick
+  // captures it at 25% and a --shot would libel the design. Run the fade out.
+  for (int i = 0; i < 24 && !uiAlertActive(); i++) { uiAlertTick(); usleep(20000); }
+  for (int i = 0; i < 24; i++) { uiAlertTick(); usleep(20000); }
+}
+
 /** Refill the screens whose Open() clears state before fetching. */
 void scenarioReapply(int n) {
   if (n == SCN_ACCENTS) {
     g_lineup.loading = false;
     g_lineup.sideCount = 1;
     uiLineupApply();
+    return;
   }
+  fillStandings();
+  fillNews();
+  fillPlayer();
+  fillLineup();
+  if (uiStandingsIsOpen()) uiStandingsRender();
+  if (uiNewsIsOpen())      uiNewsRender();
+  if (uiLineupIsOpen())    uiLineupApply();
+  if (uiPlayerIsOpen())    uiPlayerRender();
+  if (uiGameIsOpen())      fillDetail();
 }
 
 void scenarioApply(int n) {

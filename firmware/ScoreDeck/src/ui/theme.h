@@ -31,13 +31,18 @@
 // bugs have been exactly this.
 //
 //   F_SCORE   digits, '-', ':' only          NEVER for text
+//   F_DISPLAY CAPS + digits + ' and .        large headline text, no lowercase
 //   F_ABBR    CAPS + digits, no lowercase    team abbreviations ONLY
 //   F_BODY    0x20-7E + Latin-1 + Ext-A      anything with a person or place
 //   F_MICRO   0x20-7E ASCII only             labels, clocks, stat keys
 //
-// Rule of thumb: if the string can come from upstream, it needs F_BODY.
+// Rule of thumb: if the string can come from upstream, it needs F_BODY. If it
+// contains a letter at all, it is not F_SCORE — that face has no letters, and
+// LVGL renders a missing glyph as a hollow box without warning. Five shipped
+// labels were exactly this bug; see the guard in tools/lint-fonts.mjs.
 extern const lv_font_t* F_SCORE;      // tabular, Standard/Dense density
 extern const lv_font_t* F_SCORE_BIG;  // tabular, Roomy density
+extern const lv_font_t* F_DISPLAY;    // the alert verb, and nothing smaller
 extern const lv_font_t* F_ABBR;
 extern const lv_font_t* F_BODY;
 extern const lv_font_t* F_MICRO;

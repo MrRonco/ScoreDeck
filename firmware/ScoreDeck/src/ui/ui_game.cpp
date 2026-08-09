@@ -94,7 +94,9 @@ void uiGameInit(lv_obj_t* parent) {
   s_recH   = lb(hdr, SCR_W - 214, 50, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 74);
   s_scoreH = lb(hdr, SCR_W - 300, 22, C_INK, F_SCORE, LV_TEXT_ALIGN_RIGHT, 76);
 
-  s_status = lb(hdr, (SCR_W - 240) / 2, 24, C_INK, F_ABBR, LV_TEXT_ALIGN_CENTER, 240);
+  // Status is upstream prose ("3rd 04:21", "Bot 7", "Final/OT") and carries
+  // lowercase, so it cannot use the caps-only F_ABBR.
+  s_status = lb(hdr, (SCR_W - 240) / 2, 24, C_INK, F_BODY, LV_TEXT_ALIGN_CENTER, 240);
   s_venue  = lb(hdr, (SCR_W - 240) / 2, 52, C_INK3, F_MICRO, LV_TEXT_ALIGN_CENTER, 240);
 
   // ── linescore ────────────────────────────────────────────────────────────

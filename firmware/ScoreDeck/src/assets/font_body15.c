@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 15 px
  * Bpp: 4
- * Opts: --font PlexSans-Regular.ttf -r 0x20-0x7E,0xB0,0xB7,0xC0-0xFF,0x100-0x17F --size 15 --bpp 4 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_body15.c --force-fast-kern-format
+ * Opts: --font PlexSans-Regular.ttf -r 0x20-0x7E,0xB0,0xB7,0xC0-0xFF,0x100-0x17F,0x2013,0x2014,0x2018,0x2019,0x201C,0x201D,0x2026 --size 15 --bpp 4 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_body15.c --force-fast-kern-format
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
@@ -2390,7 +2390,33 @@ static LV_ATTRIBUTE_LARGE_CONST const uint8_t glyph_bitmap[] = {
     0x0, 0xcf, 0x90, 0x4e, 0x0, 0x5, 0xe0, 0x9,
     0xfe, 0x0, 0x5, 0xe0, 0x0, 0x5e, 0x0, 0x5,
     0xe0, 0x0, 0x5e, 0x0, 0x5, 0xe0, 0x0, 0x5e,
-    0x0, 0x5, 0xe0, 0x0
+    0x0, 0x5, 0xe0, 0x0,
+
+    /* U+2013 "–" */
+    0x7f, 0xff, 0xff, 0xff, 0x41, 0x22, 0x22, 0x22,
+    0x20,
+
+    /* U+2014 "—" */
+    0x7f, 0xff, 0xff, 0xff, 0xff, 0xf2, 0x12, 0x22,
+    0x22, 0x22, 0x22, 0x20,
+
+    /* U+2018 "‘" */
+    0x1d, 0x19, 0x70, 0xec, 0xc, 0xb0,
+
+    /* U+2019 "’" */
+    0xa, 0xd0, 0xa, 0xf0, 0x6, 0xb0, 0x1d, 0x20,
+
+    /* U+201C "“" */
+    0x1d, 0x11, 0xd2, 0x97, 0x9, 0x80, 0xec, 0xd,
+    0xc0, 0xcb, 0xb, 0xc0,
+
+    /* U+201D "”" */
+    0xa, 0xd0, 0x9d, 0x0, 0xaf, 0xa, 0xf0, 0x6,
+    0xb0, 0x5b, 0x1, 0xd2, 0x1d, 0x20,
+
+    /* U+2026 "…" */
+    0xac, 0x0, 0xbb, 0x0, 0xbb, 0xbc, 0x0, 0xbc,
+    0x0, 0xbc
 };
 
 
@@ -2688,7 +2714,14 @@ static const lv_font_fmt_txt_glyph_dsc_t glyph_dsc[] = {
     {.bitmap_index = 13223, .adv_w = 111, .box_w = 7, .box_h = 11, .ofs_x = 0, .ofs_y = 0},
     {.bitmap_index = 13262, .adv_w = 139, .box_w = 9, .box_h = 15, .ofs_x = 0, .ofs_y = 0},
     {.bitmap_index = 13330, .adv_w = 111, .box_w = 7, .box_h = 12, .ofs_x = 0, .ofs_y = 0},
-    {.bitmap_index = 13372, .adv_w = 67, .box_w = 5, .box_h = 11, .ofs_x = 0, .ofs_y = 0}
+    {.bitmap_index = 13372, .adv_w = 67, .box_w = 5, .box_h = 11, .ofs_x = 0, .ofs_y = 0},
+    {.bitmap_index = 13400, .adv_w = 141, .box_w = 9, .box_h = 2, .ofs_x = 0, .ofs_y = 3},
+    {.bitmap_index = 13409, .adv_w = 187, .box_w = 12, .box_h = 2, .ofs_x = 0, .ofs_y = 3},
+    {.bitmap_index = 13421, .adv_w = 66, .box_w = 3, .box_h = 4, .ofs_x = 1, .ofs_y = 7},
+    {.bitmap_index = 13427, .adv_w = 66, .box_w = 4, .box_h = 4, .ofs_x = 0, .ofs_y = 7},
+    {.bitmap_index = 13435, .adv_w = 114, .box_w = 6, .box_h = 4, .ofs_x = 1, .ofs_y = 7},
+    {.bitmap_index = 13447, .adv_w = 114, .box_w = 7, .box_h = 4, .ofs_x = 0, .ofs_y = 7},
+    {.bitmap_index = 13461, .adv_w = 193, .box_w = 10, .box_h = 2, .ofs_x = 1, .ofs_y = 0}
 };
 
 /*---------------------
@@ -2697,6 +2730,10 @@ static const lv_font_fmt_txt_glyph_dsc_t glyph_dsc[] = {
 
 static const uint16_t unicode_list_1[] = {
     0x0, 0x7
+};
+
+static const uint16_t unicode_list_3[] = {
+    0x0, 0x1, 0x5, 0x6, 0x9, 0xa, 0x13
 };
 
 /*Collect the unicode lists and glyph_id offsets*/
@@ -2713,6 +2750,10 @@ static const lv_font_fmt_txt_cmap_t cmaps[] =
     {
         .range_start = 192, .range_length = 192, .glyph_id_start = 98,
         .unicode_list = NULL, .glyph_id_ofs_list = NULL, .list_length = 0, .type = LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY
+    },
+    {
+        .range_start = 8211, .range_length = 20, .glyph_id_start = 290,
+        .unicode_list = unicode_list_3, .glyph_id_ofs_list = NULL, .list_length = 7, .type = LV_FONT_FMT_TXT_CMAP_SPARSE_TINY
     }
 };
 
@@ -2734,7 +2775,7 @@ static lv_font_fmt_txt_dsc_t font_dsc = {
     .cmaps = cmaps,
     .kern_dsc = NULL,
     .kern_scale = 0,
-    .cmap_num = 3,
+    .cmap_num = 4,
     .bpp = 4,
     .kern_classes = 0,
     .bitmap_format = 0,

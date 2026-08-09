@@ -109,7 +109,7 @@ void uiIdleInit(lv_obj_t* parent) {
   lv_obj_set_pos(s_nextBadgeH, 210, 40);
   s_nextLblH = lv_obj_get_child(s_nextBadgeH, 0);
 
-  s_countdown = lbl(nextCard, 22, 92, C_INK, F_SCORE);
+  s_countdown = lbl(nextCard, 22, 92, C_INK, F_DISPLAY);   // carries "H"/"M"/"NOW"
   s_nextMeta  = lbl(nextCard, 22, 156, C_INK3, F_MICRO);
   s_nextNone  = lbl(nextCard, 22, 92, C_INK2, F_BODY);
   lv_label_set_text(s_nextNone, "Nothing scheduled");
@@ -205,15 +205,17 @@ void uiIdleTick() {
   }
 
   // Countdown is the hero — it is the reason this screen exists.
+  // Units are CAPS because the hero face has no lowercase — see theme.h. As
+  // lowercase they rendered as hollow boxes next to the digits.
   const long secs = (long)nx->startUtc - (long)now;
   if (secs <= 0) {
-    snprintf(buf, sizeof buf, "now");
+    snprintf(buf, sizeof buf, "NOW");
   } else if (secs < 3600) {
-    snprintf(buf, sizeof buf, "%ldm", secs / 60);
+    snprintf(buf, sizeof buf, "%ldM", secs / 60);
   } else if (secs < 86400) {
-    snprintf(buf, sizeof buf, "%ldh %ldm", secs / 3600, (secs % 3600) / 60);
+    snprintf(buf, sizeof buf, "%ldH %ldM", secs / 3600, (secs % 3600) / 60);
   } else {
-    snprintf(buf, sizeof buf, "%ldd", secs / 86400);
+    snprintf(buf, sizeof buf, "%ldD", secs / 86400);
   }
   setCached(s_countdown, s_cCountdown, sizeof s_cCountdown, buf);
 

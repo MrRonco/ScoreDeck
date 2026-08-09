@@ -15,12 +15,14 @@
 // Both families are OFL-1.1 — see THIRD-PARTY-NOTICES.md.
 LV_FONT_DECLARE(font_score46)
 LV_FONT_DECLARE(font_score38)
+LV_FONT_DECLARE(font_display30)
 LV_FONT_DECLARE(font_abbr17)
 LV_FONT_DECLARE(font_body15)
 LV_FONT_DECLARE(font_micro11)
 
 const lv_font_t* F_SCORE = &font_score38;
 const lv_font_t* F_SCORE_BIG = &font_score46;
+const lv_font_t* F_DISPLAY = &font_display30;
 const lv_font_t* F_ABBR  = &font_abbr17;
 const lv_font_t* F_BODY  = &font_body15;
 const lv_font_t* F_MICRO = &font_micro11;
