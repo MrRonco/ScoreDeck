@@ -8,7 +8,8 @@
     "dev": "node --experimental-strip-types src/server.ts",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "logos": "node tools/build-logos.mjs"
+    "logos": "node tools/build-logos.mjs",
+    "headshots": "node tools/build-headshots.mjs"
   },
   "dependencies": {
     "hono": "^4.6.14"

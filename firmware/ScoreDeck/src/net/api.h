@@ -18,3 +18,7 @@ bool apiStandingsStart(const char* league);
 
 /** Fetch headlines for the followed teams. Loop context only. */
 bool apiNewsStart();
+
+/** Lineups and one player's card. Loop context only. */
+bool apiLineupStart(const char* league, const char* id);
+bool apiPlayerStart(const char* league, const char* athleteId);

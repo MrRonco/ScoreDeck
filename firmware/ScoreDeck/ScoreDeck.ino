@@ -79,7 +79,7 @@ static void applyPending() {
   // Most of the day nothing is live. A board of dimmed finals is a sad object,
   // so the panel becomes a countdown instead. UI.md §7.
   // Never navigate away from a game the user is reading.
-  if (!uiSetupActive() && !uiGameIsOpen() && !uiStandingsIsOpen() && !uiNewsIsOpen())
+  if (!uiSetupActive() && !uiGameIsOpen() && !uiStandingsIsOpen() && !uiNewsIsOpen() && !uiLineupIsOpen())
     uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
   if (uiAlertActive()) lv_obj_move_foreground(uiAlertRoot());
 }
@@ -161,9 +161,23 @@ static void serialConsole() {
     else Serial.println("[cli] no such game");
     return;
   }
-  else if (cmd == "back")  { uiGameIsOpen() ? uiGameClose() : uiNewsIsOpen() ? uiNewsClose() : uiStandingsClose(); return; }
+  else if (cmd == "back") {
+    if (uiPlayerIsOpen())        uiPlayerClose();
+    else if (uiLineupIsOpen())   uiLineupClose();
+    else if (uiGameIsOpen())     uiGameClose();
+    else if (uiNewsIsOpen())     uiNewsClose();
+    else                         uiStandingsClose();
+    return;
+  }
   else if (cmd == "table") { uiStandingsOpen(arg.length() ? arg.c_str() : "mlb"); return; }
   else if (cmd == "news")  { uiNewsOpen(); return; }
+  else if (cmd == "player") { uiPlayerOpen(arg.length() ? arg.c_str() : "mlb", "41996"); return; }
+  else if (cmd == "lineup") {
+    const int n = arg.toInt();
+    if (n >= 0 && n < g_gameCount) uiLineupOpen(g_board[n].league, g_board[n].id);
+    else Serial.println("[cli] no such game");
+    return;
+  }
   else if (cmd == "page")  { Serial.printf("[cli] paged=%d page=%u\n", uiBoardPage(arg.toInt() ? arg.toInt() : 1), g_page); return; }
   else if (cmd == "testalert") {
     AlertEvent e{};
@@ -183,13 +197,18 @@ static void serialConsole() {
     Serial.println("[cli] alert queued");
     return;
   }
-  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|open|back|page|table|news|shot|testalert|reboot"); return; }
+  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|open|back|page|table|news|lineup|player|shot|testalert|reboot"); return; }
 
   Serial.printf("[cli] proxy='%s' token=%s favs='%s' lgs='%s' rgn=%s games=%u net=%d\n",
                 g_set.proxy.c_str(), g_set.token.length() ? "set" : "none",
                 g_set.favs.c_str(), g_set.leagues.c_str(), g_set.region.c_str(),
                 g_gameCount, (int)g_net);
   if (cmd != "show") s_nextPollMs = 0;
+}
+
+static void applyLineup() {
+  if (g_lineupReady) { g_lineupReady = false; if (uiLineupIsOpen()) uiLineupApply(); }
+  if (g_playerReady) { g_playerReady = false; if (uiPlayerIsOpen()) uiPlayerRender(); }
 }
 
 static void applyNews() {
@@ -255,6 +274,7 @@ void setup() {
   uiGameInit(lv_scr_act());
   uiStandingsInit(lv_scr_act());
   uiNewsInit(lv_scr_act());
+  uiLineupInit(lv_scr_act());
 
   if (g_set.tz.length()) setenv("TZ", g_set.tz.c_str(), 1);
   tzset();
@@ -319,6 +339,7 @@ void loop() {
     applyGame();
     applyStandings();
     applyNews();
+    applyLineup();
     // Repaint once when a logo lands, not on every tick — a pointless
     // traversal every 4 ms is the shape of the bug in INHERITED_RULES.md 8.
     if (g_logoArrived) { g_logoArrived = false; uiBoardRefresh(); }

@@ -103,6 +103,64 @@ struct Standings {
   char         cutLabel[ST_MAX_CUTS][20];
 };
 
+// Lineups. Sized for what a 7-inch panel can usefully show, not for what
+// ESPN returns: 2 sides x 3 groups x 20 players ~= 9 KB.
+#define LU_GROUPS   3
+#define LU_PLAYERS 20
+#define LU_COLS     4
+
+struct LinePlayer {
+  char id[12];
+  char name[23];
+  char pos[4];
+  char jersey[4];
+  char vals[LU_COLS][8];
+  bool starter;
+};
+
+struct LineGroup {
+  char       name[13];
+  uint8_t    colCount;
+  char       cols[LU_COLS][8];
+  uint8_t    count;
+  LinePlayer players[LU_PLAYERS];
+};
+
+struct LineSide {
+  char      abbr[5];
+  uint32_t  color;
+  char      formation[13];
+  uint8_t   groupCount;
+  LineGroup groups[LU_GROUPS];
+};
+
+struct Lineup {
+  bool     loading;
+  char     gameId[12];
+  uint8_t  sideCount;
+  LineSide sides[2];
+};
+
+#define PC_STATS 5
+
+struct PlayerCard {
+  bool     loading;
+  char     id[12];
+  char     name[29];
+  char     pos[17];
+  char     team[5];
+  char     jersey[4];
+  char     height[9];
+  char     weight[11];
+  uint32_t color;
+  uint8_t  age;
+  bool     hasImage;
+  uint8_t  statCount;
+  char     statK[PC_STATS][7];
+  char     statV[PC_STATS][9];
+  char     statR[PC_STATS][11];
+};
+
 #define NEWS_MAX 10
 
 struct NewsItem {

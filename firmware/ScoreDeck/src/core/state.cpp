@@ -29,6 +29,14 @@ bool          g_pendStale = false;
 
 volatile bool g_pollInFlight = false;
 
+Lineup        g_lineup;
+volatile bool g_lineupReady = false;
+volatile bool g_lineupInFlight = false;
+
+PlayerCard    g_player;
+volatile bool g_playerReady = false;
+volatile bool g_playerInFlight = false;
+
 NewsFeed      g_news;
 volatile bool g_newsReady = false;
 volatile bool g_newsInFlight = false;

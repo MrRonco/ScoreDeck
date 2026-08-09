@@ -48,6 +48,9 @@ static lv_obj_t* lb(lv_obj_t* p, int x, int y, lv_color_t c, const lv_font_t* f,
 }
 
 static void onBack(lv_event_t*) { uiGameClose(); }
+static void onLineup(lv_event_t*) {
+  if (s_openId[0]) uiLineupOpen(s_openLeague, s_openId);
+}
 
 void uiGameInit(lv_obj_t* parent) {
   s_root = lv_obj_create(parent);
@@ -153,6 +156,19 @@ void uiGameInit(lv_obj_t* parent) {
   lv_obj_set_pos(s_wpBarH, 384, 16);
   lv_obj_set_size(s_wpBarH, 384, 5);
   lv_obj_set_style_bg_opa(s_wpBarH, LV_OPA_COVER, 0);
+
+  lv_obj_t* luBtn = lv_btn_create(s_root);
+  lv_obj_set_size(luBtn, 96, 30);
+  lv_obj_set_pos(luBtn, SCR_W - 16 - 96, 100);
+  lv_obj_set_style_bg_color(luBtn, C_EDGE, 0);
+  lv_obj_set_style_border_width(luBtn, 0, 0);
+  lv_obj_set_style_radius(luBtn, 7, 0);
+  lv_obj_add_event_cb(luBtn, onLineup, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* luLbl = lv_label_create(luBtn);
+  lv_label_set_text(luLbl, "LINEUP");
+  lv_obj_set_style_text_font(luLbl, F_MICRO, 0);
+  lv_obj_set_style_text_color(luLbl, C_INK, 0);
+  lv_obj_center(luLbl);
 
   s_loading = lb(s_root, 0, 250, C_INK3, F_BODY, LV_TEXT_ALIGN_CENTER, SCR_W);
   lv_label_set_text(s_loading, "Loading...");

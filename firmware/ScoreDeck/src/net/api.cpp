@@ -400,6 +400,149 @@ bool apiStandingsStart(const char* league) {
   return true;
 }
 
+// ── lineup and player ─────────────────────────────────────────────────────
+static char s_luUrl[300], s_luToken[80];
+static char s_pcUrl[300], s_pcToken[80];
+
+static bool getJson(const char* url, const char* token, DynamicJsonDocument& doc) {
+  WiFiClient plain; WiFiClientSecure secure;
+  const bool https = strncmp(url, "https:", 6) == 0;
+  if (https) secure.setInsecure();
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setReuse(false);
+  if (!(https ? http.begin(secure, url) : http.begin(plain, url))) return false;
+  http.setUserAgent("ScoreDeck/" SD_VERSION);
+  if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
+  if (http.GET() != 200) { http.end(); return false; }
+  const String body = http.getString();   // decodes chunked — see pollOnce
+  http.end();
+  return body.length() > 8 && !deserializeJson(doc, body);
+}
+
+static bool lineupOnce() {
+  DynamicJsonDocument doc(28 * 1024);
+  if (!getJson(s_luUrl, s_luToken, doc)) return false;
+
+  Lineup& L = g_lineup;
+  L.sideCount = 0;
+  copyStr(L.gameId, sizeof L.gameId, doc["i"]);
+  for (JsonObjectConst sd : doc["sides"].as<JsonArrayConst>()) {
+    if (L.sideCount >= 2) break;
+    LineSide& S = L.sides[L.sideCount];
+    memset(&S, 0, sizeof S);
+    copyStr(S.abbr, sizeof S.abbr, sd["a"]);
+    copyStr(S.formation, sizeof S.formation, sd["f"]);
+    S.color = sd["c"] | 0x5D6D7E;
+    for (JsonObjectConst gp : sd["groups"].as<JsonArrayConst>()) {
+      if (S.groupCount >= LU_GROUPS) break;
+      LineGroup& G = S.groups[S.groupCount];
+      memset(&G, 0, sizeof G);
+      copyStr(G.name, sizeof G.name, gp["n"]);
+      for (JsonVariantConst cv : gp["cols"].as<JsonArrayConst>()) {
+        if (G.colCount >= LU_COLS) break;
+        copyStr(G.cols[G.colCount], sizeof G.cols[0], cv);
+        G.colCount++;
+      }
+      for (JsonObjectConst pv : gp["players"].as<JsonArrayConst>()) {
+        if (G.count >= LU_PLAYERS) break;
+        LinePlayer& P = G.players[G.count];
+        memset(&P, 0, sizeof P);
+        copyStr(P.id,     sizeof P.id,     pv["id"]);
+        copyStr(P.name,   sizeof P.name,   pv["n"]);
+        copyStr(P.pos,    sizeof P.pos,    pv["p"]);
+        copyStr(P.jersey, sizeof P.jersey, pv["j"]);
+        P.starter = pv["s"] | false;
+        for (uint8_t k = 0; k < G.colCount; k++)
+          copyStr(P.vals[k], sizeof P.vals[0], pv["v"][k]);
+        G.count++;
+      }
+      if (G.count) S.groupCount++;
+    }
+    if (S.groupCount) L.sideCount++;
+  }
+  L.loading = false;
+  g_lineupReady = true;
+  return true;
+}
+
+static void lineupTask(void*) {
+  const bool ok = lineupOnce();
+  if (!ok) { g_lineup.loading = false; g_lineup.sideCount = 0; g_lineupReady = true; }
+  Serial.printf("[net] lineup %s sides=%u\n", ok ? "ok" : "FAIL", g_lineup.sideCount);
+  g_lineupInFlight = false;
+  vTaskDelete(nullptr);
+}
+
+static bool playerOnce() {
+  DynamicJsonDocument doc(8 * 1024);
+  if (!getJson(s_pcUrl, s_pcToken, doc)) return false;
+  PlayerCard& P = g_player;
+  const bool wasLoading = P.loading;
+  memset(&P, 0, sizeof P);
+  (void)wasLoading;
+  copyStr(P.id,     sizeof P.id,     doc["id"]);
+  copyStr(P.name,   sizeof P.name,   doc["n"]);
+  copyStr(P.pos,    sizeof P.pos,    doc["pos"]);
+  copyStr(P.team,   sizeof P.team,   doc["team"]);
+  copyStr(P.jersey, sizeof P.jersey, doc["j"]);
+  copyStr(P.height, sizeof P.height, doc["ht"]);
+  copyStr(P.weight, sizeof P.weight, doc["wt"]);
+  P.color    = doc["c"] | 0x5D6D7E;
+  P.age      = doc["age"] | 0;
+  P.hasImage = doc["img"] | false;
+  for (JsonObjectConst st : doc["season"].as<JsonArrayConst>()) {
+    if (P.statCount >= PC_STATS) break;
+    copyStr(P.statK[P.statCount], sizeof P.statK[0], st["k"]);
+    copyStr(P.statV[P.statCount], sizeof P.statV[0], st["v"]);
+    copyStr(P.statR[P.statCount], sizeof P.statR[0], st["r"]);
+    P.statCount++;
+  }
+  P.loading = false;
+  g_playerReady = true;
+  return true;
+}
+
+static void playerTask(void*) {
+  const bool ok = playerOnce();
+  if (!ok) { g_player.loading = false; g_player.name[0] = '\0'; g_playerReady = true; }
+  Serial.printf("[net] player %s %s\n", ok ? "ok" : "FAIL", g_player.name);
+  g_playerInFlight = false;
+  vTaskDelete(nullptr);
+}
+
+static bool startSimple(const char* path, char* url, char* token, size_t cap,
+                        volatile bool* flag, TaskFunction_t fn, const char* taskName) {
+  if (*flag) return false;
+  if (g_set.proxy.isEmpty() || WiFi.status() != WL_CONNECTED) return false;
+  if (!netGateOpen()) return false;
+  String u = g_set.proxy;
+  if (u.endsWith("/")) u.remove(u.length() - 1);
+  u += path;
+  if (u.length() >= cap) return false;
+  strncpy(url, u.c_str(), cap - 1); url[cap - 1] = '\0';
+  strncpy(token, g_set.token.c_str(), 79); token[79] = '\0';
+  *flag = true;
+  if (xTaskCreatePinnedToCore(fn, taskName, NET_TASK_STACK, nullptr, 1, nullptr, 0) != pdPASS) {
+    *flag = false;
+    return false;
+  }
+  return true;
+}
+
+bool apiLineupStart(const char* league, const char* id) {
+  char p[64];
+  snprintf(p, sizeof p, "/v1/lineup/%s/%s", league, id);
+  return startSimple(p, s_luUrl, s_luToken, sizeof s_luUrl, &g_lineupInFlight, lineupTask, "sdLineup");
+}
+
+bool apiPlayerStart(const char* league, const char* athleteId) {
+  char p[64];
+  snprintf(p, sizeof p, "/v1/player/%s/%s", league, athleteId);
+  return startSimple(p, s_pcUrl, s_pcToken, sizeof s_pcUrl, &g_playerInFlight, playerTask, "sdPlayer");
+}
+
 // ── news ───────────────────────────────────────────────────────────────────
 static char s_nwUrl[380];
 static char s_nwToken[80];

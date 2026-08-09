@@ -3,6 +3,7 @@ import { LEAGUES, league } from './registry.ts';
 import {
   fetchScoreboard, normalizeBoard, sortAndCap, fetchStandings, normalizeStandings,
   fetchTeams, normalizeTeams, fetchSummary, normalizeGame, fetchNews, normalizeNews,
+  normalizeLineup, fetchAthlete, normalizePlayer,
 } from './espn.ts';
 import { diffBoard, nextPollSeconds } from './diff.ts';
 import { MemoryStore, loadDiff, saveDiff, type Store } from './store.ts';
@@ -230,6 +231,58 @@ export function createApp(env: Env) {
     } catch {
       return c.json({ error: 'upstream' }, 502);
     }
+  });
+
+  app.get('/v1/lineup/:league/:id', async (c) => {
+    const lg = league(c.req.param('league'));
+    if (!lg) return c.json({ error: 'unknown league' }, 404);
+    const id = c.req.param('id');
+    if (!/^\d{1,12}$/.test(id)) return c.json({ error: 'bad id' }, 400);
+    const key = `lineup:${lg.slug}:${id}`;
+    const hit = await env.store.get(key);
+    if (hit) return c.json(hit);
+    try {
+      const l = normalizeLineup(await fetchSummary(lg, id, doFetch), lg);
+      if (!l) return c.json({ error: 'no lineup' }, 404);
+      await env.store.put(key, l, 60);
+      return c.json(l);
+    } catch {
+      return c.json({ error: 'upstream' }, 502);
+    }
+  });
+
+  app.get('/v1/player/:league/:id', async (c) => {
+    const lg = league(c.req.param('league'));
+    if (!lg) return c.json({ error: 'unknown league' }, 404);
+    const id = c.req.param('id');
+    if (!/^\d{1,12}$/.test(id)) return c.json({ error: 'bad id' }, 400);
+    const key = `player:${lg.slug}:${id}`;
+    const hit = await env.store.get(key);
+    if (hit) return c.json(hit);
+    try {
+      const p = normalizePlayer(await fetchAthlete(lg, id, doFetch), lg);
+      if (!p) return c.json({ error: 'no such player' }, 404);
+      // A headshot exists only if the user ran the build; tell the device so it
+      // does not attempt a fetch that will 404.
+      p.img = !!(await env.assets?.(`players/${lg.slug}/${id}.bin`));
+      await env.store.put(key, p, 6 * 3600);
+      return c.json(p);
+    } catch {
+      return c.json({ error: 'upstream' }, 502);
+    }
+  });
+
+  app.get('/v1/head/:league/:file', async (c) => {
+    const lg = league(c.req.param('league'));
+    if (!lg) return c.notFound();
+    const file = c.req.param('file');
+    if (!/^\d{1,12}\.bin$/.test(file)) return c.json({ error: 'bad name' }, 400);
+    const bytes = await env.assets?.(`players/${lg.slug}/${file}`);
+    if (!bytes) return c.notFound();
+    return c.body(bytes, 200, {
+      'content-type': 'application/octet-stream',
+      'cache-control': 'public, max-age=31536000, immutable',
+    });
   });
 
   app.get('/v1/teams/:league', async (c) => {

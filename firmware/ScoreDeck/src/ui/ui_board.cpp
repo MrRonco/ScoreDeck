@@ -458,6 +458,9 @@ void uiShow(Screen s) {
   lv_obj_t* nw = uiNewsRoot();
   if (nw) (s == SCR_NEWS) ? lv_obj_clear_flag(nw, LV_OBJ_FLAG_HIDDEN)
                           : lv_obj_add_flag(nw, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* lu = uiLineupRoot();
+  if (lu) (s == SCR_LINEUP) ? lv_obj_clear_flag(lu, LV_OBJ_FLAG_HIDDEN)
+                            : lv_obj_add_flag(lu, LV_OBJ_FLAG_HIDDEN);
 }
 Screen uiCurrent() { return s_screen; }
 

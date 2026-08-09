@@ -63,6 +63,14 @@ extern GameDetail    g_pendGame;
 extern volatile bool g_pendGameReady;
 extern volatile bool g_gameInFlight;
 
+extern Lineup        g_lineup;
+extern volatile bool g_lineupReady;
+extern volatile bool g_lineupInFlight;
+
+extern PlayerCard    g_player;
+extern volatile bool g_playerReady;
+extern volatile bool g_playerInFlight;
+
 extern NewsFeed      g_news;
 extern volatile bool g_newsReady;
 extern volatile bool g_newsInFlight;

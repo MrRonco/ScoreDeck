@@ -166,6 +166,60 @@ export interface NewsItem {
   l: string;
 }
 
+/** GET /v1/lineup/:league/:id */
+export interface Lineup {
+  v: 1;
+  i: string;
+  /** Both sides, away first. */
+  sides: {
+    a: string;
+    c: number;
+    /** Soccer only: "4-2-3-1". Absent elsewhere. */
+    f?: string;
+    /** Position groups, in the order ESPN reports them. */
+    groups: {
+      /** "FORWARDS" | "DEFENSE" | "GOALIES" | "BATTING" ... */
+      n: string;
+      /** Column labels for this group. */
+      cols: string[];
+      players: {
+        /** Athlete id, for the player sheet. */
+        id: string;
+        /** Display name, clamped. */
+        n: string;
+        /** Jersey. */
+        j?: string;
+        /** Position abbreviation. */
+        p?: string;
+        /** Values matching cols. */
+        v: string[];
+        /** Soccer: in the starting XI. */
+        s?: boolean;
+      }[];
+    }[];
+  }[];
+}
+
+/** GET /v1/player/:league/:id */
+export interface PlayerCard {
+  v: 1;
+  id: string;
+  n: string;
+  /** "CENTRE" */
+  pos?: string;
+  team?: string;
+  c?: number;
+  j?: string;
+  /** "6'3\"" */
+  ht?: string;
+  wt?: string;
+  age?: number;
+  /** Season stats WITH league rank — the reason to tap. */
+  season?: { k: string; v: string; r?: string }[];
+  /** True when a headshot blob exists for this athlete. */
+  img?: boolean;
+}
+
 export interface LeagueDef {
   /** Registry key and wire value. */
   slug: string;

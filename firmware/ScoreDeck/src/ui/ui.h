@@ -4,7 +4,7 @@
 #include <lvgl.h>
 #include "../core/types.h"
 
-enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_NEWS, SCR_SETUP };
+enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_NEWS, SCR_LINEUP, SCR_SETUP };
 
 void uiInit();
 /** Rebuild from g_board. Loop context only. Every write is change-cached. */
@@ -67,3 +67,17 @@ void uiNewsRender();
 void uiNewsClose();
 bool uiNewsIsOpen();
 lv_obj_t* uiNewsRoot();
+
+// Lineup + player sheet — UI.md §5. ESPN gives position groups, not line
+// combinations; the sheet is a fixed rect that fades and never slides.
+void uiLineupInit(lv_obj_t* parent);
+void uiLineupOpen(const char* league, const char* gameId);
+void uiLineupApply();
+void uiLineupRender();
+void uiLineupClose();
+bool uiLineupIsOpen();
+lv_obj_t* uiLineupRoot();
+void uiPlayerOpen(const char* league, const char* athleteId);
+void uiPlayerRender();
+void uiPlayerClose();
+bool uiPlayerIsOpen();

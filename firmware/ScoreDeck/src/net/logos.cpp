@@ -171,3 +171,95 @@ void logoTick() {
     if (!logoKnown(g.league, g.away.abbr)) { logoRequest(g.league, g.away.abbr); return; }
   }
 }
+
+
+// ── headshots ──────────────────────────────────────────────────────────────
+
+#define HEAD_SIZE  68
+#define HEAD_BYTES (4 + HEAD_SIZE * HEAD_SIZE * 3)
+
+static uint8_t*     s_headData;
+static lv_img_dsc_t s_headDsc;
+static char         s_headId[12];
+static char         s_headWant[12];
+static char         s_headUrl[300];
+static volatile bool s_headInFlight;
+volatile bool g_headshotArrived = false;
+
+const lv_img_dsc_t* headshotGet(const char* athleteId) {
+  if (!s_headData || !s_headId[0]) return nullptr;
+  return strcmp(s_headId, athleteId) == 0 ? &s_headDsc : nullptr;
+}
+
+static void headTask(void*) {
+  if (!s_headData) s_headData = (uint8_t*)heap_caps_malloc(HEAD_BYTES, MALLOC_CAP_SPIRAM);
+  int status = 0;
+  bool ok = false;
+  if (s_headData) {
+    // Same read shape as logos: never gate on getSize(), it is -1 when chunked.
+    WiFiClient plain; WiFiClientSecure secure;
+    const bool https = strncmp(s_headUrl, "https:", 6) == 0;
+    if (https) secure.setInsecure();
+    HTTPClient http;
+    http.setTimeout(HTTP_TIMEOUT_MS);
+    http.setConnectTimeout(HTTP_TIMEOUT_MS);
+    http.setReuse(false);
+    if (https ? http.begin(secure, s_headUrl) : http.begin(plain, s_headUrl)) {
+      http.setUserAgent("ScoreDeck/" SD_VERSION);
+      if (s_token[0]) http.addHeader("Authorization", String("Bearer ") + s_token);
+      status = http.GET();
+      if (status == 200) {
+        WiFiClient* st = http.getStreamPtr();
+        size_t got = 0;
+        uint32_t last = millis();
+        while (got < HEAD_BYTES && millis() - last < 5000) {
+          const int n = st->readBytes(s_headData + got, HEAD_BYTES - got);
+          if (n > 0) { got += n; last = millis(); }
+          else if (!http.connected() && !st->available()) break;
+          else delay(2);
+        }
+        ok = got == HEAD_BYTES;
+      }
+      http.end();
+    }
+  }
+  if (ok) {
+    s_headDsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+    s_headDsc.header.always_zero = 0;
+    s_headDsc.header.w = HEAD_SIZE;
+    s_headDsc.header.h = HEAD_SIZE;
+    s_headDsc.data_size = HEAD_SIZE * HEAD_SIZE * 3;
+    s_headDsc.data = s_headData + 4;
+    strncpy(s_headId, s_headWant, sizeof s_headId - 1);
+    s_headId[sizeof s_headId - 1] = 0;
+    g_headshotArrived = true;
+  } else {
+    s_headId[0] = 0;
+  }
+  Serial.printf("[head] %s %s (http %d)\n", s_headWant, ok ? "ok" : "miss", status);
+  s_headInFlight = false;
+  vTaskDelete(nullptr);
+}
+
+bool headshotRequest(const char* league, const char* athleteId) {
+  if (s_headInFlight) return false;
+  if (!strcmp(s_headId, athleteId)) return false;     // already have it
+  if (g_set.proxy.isEmpty() || WiFi.status() != WL_CONNECTED) return false;
+  if (!netGateOpen()) return false;
+  strncpy(s_headWant, athleteId, sizeof s_headWant - 1);
+  s_headWant[sizeof s_headWant - 1] = 0;
+  String u = g_set.proxy;
+  if (u.endsWith("/")) u.remove(u.length() - 1);
+  u += "/v1/head/"; u += league; u += "/"; u += athleteId; u += ".bin";
+  if (u.length() >= sizeof s_headUrl) return false;
+  strncpy(s_headUrl, u.c_str(), sizeof s_headUrl - 1);
+  s_headUrl[sizeof s_headUrl - 1] = 0;
+  strncpy(s_token, g_set.token.c_str(), sizeof s_token - 1);
+  s_token[sizeof s_token - 1] = 0;
+  s_headInFlight = true;
+  if (xTaskCreatePinnedToCore(headTask, "sdHead", NET_TASK_STACK, nullptr, 1, nullptr, 0) != pdPASS) {
+    s_headInFlight = false;
+    return false;
+  }
+  return true;
+}
