@@ -67,5 +67,5 @@ AirRadar's Wi-Fi credentials on first boot so you do not retype them.
 empty proxy URL on boot:
 
 ```c
-#define DEV_PROXY_URL "http://192.168.10.100:8787"
+#define DEV_PROXY_URL "http://192.168.1.50:8787"
 ```

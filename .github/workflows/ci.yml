@@ -1,0 +1,72 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  proxy:
+    name: proxy — typecheck + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: proxy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npx tsc --noEmit
+      - run: npm test
+
+  firmware:
+    name: firmware — compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install core and libraries
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls \
+            https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.10
+          arduino-cli lib install "lvgl@8.3.11" "LovyanGFX@1.2.25" "ArduinoJson@6.21.6"
+      - name: Place lv_conf.h beside the lvgl library
+        # LVGL looks for it NEXT TO, not inside, its own folder. Miss this and
+        # the build fails on missing symbols.
+        run: cp firmware/lv_conf.h "$HOME/Arduino/libraries/lv_conf.h"
+      - name: Compile
+        run: |
+          arduino-cli compile \
+            --fqbn 'esp32:esp32:esp32s3:CDCOnBoot=default,FlashMode=qio,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi' \
+            --warnings default \
+            firmware/ScoreDeck
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  assets:
+    name: no trademarked assets committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if logo or headshot binaries were committed
+        # docs/OPEN_SOURCE.md §1 — team marks and player likenesses are built
+        # locally into the user's own Worker, never distributed by this repo.
+        run: |
+          if git ls-files | grep -E '^assets/(logos|players)/.+\.(bin|png|jpg|webp)$'; then
+            echo "::error::Trademarked assets must never be committed. See docs/OPEN_SOURCE.md §1"
+            exit 1
+          fi
+          echo "clean"

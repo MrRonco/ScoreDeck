@@ -18,7 +18,7 @@
 
 struct Settings {
   String  ssid, pass;
-  String  proxy;       // "http://192.168.10.100:8787" — empty until onboarded
+  String  proxy;       // "http://192.168.1.50:8787" — empty until onboarded
   String  token;
   String  region;      // "ca"
   String  tz;          // POSIX TZ, e.g. "EST5EDT,M3.2.0,M11.1.0"

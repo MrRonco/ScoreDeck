@@ -127,7 +127,7 @@ void uiSetupInit(lv_obj_t* parent) {
   };
   s_taSsid  = field("Network name", 84, false);
   s_taPass  = field("Password", 132, true);
-  s_taProxy = field("Proxy URL  (http://192.168.10.100:8787)", 180, false);
+  s_taProxy = field("Proxy URL  (http://192.168.1.50:8787)", 180, false);
   lv_obj_set_width(s_taProxy, 460);
 
   if (g_set.ssid.length())  lv_textarea_set_text(s_taSsid, g_set.ssid.c_str());
