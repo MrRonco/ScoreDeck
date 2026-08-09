@@ -27,3 +27,4 @@ wrangler.toml.local
 .playwright-mcp/
 proxy/node_modules/
 proxy/package-lock.json
+firmware/ScoreDeck/src/dev_defaults.h
