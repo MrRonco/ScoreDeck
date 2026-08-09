@@ -25,3 +25,5 @@ wrangler.toml.local
 # macOS / tooling
 .DS_Store
 .playwright-mcp/
+proxy/node_modules/
+proxy/package-lock.json

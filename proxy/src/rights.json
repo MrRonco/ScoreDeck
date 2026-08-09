@@ -1,0 +1,83 @@
+{
+  "_comment": "Broadcast rights by region. ESPN's API is US-only and ignores a region parameter (verified 2026-08-09) — it returns US regional feeds, so a Toronto home game comes back as NESN. For region 'us' the proxy uses ESPN's per-game geoBroadcasts; every other region resolves here. Adding a region is a pure data change: no code, no firmware. See docs/PLAN.md §3.",
+
+  "ca": {
+    "nhl":   { "national": ["Sportsnet"],
+               "teams": { "TOR": "SN Ontario", "MTL": "RDS", "OTT": "TSN5",
+                          "WPG": "TSN3", "CGY": "SN West", "EDM": "SN West",
+                          "VAN": "SN Pacific" } },
+    "nfl":   { "national": ["TSN", "CTV"] },
+    "nba":   { "national": ["TSN", "SN"], "teams": { "TOR": "TSN" } },
+    "mlb":   { "national": ["SN"],        "teams": { "TOR": "SN" } },
+    "wnba":  { "national": ["TSN"] },
+    "mls":   { "national": ["Apple TV"] },
+    "eng.1": { "national": ["fuboTV"] },
+    "ucl":   { "national": ["DAZN"] }
+  },
+
+  "gb": {
+    "eng.1": { "national": ["Sky Sports", "TNT Sports"] },
+    "ucl":   { "national": ["TNT Sports"] },
+    "uel":   { "national": ["TNT Sports"] },
+    "nfl":   { "national": ["Sky NFL"] },
+    "nba":   { "national": ["Sky Sports"] },
+    "nhl":   { "national": ["Premier Spt"] },
+    "mlb":   { "national": ["TNT Sports"] }
+  },
+
+  "ie": {
+    "eng.1": { "national": ["Sky Sports", "Premier Spt"] },
+    "ucl":   { "national": ["TNT Sports", "Virgin"] },
+    "nfl":   { "national": ["Sky NFL"] }
+  },
+
+  "au": {
+    "eng.1": { "national": ["Optus"] },
+    "nfl":   { "national": ["ESPN AU"] },
+    "nba":   { "national": ["ESPN AU"] },
+    "nhl":   { "national": ["ESPN AU"] },
+    "mls":   { "national": ["Apple TV"] }
+  },
+
+  "nz": {
+    "eng.1": { "national": ["Sky Sport NZ"] },
+    "nfl":   { "national": ["ESPN NZ"] },
+    "nba":   { "national": ["Sky Sport NZ"] }
+  },
+
+  "de": {
+    "ger.1": { "national": ["Sky", "DAZN"] },
+    "ucl":   { "national": ["DAZN", "Amazon"] },
+    "nfl":   { "national": ["RTL", "DAZN"] },
+    "nba":   { "national": ["DAZN"] }
+  },
+
+  "fr": {
+    "fra.1": { "national": ["DAZN", "beIN"] },
+    "ucl":   { "national": ["Canal+"] },
+    "nba":   { "national": ["beIN"] }
+  },
+
+  "es": {
+    "esp.1": { "national": ["DAZN", "Movistar"] },
+    "ucl":   { "national": ["Movistar"] },
+    "nba":   { "national": ["Movistar"] }
+  },
+
+  "it": {
+    "ita.1": { "national": ["DAZN", "Sky"] },
+    "ucl":   { "national": ["Amazon", "Sky"] }
+  },
+
+  "mx": {
+    "mex.1": { "national": ["TUDN"] },
+    "nfl":   { "national": ["TUDN", "ESPN MX"] },
+    "nba":   { "national": ["ESPN MX"] }
+  },
+
+  "in": {
+    "eng.1": { "national": ["Star Sports"] },
+    "nba":   { "national": ["JioStar"] },
+    "ucl":   { "national": ["Sony Sports"] }
+  }
+}
