@@ -44,11 +44,17 @@ static void applyPending() {
   g_leagueCount = g_pendLeagueCount;
   s_pollGapS = g_pendNextPoll;
 
-  // Alerts: commit the sequence only AFTER the card renders, so a reboot
-  // mid-alert replays it rather than swallowing it. Phase 4 wires the takeover;
-  // for now we advance the sequence so the proxy stops resending.
-  if (g_pendSeq > g_set.lastSeq) {
-    g_set.lastSeq = g_pendSeq;
+  // Queue any score events for the takeover.
+  for (uint8_t i = 0; i < g_pendEventCount; i++) uiAlertEnqueue(g_pendEvents[i]);
+
+  // Commit the sequence only as far as is safe. uiAlertSafeSeq() holds it
+  // behind anything still queued or on screen, so losing power mid-card
+  // replays the alert rather than swallowing it. Committing g_pendSeq
+  // unconditionally here is what made every event vanish before the takeover
+  // existed.
+  const uint32_t safe = uiAlertSafeSeq(g_pendSeq);
+  if (safe > g_set.lastSeq) {
+    g_set.lastSeq = safe;
     settingsSave();
   }
   g_pendReady = false;
@@ -59,6 +65,7 @@ static void applyPending() {
   // Most of the day nothing is live. A board of dimmed finals is a sad object,
   // so the panel becomes a countdown instead. UI.md §7.
   if (!uiSetupActive()) uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
+  if (uiAlertActive()) lv_obj_move_foreground(uiAlertRoot());
 }
 
 /**
@@ -132,7 +139,25 @@ static void serialConsole() {
   else if (cmd == "reboot") { Serial.println("[cli] rebooting"); delay(50); ESP.restart(); }
   else if (cmd == "shot")   { dumpScreen(); return; }
   else if (cmd == "games")  { dumpGames(); return; }
-  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|shot|reboot"); return; }
+  else if (cmd == "testalert") {
+    AlertEvent e{};
+    e.seq = 0;                       // 0 = never advances the committed sequence
+    strncpy(e.verb, arg.length() ? arg.c_str() : "GOAL", sizeof e.verb - 1);
+    strncpy(e.abbr, g_gameCount ? g_board[0].home.abbr : "TOR", sizeof e.abbr - 1);
+    strncpy(e.who, "Auston Matthews", sizeof e.who - 1);
+    strncpy(e.detail, "asst. Nylander, Rielly", sizeof e.detail - 1);
+    strncpy(e.status, "3rd - 04:21", sizeof e.status - 1);
+    if (g_gameCount) {
+      strncpy(e.gameId, g_board[0].id, sizeof e.gameId - 1);
+      e.color = g_board[0].home.color;
+      e.scoreAway = g_board[0].away.score;
+      e.scoreHome = g_board[0].home.score + 1;
+    } else { e.color = 0x00205B; e.scoreHome = 1; }
+    uiAlertEnqueue(e);
+    Serial.println("[cli] alert queued");
+    return;
+  }
+  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|shot|testalert|reboot"); return; }
 
   Serial.printf("[cli] proxy='%s' token=%s favs='%s' lgs='%s' rgn=%s games=%u net=%d\n",
                 g_set.proxy.c_str(), g_set.token.length() ? "set" : "none",
@@ -169,6 +194,7 @@ void setup() {
   themeInit();
   uiInit();
   uiIdleInit(lv_scr_act());
+  uiAlertInit(lv_scr_act());
 
   if (g_set.tz.length()) setenv("TZ", g_set.tz.c_str(), 1);
   tzset();
@@ -192,6 +218,7 @@ void loop() {
   lv_timer_handler();
   serialConsole();
   tickClock();
+  uiAlertTick();
 
   if (!uiSetupActive()) {
     if (WiFi.status() != WL_CONNECTED) {

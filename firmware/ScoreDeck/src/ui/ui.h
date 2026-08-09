@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Franco Raso
 #pragma once
 #include <lvgl.h>
+#include "../core/types.h"
 
 enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_SETUP };
 
@@ -28,3 +29,13 @@ void uiIdleTick();             // once a second: clock + countdown
 lv_obj_t* uiIdleRoot();
 /** True when no game on the board is live. */
 bool uiShouldIdle();
+
+// Alert takeover — UI.md §8. Composites once, fades in four steps, holds static.
+void uiAlertInit(lv_obj_t* parent);
+void uiAlertEnqueue(const AlertEvent& e);
+void uiAlertTick();
+void uiAlertDismiss();
+bool uiAlertActive();
+lv_obj_t* uiAlertRoot();
+/** Highest sequence safe to persist: never past an alert not yet seen. */
+uint32_t uiAlertSafeSeq(uint32_t proxySeq);
