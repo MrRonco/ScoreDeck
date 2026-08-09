@@ -151,6 +151,21 @@ export interface GameDetail {
   b?: string;
 }
 
+/** GET /v1/news — headlines for the teams you follow. */
+export interface NewsItem {
+  /** Headline, clamped. */
+  h: string;
+  /** Summary, clamped — the panel shows no article body and has no HTML parser. */
+  d?: string;
+  /** Published, unix seconds. */
+  t: number;
+  /** Primary followed team tagged on the article. */
+  a?: string;
+  /** That team's colour, 0xRRGGBB. */
+  c?: number;
+  l: string;
+}
+
 export interface LeagueDef {
   /** Registry key and wire value. */
   slug: string;

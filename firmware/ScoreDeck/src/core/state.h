@@ -63,6 +63,10 @@ extern GameDetail    g_pendGame;
 extern volatile bool g_pendGameReady;
 extern volatile bool g_gameInFlight;
 
+extern NewsFeed      g_news;
+extern volatile bool g_newsReady;
+extern volatile bool g_newsInFlight;
+
 extern Standings     g_standings;
 extern volatile bool g_standingsReady;
 extern volatile bool g_standingsInFlight;

@@ -412,6 +412,9 @@ void uiShow(Screen s) {
   lv_obj_t* st = uiStandingsRoot();
   if (st) (s == SCR_STANDINGS) ? lv_obj_clear_flag(st, LV_OBJ_FLAG_HIDDEN)
                                : lv_obj_add_flag(st, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* nw = uiNewsRoot();
+  if (nw) (s == SCR_NEWS) ? lv_obj_clear_flag(nw, LV_OBJ_FLAG_HIDDEN)
+                          : lv_obj_add_flag(nw, LV_OBJ_FLAG_HIDDEN);
 }
 Screen uiCurrent() { return s_screen; }
 

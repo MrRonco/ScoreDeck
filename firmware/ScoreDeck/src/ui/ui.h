@@ -4,7 +4,7 @@
 #include <lvgl.h>
 #include "../core/types.h"
 
-enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_SETUP };
+enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_NEWS, SCR_SETUP };
 
 void uiInit();
 /** Rebuild from g_board. Loop context only. Every write is change-cached. */
@@ -59,3 +59,11 @@ void uiStandingsRender();
 void uiStandingsClose();
 bool uiStandingsIsOpen();
 lv_obj_t* uiStandingsRoot();
+
+// News — UI.md §5.4. Headlines plus the proxy's trimmed summary; no article body.
+void uiNewsInit(lv_obj_t* parent);
+void uiNewsOpen();
+void uiNewsRender();
+void uiNewsClose();
+bool uiNewsIsOpen();
+lv_obj_t* uiNewsRoot();

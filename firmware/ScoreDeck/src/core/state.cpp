@@ -29,6 +29,10 @@ bool          g_pendStale = false;
 
 volatile bool g_pollInFlight = false;
 
+NewsFeed      g_news;
+volatile bool g_newsReady = false;
+volatile bool g_newsInFlight = false;
+
 Standings     g_standings;
 volatile bool g_standingsReady = false;
 volatile bool g_standingsInFlight = false;

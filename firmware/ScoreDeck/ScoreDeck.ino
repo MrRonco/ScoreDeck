@@ -78,7 +78,7 @@ static void applyPending() {
   // Most of the day nothing is live. A board of dimmed finals is a sad object,
   // so the panel becomes a countdown instead. UI.md §7.
   // Never navigate away from a game the user is reading.
-  if (!uiSetupActive() && !uiGameIsOpen() && !uiStandingsIsOpen())
+  if (!uiSetupActive() && !uiGameIsOpen() && !uiStandingsIsOpen() && !uiNewsIsOpen())
     uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
   if (uiAlertActive()) lv_obj_move_foreground(uiAlertRoot());
 }
@@ -160,8 +160,9 @@ static void serialConsole() {
     else Serial.println("[cli] no such game");
     return;
   }
-  else if (cmd == "back")  { uiGameIsOpen() ? uiGameClose() : uiStandingsClose(); return; }
+  else if (cmd == "back")  { uiGameIsOpen() ? uiGameClose() : uiNewsIsOpen() ? uiNewsClose() : uiStandingsClose(); return; }
   else if (cmd == "table") { uiStandingsOpen(arg.length() ? arg.c_str() : "mlb"); return; }
+  else if (cmd == "news")  { uiNewsOpen(); return; }
   else if (cmd == "page")  { Serial.printf("[cli] paged=%d page=%u\n", uiBoardPage(arg.toInt() ? arg.toInt() : 1), g_page); return; }
   else if (cmd == "testalert") {
     AlertEvent e{};
@@ -181,13 +182,19 @@ static void serialConsole() {
     Serial.println("[cli] alert queued");
     return;
   }
-  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|open|back|page|table|shot|testalert|reboot"); return; }
+  else if (cmd != "show")   { Serial.println("[cli] proxy|token|favs|lgs|region|tz|poll|show|games|open|back|page|table|news|shot|testalert|reboot"); return; }
 
   Serial.printf("[cli] proxy='%s' token=%s favs='%s' lgs='%s' rgn=%s games=%u net=%d\n",
                 g_set.proxy.c_str(), g_set.token.length() ? "set" : "none",
                 g_set.favs.c_str(), g_set.leagues.c_str(), g_set.region.c_str(),
                 g_gameCount, (int)g_net);
   if (cmd != "show") s_nextPollMs = 0;
+}
+
+static void applyNews() {
+  if (!g_newsReady) return;
+  g_newsReady = false;
+  if (uiNewsIsOpen()) uiNewsRender();
 }
 
 static void applyStandings() {
@@ -246,6 +253,7 @@ void setup() {
   uiAlertInit(lv_scr_act());
   uiGameInit(lv_scr_act());
   uiStandingsInit(lv_scr_act());
+  uiNewsInit(lv_scr_act());
 
   if (g_set.tz.length()) setenv("TZ", g_set.tz.c_str(), 1);
   tzset();
@@ -304,6 +312,7 @@ void loop() {
     applyPending();
     applyGame();
     applyStandings();
+    applyNews();
     tickOpenGame();
     uiSetStatus();
   }

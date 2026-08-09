@@ -103,6 +103,22 @@ struct Standings {
   char         cutLabel[ST_MAX_CUTS][20];
 };
 
+#define NEWS_MAX 10
+
+struct NewsItem {
+  char     headline[91];
+  char     desc[241];
+  uint32_t when;
+  char     abbr[5];
+  uint32_t color;
+};
+
+struct NewsFeed {
+  bool     loading;
+  uint8_t  count;
+  NewsItem items[NEWS_MAX];
+};
+
 struct LeagueCount {
   char    slug[8];
   uint8_t live;

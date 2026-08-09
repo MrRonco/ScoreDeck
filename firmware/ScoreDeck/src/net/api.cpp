@@ -26,6 +26,19 @@ static void copyStr(char* dst, size_t cap, JsonVariantConst v) {
   dst[cap - 1] = '\0';
 }
 
+static void urlEncodeInto(String& dst, const String& src) {
+  for (size_t i = 0; i < src.length(); i++) {
+    const char c = src[i];
+    if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == ':' || c == ',' || c == '/')
+      dst += c;
+    else {
+      char b[4];
+      snprintf(b, sizeof b, "%%%02X", (unsigned char)c);
+      dst += b;
+    }
+  }
+}
+
 /** Discard ~95% of the payload before it is allocated. */
 static void buildFilter(JsonDocument& f) {
   f["v"] = true;
@@ -387,18 +400,77 @@ bool apiStandingsStart(const char* league) {
   return true;
 }
 
-static void urlEncodeInto(String& dst, const String& src) {
-  for (size_t i = 0; i < src.length(); i++) {
-    const char c = src[i];
-    if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == ':' || c == ',' || c == '/')
-      dst += c;
-    else {
-      char b[4];
-      snprintf(b, sizeof b, "%%%02X", (unsigned char)c);
-      dst += b;
-    }
+// ── news ───────────────────────────────────────────────────────────────────
+static char s_nwUrl[380];
+static char s_nwToken[80];
+
+static bool newsOnce(const char* url, const char* token) {
+  WiFiClient plain; WiFiClientSecure secure;
+  const bool https = strncmp(url, "https:", 6) == 0;
+  if (https) secure.setInsecure();
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setReuse(false);
+  if (!(https ? http.begin(secure, url) : http.begin(plain, url))) return false;
+  http.setUserAgent("ScoreDeck/" SD_VERSION);
+  if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
+  if (http.GET() != 200) { http.end(); return false; }
+  const String body = http.getString();
+  http.end();
+  if (body.length() < 8) return false;
+
+  DynamicJsonDocument doc(16 * 1024);
+  if (deserializeJson(doc, body)) return false;
+
+  NewsFeed& n = g_news;
+  n.count = 0;
+  for (JsonObjectConst it : doc["items"].as<JsonArrayConst>()) {
+    if (n.count >= NEWS_MAX) break;
+    NewsItem& o = n.items[n.count];
+    memset(&o, 0, sizeof o);
+    copyStr(o.headline, sizeof o.headline, it["h"]);
+    copyStr(o.desc,     sizeof o.desc,     it["d"]);
+    copyStr(o.abbr,     sizeof o.abbr,     it["a"]);
+    o.when  = it["t"] | 0;
+    o.color = it["c"] | 0x5D6D7E;
+    n.count++;
   }
+  n.loading = false;
+  g_newsReady = true;
+  return true;
 }
+
+static void newsTask(void*) {
+  const bool ok = newsOnce(s_nwUrl, s_nwToken);
+  if (!ok) { g_news.loading = false; g_newsReady = true; }
+  Serial.printf("[net] news %s items=%u\n", ok ? "ok" : "FAIL", g_news.count);
+  g_newsInFlight = false;
+  vTaskDelete(nullptr);
+}
+
+bool apiNewsStart() {
+  if (g_newsInFlight) return false;
+  if (g_set.proxy.isEmpty() || WiFi.status() != WL_CONNECTED) return false;
+  if (!netGateOpen()) return false;
+  String url = g_set.proxy;
+  if (url.endsWith("/")) url.remove(url.length() - 1);
+  url += "/v1/news?";
+  if (g_set.favs.length())    { url += "f=";  urlEncodeInto(url, g_set.favs); }
+  if (g_set.leagues.length()) { url += "&lg="; urlEncodeInto(url, g_set.leagues); }
+  if (url.length() >= sizeof s_nwUrl) return false;
+  strncpy(s_nwUrl, url.c_str(), sizeof s_nwUrl - 1);
+  s_nwUrl[sizeof s_nwUrl - 1] = '\0';
+  strncpy(s_nwToken, g_set.token.c_str(), sizeof s_nwToken - 1);
+  s_nwToken[sizeof s_nwToken - 1] = '\0';
+  g_newsInFlight = true;
+  if (xTaskCreatePinnedToCore(newsTask, "sdNews", NET_TASK_STACK, nullptr, 1, nullptr, 0) != pdPASS) {
+    g_newsInFlight = false;
+    return false;
+  }
+  return true;
+}
+
 
 bool apiGameStart(const char* league, const char* id) {
   if (g_gameInFlight) return false;

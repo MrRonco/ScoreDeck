@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import { LEAGUES, league } from './registry.ts';
 import {
   fetchScoreboard, normalizeBoard, sortAndCap, fetchStandings, normalizeStandings,
-  fetchTeams, normalizeTeams, fetchSummary, normalizeGame,
+  fetchTeams, normalizeTeams, fetchSummary, normalizeGame, fetchNews, normalizeNews,
 } from './espn.ts';
 import { diffBoard, nextPollSeconds } from './diff.ts';
 import { MemoryStore, loadDiff, saveDiff, type Store } from './store.ts';
-import { GS, type Game, type ScoreEvent, type StateResponse } from './types.ts';
+import { GS, type Game, type ScoreEvent, type StateResponse, type NewsItem } from './types.ts';
 
 export interface Env {
   store: Store;
@@ -148,6 +148,51 @@ export function createApp(env: Env) {
 
   // Team directory. This is how you discover the ids that go in `favs`:
   //   GET /v1/teams/nhl  ->  [{ id: "21", a: "TOR", n: "Toronto Maple Leafs" }, ...]
+  app.get('/v1/news', async (c) => {
+    const favs = parseFavs(c.req.query('f'));
+    const slugs = parseLeagues(c.req.query('lg'), favs).slice(0, 4);
+
+    // Abbreviations come from the board cache, which already resolved ids.
+    const favAbbrs = new Set<string>();
+    const colors = new Map<string, number>();
+    for (const slug of slugs) {
+      const ids = favs.get(slug);
+      for (const key of ['us', 'ca', 'gb'] as const) {
+        const board = await env.store.get<Game[]>(`last:${slug}`);
+        if (!board) continue;
+        for (const g of board) {
+          for (const side of [g.away, g.home]) {
+            colors.set(side.a, side.c);
+            if (ids?.has(side.id)) favAbbrs.add(side.a);
+          }
+        }
+        break;
+      }
+    }
+
+    const items: NewsItem[] = [];
+    for (const slug of slugs) {
+      const lg = league(slug)!;
+      const key = `news:${slug}`;
+      let got = await env.store.get<NewsItem[]>(key);
+      if (!got) {
+        try {
+          got = normalizeNews(await fetchNews(lg, doFetch), lg, favAbbrs, (a) => colors.get(a));
+          await env.store.put(key, got, 900);
+        } catch {
+          got = [];
+        }
+      }
+      items.push(...got);
+    }
+
+    // De-duplicate: the same story is often syndicated across leagues.
+    const seen = new Set<string>();
+    const unique = items.filter((i) => !seen.has(i.h) && seen.add(i.h));
+    unique.sort((x, y) => (Number(!!y.a) - Number(!!x.a)) || (y.t - x.t));
+    return c.json({ v: 1, items: unique.slice(0, 10) });
+  });
+
   app.get('/v1/game/:league/:id', async (c) => {
     const lg = league(c.req.param('league'));
     if (!lg) return c.json({ error: 'unknown league' }, 404);

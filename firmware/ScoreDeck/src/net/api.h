@@ -15,3 +15,6 @@ bool apiGameStart(const char* league, const char* id);
 
 /** Fetch a league table. Loop context only. */
 bool apiStandingsStart(const char* league);
+
+/** Fetch headlines for the followed teams. Loop context only. */
+bool apiNewsStart();
