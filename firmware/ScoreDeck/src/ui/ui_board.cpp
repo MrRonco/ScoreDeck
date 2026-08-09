@@ -20,6 +20,11 @@ static lv_obj_t* s_lblDate;
 static lv_obj_t* s_lblStatus;
 static lv_obj_t* s_lblPage;
 
+#define CHIP_MAX (MAX_LEAGUES + 1)     // +1 for ALL
+static lv_obj_t* s_chip[CHIP_MAX];
+static lv_obj_t* s_chipLbl[CHIP_MAX];
+static uint8_t   s_chipCount;
+
 struct TileUI {
   lv_obj_t* root;
   lv_obj_t* edge;
@@ -146,6 +151,68 @@ static void buildTile(TileUI& t, int idx) {
   t.cUsed = true;
 }
 
+static void onChip(lv_event_t* e) {
+  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  g_leagueFilter = (int8_t)(idx - 1);      // slot 0 is ALL
+  g_page = 0;
+  uiBoardRefresh();
+}
+
+/**
+ * League strip. Chips carry a live count so the board tells you where the
+ * action is before you filter to it. Tapping one filters; ALL clears.
+ */
+static void buildChips(lv_obj_t* bar) {
+  int x = 250;
+  for (uint8_t i = 0; i < CHIP_MAX; i++) {
+    s_chip[i] = lv_obj_create(bar);
+    lv_obj_remove_style_all(s_chip[i]);
+    lv_obj_set_size(s_chip[i], 66, 28);
+    lv_obj_set_pos(s_chip[i], x, (spec().barH - 28) / 2);
+    lv_obj_set_style_radius(s_chip[i], 7, 0);
+    lv_obj_set_style_bg_opa(s_chip[i], LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(s_chip[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_chip[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_chip[i], onChip, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+    s_chipLbl[i] = lv_label_create(s_chip[i]);
+    lv_obj_set_style_text_font(s_chipLbl[i], F_MICRO, 0);
+    lv_obj_set_style_text_color(s_chipLbl[i], C_INK3, 0);
+    lv_label_set_text(s_chipLbl[i], "");
+    lv_obj_center(s_chipLbl[i]);
+    lv_obj_add_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN);
+    x += 70;
+  }
+}
+
+static void refreshChips() {
+  s_chipCount = (uint8_t)min<int>(CHIP_MAX, g_leagueCount + 1);
+  for (uint8_t i = 0; i < CHIP_MAX; i++) {
+    if (i >= s_chipCount) { lv_obj_add_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN); continue; }
+    lv_obj_clear_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN);
+
+    char txt[20];
+    if (i == 0) {
+      uint8_t live = 0;
+      for (uint8_t k = 0; k < g_gameCount; k++) if (g_board[k].state == GS_LIVE) live++;
+      if (live) snprintf(txt, sizeof txt, "ALL %u", live);
+      else      snprintf(txt, sizeof txt, "ALL");
+    } else {
+      const LeagueCount& lc = g_leagues[i - 1];
+      char up[8];
+      strncpy(up, lc.slug, sizeof up - 1); up[sizeof up - 1] = '\0';
+      for (char* p = up; *p; p++) *p = toupper((unsigned char)*p);
+      if (lc.live) snprintf(txt, sizeof txt, "%s %u", up, lc.live);
+      else         snprintf(txt, sizeof txt, "%s", up);
+    }
+    lv_label_set_text(s_chipLbl[i], txt);
+
+    const bool sel = (g_leagueFilter + 1) == (int)i;
+    lv_obj_set_style_bg_opa(s_chip[i], sel ? 40 : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(s_chip[i], C_EDGE_HI, 0);
+    lv_obj_set_style_text_color(s_chipLbl[i], sel ? C_INK : C_INK3, 0);
+  }
+}
+
 static void buildBar() {
   s_bar = glassPanel(s_board, 0, 0, SCR_W, spec().barH, 0);
   s_lblClock = microLabel(s_bar, 18, 12, C_INK, F_ABBR);
@@ -154,9 +221,11 @@ static void buildBar() {
   lv_obj_set_style_text_font(s_lblStatus, F_MICRO, 0);
   lv_obj_set_style_text_color(s_lblStatus, C_INK2, 0);
   lv_obj_set_style_text_align(s_lblStatus, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_width(s_lblStatus, 300);
-  lv_obj_set_pos(s_lblStatus, SCR_W - 18 - 300, 17);
+  lv_obj_set_width(s_lblStatus, 190);
+  lv_obj_set_pos(s_lblStatus, SCR_W - 18 - 190, 17);
   lv_label_set_text(s_lblStatus, "starting");
+
+  buildChips(s_bar);
 
   s_lblPage = lv_label_create(s_board);
   lv_obj_set_style_text_font(s_lblPage, F_MICRO, 0);
@@ -169,8 +238,7 @@ static void buildBar() {
 
 // ── paging / filter ────────────────────────────────────────────────────────
 static bool passesFilter(const Game& g) {
-  if (g_leagueFilter < 0) return true;
-  if (g_leagueFilter >= g_leagueCount) return true;
+  if (g_leagueFilter < 0 || g_leagueFilter >= g_leagueCount) return true;
   return strcmp(g.league, g_leagues[g_leagueFilter].slug) == 0;
 }
 
@@ -292,6 +360,7 @@ void uiBoardRefresh() {
       w += snprintf(w, sizeof pg - (w - pg), "%s", p == g_page ? "*  " : "-  ");
   }
   lv_label_set_text(s_lblPage, pg);
+  refreshChips();
   uiSetStatus();
 }
 
