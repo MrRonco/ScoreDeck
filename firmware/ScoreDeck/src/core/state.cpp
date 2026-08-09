@@ -29,6 +29,10 @@ bool          g_pendStale = false;
 
 volatile bool g_pollInFlight = false;
 
+Standings     g_standings;
+volatile bool g_standingsReady = false;
+volatile bool g_standingsInFlight = false;
+
 NetStatus g_net = NET_BOOT;
 char      g_netDetail[48] = "";
 
@@ -111,6 +115,19 @@ void settingsSave() {
   p.putUShort(K_QUIET_TO, g_set.quietTo);
   p.putULong(K_SEQ, g_set.lastSeq);
   p.end();
+}
+
+/**
+ * Favourites are stored as "<league>:<teamId>", but standings rows arrive
+ * keyed by abbreviation. Resolve through the board, which carries both.
+ */
+bool boardFollows(const char* league, const char* abbr) {
+  for (uint8_t i = 0; i < g_gameCount; i++) {
+    const Game& g = g_board[i];
+    if (!g.isFav || strcmp(g.league, league) != 0) continue;
+    if (strcmp(g.away.abbr, abbr) == 0 || strcmp(g.home.abbr, abbr) == 0) return true;
+  }
+  return false;
 }
 
 bool netGateOpen() {

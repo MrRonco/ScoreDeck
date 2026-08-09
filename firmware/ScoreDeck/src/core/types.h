@@ -79,6 +79,30 @@ struct GameDetail {
   uint16_t situation;
 };
 
+// Standings — generic {cols, rows}. The firmware never learns what a
+// faceoff, a goal difference or a games-behind is.
+#define ST_MAX_COLS   8
+#define ST_MAX_ROWS  32
+#define ST_MAX_CUTS   3
+
+struct StandingRow {
+  char     abbr[5];
+  char     name[17];
+  uint32_t color;
+  char     cells[ST_MAX_COLS][8];
+};
+
+struct Standings {
+  bool         loading;
+  uint8_t      colCount;
+  uint8_t      rowCount;
+  uint8_t      cutCount;
+  char         cols[ST_MAX_COLS][8];
+  StandingRow  rows[ST_MAX_ROWS];
+  uint8_t      cutAfter[ST_MAX_CUTS];
+  char         cutLabel[ST_MAX_CUTS][20];
+};
+
 struct LeagueCount {
   char    slug[8];
   uint8_t live;

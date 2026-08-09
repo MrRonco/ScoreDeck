@@ -4,7 +4,7 @@
 #include <lvgl.h>
 #include "../core/types.h"
 
-enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_SETUP };
+enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_SETUP };
 
 void uiInit();
 /** Rebuild from g_board. Loop context only. Every write is change-cached. */
@@ -51,3 +51,11 @@ lv_obj_t* uiGameRoot();
 
 /** Page the board. Returns false when there is nowhere to go. */
 bool uiBoardPage(int delta);
+
+// Standings — UI.md §6. Generic table, labelled cut lines.
+void uiStandingsInit(lv_obj_t* parent);
+void uiStandingsOpen(const char* league);
+void uiStandingsRender();
+void uiStandingsClose();
+bool uiStandingsIsOpen();
+lv_obj_t* uiStandingsRoot();

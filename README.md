@@ -107,7 +107,9 @@ to a data file** — no code, no firmware.
 - [x] Alert takeover, with the sequence held back until a card is actually seen
 - [x] Idle screen — the face the panel wears most of the day
 - [x] Self-hosted container: Unraid template, multi-arch image, VLAN placement
-- [ ] Game detail on tap · standings screen · density setting UI
+- [x] Game detail on tap, with linescore, scoring plays and win probability
+- [x] Standings — generic table, labelled cut lines
+- [ ] Density setting UI · league filter chips
 - [ ] Real fonts (tabular figures, Latin Extended-A) · logos
 - [ ] Browser setup portal · OTA
 - [ ] Lineups, player cards, headshots

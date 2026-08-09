@@ -63,6 +63,13 @@ extern GameDetail    g_pendGame;
 extern volatile bool g_pendGameReady;
 extern volatile bool g_gameInFlight;
 
+extern Standings     g_standings;
+extern volatile bool g_standingsReady;
+extern volatile bool g_standingsInFlight;
+
+/** True when the followed list contains this league/abbr pair. */
+bool boardFollows(const char* league, const char* abbr);
+
 // ── status, for the top bar ─────────────────────────────────────────────────
 enum NetStatus : uint8_t { NET_BOOT = 0, NET_NOWIFI, NET_NOPROXY, NET_ERR, NET_OK, NET_STALE };
 extern NetStatus g_net;

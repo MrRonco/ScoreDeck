@@ -340,6 +340,9 @@ void uiShow(Screen s) {
   lv_obj_t* game = uiGameRoot();
   if (game) (s == SCR_GAME) ? lv_obj_clear_flag(game, LV_OBJ_FLAG_HIDDEN)
                             : lv_obj_add_flag(game, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* st = uiStandingsRoot();
+  if (st) (s == SCR_STANDINGS) ? lv_obj_clear_flag(st, LV_OBJ_FLAG_HIDDEN)
+                               : lv_obj_add_flag(st, LV_OBJ_FLAG_HIDDEN);
 }
 Screen uiCurrent() { return s_screen; }
 

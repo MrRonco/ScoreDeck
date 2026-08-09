@@ -12,3 +12,6 @@ bool apiPollStart();
 
 /** Fetch one game's detail. Loop context only; same gate rules as apiPollStart. */
 bool apiGameStart(const char* league, const char* id);
+
+/** Fetch a league table. Loop context only. */
+bool apiStandingsStart(const char* league);

@@ -296,6 +296,97 @@ static void gameTask(void*) {
   vTaskDelete(nullptr);
 }
 
+// ── standings ──────────────────────────────────────────────────────────────
+static char s_stUrl[260];
+static char s_stToken[80];
+
+static bool standingsOnce(const char* url, const char* token) {
+  WiFiClient plain; WiFiClientSecure secure;
+  const bool https = strncmp(url, "https:", 6) == 0;
+  if (https) secure.setInsecure();
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setReuse(false);
+  if (!(https ? http.begin(secure, url) : http.begin(plain, url))) return false;
+  http.setUserAgent("ScoreDeck/" SD_VERSION);
+  if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
+  if (http.GET() != 200) { http.end(); return false; }
+  const String body = http.getString();
+  http.end();
+  if (body.length() < 8) return false;
+
+  DynamicJsonDocument doc(24 * 1024);
+  if (deserializeJson(doc, body)) return false;
+
+  Standings& t = g_standings;
+  t.colCount = 0; t.rowCount = 0; t.cutCount = 0;
+
+  // rows[] are [ABBR, TEAM, COLOR, ...stats]; the first three are structural.
+  JsonArrayConst cols = doc["cols"];
+  for (JsonVariantConst v : cols) {
+    const char* c = v | "";
+    if (!strcmp(c, "ABBR") || !strcmp(c, "TEAM") || !strcmp(c, "COLOR")) continue;
+    if (t.colCount >= ST_MAX_COLS) break;
+    copyStr(t.cols[t.colCount], sizeof t.cols[0], v);
+    t.colCount++;
+  }
+
+  for (JsonArrayConst r : doc["rows"].as<JsonArrayConst>()) {
+    if (t.rowCount >= ST_MAX_ROWS) break;
+    StandingRow& row = t.rows[t.rowCount];
+    copyStr(row.abbr, sizeof row.abbr, r[0]);
+    copyStr(row.name, sizeof row.name, r[1]);
+    row.color = r[2] | 0x5D6D7E;
+    for (uint8_t c = 0; c < t.colCount; c++) {
+      JsonVariantConst v = r[3 + c];
+      if (v.is<const char*>()) copyStr(row.cells[c], sizeof row.cells[0], v);
+      else snprintf(row.cells[c], sizeof row.cells[0], "%d", v | 0);
+    }
+    t.rowCount++;
+  }
+
+  for (JsonObjectConst c : doc["cuts"].as<JsonArrayConst>()) {
+    if (t.cutCount >= ST_MAX_CUTS) break;
+    t.cutAfter[t.cutCount] = c["after"] | 0;
+    copyStr(t.cutLabel[t.cutCount], sizeof t.cutLabel[0], c["label"]);
+    t.cutCount++;
+  }
+
+  t.loading = false;
+  g_standingsReady = true;
+  return true;
+}
+
+static void standingsTask(void*) {
+  const bool ok = standingsOnce(s_stUrl, s_stToken);
+  if (!ok) { g_standings.loading = false; g_standingsReady = true; }
+  Serial.printf("[net] standings %s rows=%u\n", ok ? "ok" : "FAIL", g_standings.rowCount);
+  g_standingsInFlight = false;
+  vTaskDelete(nullptr);
+}
+
+bool apiStandingsStart(const char* league) {
+  if (g_standingsInFlight) return false;
+  if (g_set.proxy.isEmpty() || WiFi.status() != WL_CONNECTED) return false;
+  if (!netGateOpen()) return false;
+  String url = g_set.proxy;
+  if (url.endsWith("/")) url.remove(url.length() - 1);
+  url += "/v1/standings/";
+  url += league;
+  if (url.length() >= sizeof s_stUrl) return false;
+  strncpy(s_stUrl, url.c_str(), sizeof s_stUrl - 1);
+  s_stUrl[sizeof s_stUrl - 1] = '\0';
+  strncpy(s_stToken, g_set.token.c_str(), sizeof s_stToken - 1);
+  s_stToken[sizeof s_stToken - 1] = '\0';
+  g_standingsInFlight = true;
+  if (xTaskCreatePinnedToCore(standingsTask, "sdStand", NET_TASK_STACK, nullptr, 1, nullptr, 0) != pdPASS) {
+    g_standingsInFlight = false;
+    return false;
+  }
+  return true;
+}
+
 static void urlEncodeInto(String& dst, const String& src) {
   for (size_t i = 0; i < src.length(); i++) {
     const char c = src[i];
