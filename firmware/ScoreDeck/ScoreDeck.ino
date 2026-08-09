@@ -44,6 +44,18 @@ static void applyPending() {
   g_leagueCount = g_pendLeagueCount;
   s_pollGapS = g_pendNextPoll;
 
+  // The sequence is per-proxy-instance, not global. A restarted container, a
+  // redeployed Worker, or simply pointing at a different proxy all reset it to
+  // zero — and a device still holding a higher number would filter out every
+  // event the new proxy ever produces, silently, forever. If the proxy reports
+  // a lower sequence than we hold, it is not the same run: adopt its number.
+  if (g_pendSeq < g_set.lastSeq) {
+    Serial.printf("[net] proxy seq %lu < stored %lu — proxy restarted, resyncing\n",
+                  (unsigned long)g_pendSeq, (unsigned long)g_set.lastSeq);
+    g_set.lastSeq = g_pendSeq;
+    settingsSave();
+  }
+
   // Queue any score events for the takeover.
   for (uint8_t i = 0; i < g_pendEventCount; i++) uiAlertEnqueue(g_pendEvents[i]);
 
