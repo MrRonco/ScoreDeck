@@ -19,6 +19,7 @@
 #include "src/ui/ui.h"
 #include "src/net/api.h"
 #include "src/svc/web.h"
+#include "src/net/logos.h"
 
 static uint32_t s_nextPollMs = 0;
 static uint16_t s_pollGapS   = POLL_DEFAULT_S;
@@ -297,6 +298,11 @@ void loop() {
                       (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                       (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
       }
+      // One missing logo at a time, and only when nothing else needs the
+      // single TLS slot.
+      static uint32_t nextLogo = 0;
+      if (millis() > nextLogo && !g_pollInFlight) { logoTick(); nextLogo = millis() + 1200; }
+
       if (millis() > s_nextPollMs) {
       // Check the gate in LOOP context before spawning — spawning only to find
       // it shut burns the very RAM the gate protects. INHERITED_RULES.md §14.
@@ -313,6 +319,9 @@ void loop() {
     applyGame();
     applyStandings();
     applyNews();
+    // Repaint once when a logo lands, not on every tick — a pointless
+    // traversal every 4 ms is the shape of the bug in INHERITED_RULES.md 8.
+    if (g_logoArrived) { g_logoArrived = false; uiBoardRefresh(); }
     tickOpenGame();
     uiSetStatus();
   }

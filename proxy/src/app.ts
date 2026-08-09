@@ -12,6 +12,8 @@ export interface Env {
   store: Store;
   token?: string;
   fetchImpl?: typeof fetch;
+  /** Reads a built asset by relative path, or undefined when absent. */
+  assets?: (path: string) => Promise<ArrayBuffer | undefined>;
 }
 
 /** Favourites arrive as `nhl:21,eng.1:359`. Cap hard — this is a URL. */
@@ -148,6 +150,22 @@ export function createApp(env: Env) {
 
   // Team directory. This is how you discover the ids that go in `favs`:
   //   GET /v1/teams/nhl  ->  [{ id: "21", a: "TOR", n: "Toronto Maple Leafs" }, ...]
+  // Logo blobs, built locally by tools/build-logos.mjs. Never shipped with the
+  // project — see docs/OPEN_SOURCE.md §1. A miss is a 404 and the device falls
+  // back to its colour badge, so an unbuilt install still looks deliberate.
+  app.get('/v1/logo/:league/:file', async (c) => {
+    const lg = league(c.req.param('league'));
+    if (!lg) return c.notFound();
+    const file = c.req.param('file');
+    if (!/^[A-Za-z0-9]{1,5}@(48|96)\.bin$/.test(file)) return c.json({ error: 'bad name' }, 400);
+    const bytes = await env.assets?.(`logos/${lg.slug}/${file}`);
+    if (!bytes) return c.notFound();
+    return c.body(bytes, 200, {
+      'content-type': 'application/octet-stream',
+      'cache-control': 'public, max-age=31536000, immutable',
+    });
+  });
+
   app.get('/v1/news', async (c) => {
     const favs = parseFavs(c.req.query('f'));
     const slugs = parseLeagues(c.req.query('lg'), favs).slice(0, 4);

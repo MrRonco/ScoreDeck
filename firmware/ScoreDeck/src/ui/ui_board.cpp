@@ -9,6 +9,7 @@
 #include "theme.h"
 #include "../config.h"
 #include "../core/state.h"
+#include "../net/logos.h"
 #include <time.h>
 
 static Screen s_screen = SCR_BOARD;
@@ -30,6 +31,8 @@ struct TileUI {
   lv_obj_t* edge;
   lv_obj_t* badge[2];
   lv_obj_t* badgeLbl[2];
+  lv_obj_t* logo[2];
+  const void* cLogo[2];
   lv_obj_t* abbr[2];
   lv_obj_t* rec[2];
   lv_obj_t* score[2];
@@ -111,6 +114,14 @@ static void buildTile(TileUI& t, int idx) {
     lv_obj_set_style_radius(t.badge[i], 7, 0);
     lv_obj_set_style_bg_opa(t.badge[i], LV_OPA_COVER, 0);
     lv_obj_clear_flag(t.badge[i], LV_OBJ_FLAG_SCROLLABLE);
+    t.logo[i] = lv_img_create(t.root);
+    lv_obj_set_pos(t.logo[i], TILE_PAD_X, ry + (rowH - d.badge) / 2);
+    lv_obj_set_size(t.logo[i], d.badge, d.badge);
+    lv_img_set_zoom(t.logo[i], (uint16_t)(256 * d.badge / 48));
+    lv_img_set_antialias(t.logo[i], true);
+    lv_obj_add_flag(t.logo[i], LV_OBJ_FLAG_HIDDEN);
+    t.cLogo[i] = nullptr;
+
     t.badgeLbl[i] = lv_label_create(t.badge[i]);
     lv_obj_set_style_text_font(t.badgeLbl[i], F_MICRO, 0);
     lv_obj_set_style_text_color(t.badgeLbl[i], lv_color_white(), 0);
@@ -143,6 +154,7 @@ static void buildTile(TileUI& t, int idx) {
   memset(t.cRec, 0, sizeof t.cRec);
   memset(t.cStatus, 0, sizeof t.cStatus);
   memset(t.cBcast, 0, sizeof t.cBcast);
+  t.cLogo[0] = t.cLogo[1] = nullptr;
   t.cScore[0] = t.cScore[1] = -1;
   t.cColor[0] = t.cColor[1] = 0xFFFFFFFF;
   t.cEdge = 0xFFFFFFFF;
@@ -331,6 +343,21 @@ void uiBoardRefresh() {
         lv_obj_set_style_bg_color(t.badge[k], lv_color_hex(side[k]->color), 0);
       }
       lv_label_set_text(t.badgeLbl[k], side[k]->abbr);
+
+      // Logo when we have one, colour badge otherwise. Change-cached: setting
+      // the same source still repaints, and that is what fights the panel DMA.
+      const lv_img_dsc_t* img = logoGet(g.league, side[k]->abbr);
+      if (t.cLogo[k] != (const void*)img) {
+        t.cLogo[k] = img;
+        if (img) {
+          lv_img_set_src(t.logo[k], img);
+          lv_obj_clear_flag(t.logo[k], LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(t.badge[k], LV_OBJ_FLAG_HIDDEN);
+        } else {
+          lv_obj_add_flag(t.logo[k], LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(t.badge[k], LV_OBJ_FLAG_HIDDEN);
+        }
+      }
     }
 
     setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);

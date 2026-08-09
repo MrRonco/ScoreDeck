@@ -114,9 +114,11 @@ to a data file** — no code, no firmware.
 - [x] Standings — generic table, labelled cut lines
 - [x] League filter chips with live counts
 - [x] Browser setup portal + OTA — no cable needed to configure or update
-- [ ] Real fonts (tabular figures, Latin Extended-A) · logos
-- [ ] News · team page
-- [ ] Lineups, player cards, headshots
+
+- [x] News feed
+- [x] Team logos — build pipeline, proxy route, PSRAM cache
+- [ ] Team page · lineups · player cards
+
 - [ ] Tennis / golf / F1
 
 ## Licence

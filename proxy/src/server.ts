@@ -1,7 +1,27 @@
 // Local dev / self-host entry. `npm run dev`
 import { createApp, defaultEnv } from './app.ts';
 
-const app = createApp({ ...defaultEnv(), token: process.env.SD_TOKEN });
+import { readFile } from 'node:fs/promises';
+import { join, dirname, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Repo layout puts assets two up from src/; a container mounts them wherever.
+const ASSETS = process.env.SD_ASSETS
+  ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets');
+
+/** Read a built asset. Path is validated by the route; normalise anyway. */
+async function assets(rel: string): Promise<ArrayBuffer | undefined> {
+  const full = join(ASSETS, normalize(rel).replace(/^(\.\.[/\\])+/, ''));
+  if (!full.startsWith(ASSETS)) return undefined;
+  try {
+    const b = await readFile(full);
+    return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+  } catch {
+    return undefined;
+  }
+}
+
+const app = createApp({ ...defaultEnv(), token: process.env.SD_TOKEN, assets });
 const port = Number(process.env.PORT ?? 8787);
 
 const server = (await import('node:http')).createServer(async (req, res) => {

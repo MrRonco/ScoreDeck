@@ -15,7 +15,12 @@ services:
     networks:
       panel_vlan:
         ipv4_address: ${SD_IP:?set SD_IP, e.g. 192.168.20.11}
+    volumes:
+      # Logo blobs built by `npm run logos`. Never baked into the image —
+      # they are trademarked assets, see docs/OPEN_SOURCE.md §1.
+      - ${SD_ASSETS_HOST:-./assets}:/assets:ro
     environment:
+      SD_ASSETS: "/assets"
       SD_TOKEN: "${SD_TOKEN:?set SD_TOKEN in .env}"
       TZ: "${TZ:-UTC}"
       PORT: "8787"
