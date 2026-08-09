@@ -42,12 +42,11 @@ the Pi is down.
 Unraid is the best fit if you have it: always on, proper Docker management, and
 none of the CPU ceilings. The container is ~60 MB and idles at close to nothing.
 
-### Check reachability first
+### Check reachability first — this decides everything
 
-This is the only thing that can rule Unraid out. Your panel sits on the IoT VLAN
-and **cannot reach the main LAN** — so if Unraid lives on the same subnet as your
-Mac, it needs a firewall rule just as the Mac would. Test it from the panel over
-USB before you build anything:
+If your panel sits on an isolated IoT VLAN it probably **cannot reach your
+Unraid host**, and no amount of container configuration fixes that. Test from
+the panel over USB before you build anything:
 
 ```
 proxy http://<UNRAID-IP>:8787
@@ -60,6 +59,46 @@ Read the failure on serial:
 - **`HTTP -1` after seconds** → the firewall is dropping it. You need a pass rule
   from the panel's VLAN to `<UNRAID-IP>:8787`, or put the container on a
   reachable network.
+
+### If the panel cannot reach the host: put the container on the panel's VLAN
+
+This is the good outcome, not a workaround. Give the container **its own address
+on the same VLAN as the panel** and the traffic never leaves that segment — no
+firewall rule, no hole from an IoT VLAN into your trusted LAN, nothing crossing
+the router at all.
+
+Unraid already trunks your VLANs, so the interface exists. Create the Docker
+network once:
+
+```bash
+docker network create -d ipvlan -o parent=br0.20 \
+  --subnet 192.168.20.0/24 --gateway 192.168.20.1 br0.20
+```
+
+Then use `docker-compose.unraid.yml`, which asks for the network and address:
+
+```bash
+cd /mnt/user/appdata/scoredeck
+cat > .env <<'EOF'
+SD_TOKEN=<openssl rand -hex 24>
+SD_NET=br0.20
+SD_IP=192.168.20.11
+TZ=America/Toronto
+EOF
+docker compose -f docker-compose.unraid.yml up -d --build
+```
+
+Measured on this installation: **34 ms per poll**, against 2.4 s over an
+internet tunnel. Same VLAN, no TLS, no round trip.
+
+Two caveats worth knowing:
+
+- **ipvlan containers cannot reach the Unraid host**, and vice versa. Irrelevant
+  here — the proxy needs the internet and the panel, not the host.
+- **Unraid may not recreate a per-VLAN Docker network at boot** when the host
+  holds no IP on that VLAN. `unraid/scoredeck-boot.sh` in the repo recreates it
+  and starts the stack; hook it from `/boot/config/go` the same way you would any
+  other Unraid boot script.
 
 ### Option 1 — Compose Manager plugin (cleanest)
 
@@ -81,11 +120,14 @@ cat .env          # copy the token, the panel needs it
 Once the image is published you can add it as a container without cloning
 anything:
 
+Add the template from `unraid/scoredeck-proxy.xml`, or fill it in by hand:
+
 | Field | Value |
 |---|---|
 | Repository | `ghcr.io/mrronco/scoredeck-proxy:latest` |
-| Network Type | `Bridge` |
-| Port | Container `8787` → Host `8787` |
+| Network Type | `Bridge`, **or the panel's VLAN** (e.g. `br0.20`) if the host is unreachable from it |
+| Port | Container `8787` → Host `8787` *(omit entirely on a VLAN network)* |
+| Fixed IP | e.g. `192.168.20.11` *(VLAN network only)* |
 | Variable | `SD_TOKEN` = your token |
 | Variable | `TZ` = e.g. `America/Toronto` |
 

@@ -1,0 +1,26 @@
+# Unraid with VLANs.
+#
+# Put the proxy on the SAME VLAN as the panel rather than on the host's LAN.
+# The container takes its own address on that segment, so the traffic is L2 and
+# never touches the firewall — no pass rule, no port mapping, no hole punched
+# from an IoT VLAN into the trusted one.
+#
+# Set SD_NET / SD_IP in .env to match your setup.
+services:
+  scoredeck-proxy:
+    build: .
+    image: scoredeck-proxy:local
+    container_name: scoredeck-proxy
+    restart: unless-stopped
+    networks:
+      panel_vlan:
+        ipv4_address: ${SD_IP:?set SD_IP, e.g. 192.168.20.11}
+    environment:
+      SD_TOKEN: "${SD_TOKEN:?set SD_TOKEN in .env}"
+      TZ: "${TZ:-UTC}"
+      PORT: "8787"
+
+networks:
+  panel_vlan:
+    external: true
+    name: ${SD_NET:?set SD_NET, e.g. br0.20}

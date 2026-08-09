@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>ScoreDeck-Proxy</Name>
+  <Repository>ghcr.io/mrronco/scoredeck-proxy:latest</Repository>
+  <Registry>https://ghcr.io/mrronco/scoredeck-proxy</Registry>
+  <Branch>
+    <Tag>latest</Tag>
+    <TagDescription>Latest build from main</TagDescription>
+  </Branch>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/MrRonco/ScoreDeck/issues</Support>
+  <Project>https://github.com/MrRonco/ScoreDeck</Project>
+  <Overview>
+    Aggregation proxy for ScoreDeck, a live sports scoreboard on a 7-inch
+    ESP32-S3 panel.
+
+    The panel has ~17-40 KB of free heap and cannot parse ESPN directly - the
+    golf scoreboard alone is 1.2 MB. This container normalises 20 leagues into a
+    single ~3 KB payload, diffs scores between polls so a goal survives a device
+    reboot, and resolves broadcast channels per region (ESPN's own data is
+    US-only and ignores a region parameter).
+
+    Runs anywhere Docker does. No account, no cloud dependency, no CPU limits -
+    which matters, because the Cloudflare Workers free tier caps CPU at 10 ms per
+    request and the golf and tennis payloads may not fit inside it.
+
+    IMPORTANT - network placement: if your panel is on an isolated IoT VLAN it
+    may not be able to reach your Unraid host. Either add a firewall rule, or set
+    Network Type to the panel's VLAN (e.g. br0.20) and give the container its own
+    address on that segment, which needs no rule at all. See docs/DEPLOY.md.
+  </Overview>
+  <Category>HomeAutomation: Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:8787]/v1/health</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/MrRonco/ScoreDeck/main/unraid/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>
+    A ScoreDeck panel on a network that can reach this container.
+  </Requires>
+
+  <Config Name="WebUI Port" Target="8787" Default="8787" Mode="tcp"
+          Description="Port the panel connects to. Not needed if you give the container its own VLAN address."
+          Type="Port" Display="always" Required="true" Mask="false">8787</Config>
+
+  <Config Name="API Token" Target="SD_TOKEN" Default="" Mode=""
+          Description="Shared bearer token. Generate with: openssl rand -hex 24 — then enter the same value on the panel with 'token &lt;value&gt;'. Leaving this empty runs the proxy open to your network."
+          Type="Variable" Display="always" Required="true" Mask="true"/>
+
+  <Config Name="Timezone" Target="TZ" Default="UTC" Mode=""
+          Description="Used to decide what counts as 'today'. A Sunday night NFL game kicks off after midnight in Europe, so this matters."
+          Type="Variable" Display="always" Required="false" Mask="false">UTC</Config>
+</Container>
