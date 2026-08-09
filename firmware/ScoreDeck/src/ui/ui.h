@@ -18,3 +18,5 @@ void uiSetStatus();
 // Setup / onboarding
 void uiSetupInit(lv_obj_t* parent);
 bool uiSetupActive();
+/** Root of the setup screen, or nullptr before uiSetupInit(). */
+lv_obj_t* uiSetupRoot();

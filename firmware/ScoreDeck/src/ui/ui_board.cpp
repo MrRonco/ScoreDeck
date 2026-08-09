@@ -14,7 +14,6 @@
 static Screen s_screen = SCR_BOARD;
 
 static lv_obj_t* s_board;      // page root
-static lv_obj_t* s_setup;
 static lv_obj_t* s_bar;
 static lv_obj_t* s_lblClock;
 static lv_obj_t* s_lblDate;
@@ -287,10 +286,13 @@ void uiSetStatus() {
 
 void uiShow(Screen s) {
   s_screen = s;
+  // Flag writes are change-caching-exempt here because uiShow() is called on
+  // navigation only, not per tick.
   if (s_board) (s == SCR_BOARD) ? lv_obj_clear_flag(s_board, LV_OBJ_FLAG_HIDDEN)
                                 : lv_obj_add_flag(s_board, LV_OBJ_FLAG_HIDDEN);
-  if (s_setup) (s == SCR_SETUP) ? lv_obj_clear_flag(s_setup, LV_OBJ_FLAG_HIDDEN)
-                                : lv_obj_add_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* setup = uiSetupRoot();
+  if (setup) (s == SCR_SETUP) ? lv_obj_clear_flag(setup, LV_OBJ_FLAG_HIDDEN)
+                              : lv_obj_add_flag(setup, LV_OBJ_FLAG_HIDDEN);
 }
 Screen uiCurrent() { return s_screen; }
 

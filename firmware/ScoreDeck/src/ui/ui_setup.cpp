@@ -21,6 +21,7 @@ static lv_obj_t* s_lblIp;
 static bool      s_active = false;
 
 bool uiSetupActive() { return s_active; }
+lv_obj_t* uiSetupRoot() { return s_root; }
 
 static void hint(const char* t, lv_color_t c) {
   lv_label_set_text(s_lblHint, t);
