@@ -1,0 +1,10 @@
+services:
+  scoredeck-proxy:
+    build: .
+    container_name: scoredeck-proxy
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Generate with:  openssl rand -hex 24
+      SD_TOKEN: "${SD_TOKEN:?set SD_TOKEN in .env or the environment}"

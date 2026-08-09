@@ -77,9 +77,8 @@ to a data file** — no code, no firmware.
 
 ## Getting started
 
-1. **Deploy the proxy** — `cd proxy && npm install && npm run dev` on any
-   machine your panel can reach, or deploy the Worker. Set `SD_TOKEN` to a
-   random string.
+1. **Deploy the proxy** — a Pi, a NAS, or a free Cloudflare Worker. Full
+   walkthrough in [`docs/DEPLOY.md`](docs/DEPLOY.md).
 2. **Flash the firmware** — see [`firmware/BUILD.md`](firmware/BUILD.md).
 3. **First boot** asks for Wi-Fi on the panel, because there is no network yet
    to serve a browser over. If you are coming from AirRadar it reads your
@@ -95,6 +94,7 @@ to a data file** — no code, no firmware.
 | `proxy/` | TypeScript + Hono, runs on Workers, Node, or a Pi |
 | `docs/PLAN.md` | Architecture and phases |
 | `docs/UI.md` | Screen geometry, tokens, interaction |
+| `docs/DEPLOY.md` | Running the proxy — Pi, Workers, or laptop |
 | `docs/INHERITED_RULES.md` | 22 hardware lessons AirRadar paid for — **read before touching the renderer** |
 | `docs/OPEN_SOURCE.md` | Licensing, deploy-your-own, what may not be committed |
 

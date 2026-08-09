@@ -1,0 +1,13 @@
+name = "scoredeck"
+main = "src/worker.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Warms the board cache so device requests stay inside the free plan's
+# 10 ms per-request CPU budget. Every 2 minutes is plenty — the device's own
+# poll cadence (12 s when a followed team is live) reads through the cache.
+[triggers]
+crons = ["*/2 * * * *"]
+
+[observability]
+enabled = true

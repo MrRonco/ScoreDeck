@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { LEAGUES, league } from './registry.ts';
 import {
   fetchScoreboard, normalizeBoard, sortAndCap, fetchStandings, normalizeStandings,
+  fetchTeams, normalizeTeams,
 } from './espn.ts';
 import { diffBoard, nextPollSeconds } from './diff.ts';
 import { MemoryStore, loadDiff, saveDiff, type Store } from './store.ts';
@@ -143,6 +144,23 @@ export function createApp(env: Env) {
       ...(stale ? { stale: true } : {}),
     };
     return c.json(body);
+  });
+
+  // Team directory. This is how you discover the ids that go in `favs`:
+  //   GET /v1/teams/nhl  ->  [{ id: "21", a: "TOR", n: "Toronto Maple Leafs" }, ...]
+  app.get('/v1/teams/:league', async (c) => {
+    const lg = league(c.req.param('league'));
+    if (!lg) return c.json({ error: 'unknown league' }, 404);
+    const key = `teams:${lg.slug}`;
+    const hit = await env.store.get(key);
+    if (hit) return c.json(hit);
+    try {
+      const teams = normalizeTeams(await fetchTeams(lg, doFetch), lg);
+      await env.store.put(key, teams, 24 * 3600);
+      return c.json(teams);
+    } catch {
+      return c.json({ error: 'upstream' }, 502);
+    }
   });
 
   app.get('/v1/standings/:league', async (c) => {
