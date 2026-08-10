@@ -302,3 +302,130 @@ Both families are OFL-1.1 — the generated `font_*.c` files need their own noti
 
 Alerts auto-dismiss after 10 s. No scroll momentum anywhere — paged lists only,
 because inertial scrolling means continuous repaints against the panel DMA.
+
+---
+
+## 11. Revision — the desk correction
+
+Everything above was written assuming this panel is glanced at from across a
+room. **It is not.** It sits on a desk, about 610 mm from the viewer's face,
+and that changes several of the decisions in this document.
+
+The useful measurement is an equivalence rather than a heuristic: at that
+distance the panel subtends 14.24° and resolves **56.2 pixels per degree**. A
+27-inch 1440p monitor at 700 mm resolves 55.4. **Angularly this is a desktop
+display**, so desktop type sizes are the right reference, and the signage rule
+`cap = D/200` over-specifies by about half.
+
+What that changed, and what it did not:
+
+| Section | Status |
+|---|---|
+| §2 no-accent rule | **Unchanged** — it was right and is held |
+| §2 luminance ladder | **Replaced.** See below |
+| §2 edge light | Kept at 3 px; a 3 px strip subtends 3.2 arc-min here, so width was never the problem. Colour was |
+| §3 density | **Auto is now the default** and picks a layout from the game count |
+| §8 alert takeover | **Split.** See below |
+| §9 type ladder | Four of five faces were already right; the fifth was the defect |
+| Everything on geometry | **Unchanged** — and craft errors of 1–4 px now cross the visibility threshold, so they matter more |
+
+### The luminance ladder is a colour table, not an opacity
+
+`OPA_LIVE/PRE/FINAL` applied one opacity to a whole tile, which faded the frost
+and the text toward the plate together. The top tier survived; the bottom tier
+did not — a final's record and broadcast landed at **1.73 : 1** and vanished,
+so a finished game read as a tile that had failed to load while its score was
+still bright.
+
+Each state now names its own five colours (`kStateInk` in `theme.h`). The
+perceptual ladder survives and nothing drops below ~3.4 : 1. It also removed
+nine 63 KB composite buffers: in LVGL 8.3 a non-opaque parent forces its whole
+subtree through a temporary buffer, which had been quietly defeating the
+change-caching the board works hard for.
+
+### Team colour is normalised before it is drawn
+
+~3,000 team colours arrive as content and roughly a fifth are navy, black or
+deep maroon. Toronto's `#00205B` against the tile is **1.11 : 1** — the
+signature element of the product, invisible on its own flagship example.
+
+`teamInk()` saturates first and whitens only the residual, stopping the moment
+it clears **3.5 : 1**. Hue survives: Toronto comes out *more* blue than it went
+in. The threshold is stated as a contrast ratio and not a brightness cutoff on
+purpose — a brightness rule tuned on Toronto also fires on Kansas City and
+Edmonton and washes out colours that were never the problem.
+
+Badge fills and label ink get the same treatment. Seattle's white-on-ice goes
+from 1.58 : 1 to 12.1 : 1.
+
+### The frost is flat, and must stay flat
+
+The glass style used a vertical gradient. On RGB565 that ramp spans one to two
+steps of the 5-bit blue channel over 128 px, so it never rendered as a gradient
+at all — it quantised into **three flat slabs with two hard horizontal edges**,
+in every tile, at the same two heights. Confirmed by scanning a column.
+
+Depth now comes from a specular pair instead: a 1 px bright catch along the top
+and a 2 px shade along the bottom, two static children per panel with no
+per-frame cost. **Do not reintroduce `bg_grad_dir`.** A background ramp on this
+panel has to be baked and dithered at build time.
+
+### §9 revised — the faces
+
+| Face | Size | Carries |
+|---|---|---|
+| `F_SCORE` | 38 / 46 | digits, `-`, `:` only. Never text |
+| `F_DISPLAY` | 30 | the alert verb. CAPS + digits |
+| `F_ABBR` | 17 | team abbreviations. CAPS + digits |
+| `F_BODY` | 15 | anything with a person or place in it |
+| `F_NUM` | 15 | **data you read** — clocks, standings cells, stat values |
+| `F_MICRO` | 13 | **chrome labels only** — SCORING, column headers |
+
+`F_MICRO` was an 11 px tooltip face carrying the game clock, every team record,
+every standings cell and every lineup stat value. Splitting data from labels
+was the whole fix; nothing was relaid out, because the affected labels were
+already fixed-width and right-aligned.
+
+### §8 revised — the takeover is earned
+
+A full-screen card 60 cm from the viewer, hiding the other eight games for ten
+seconds and potentially firing every twelve, is not ambient — it is an
+interruption. The takeover now belongs to **followed teams only**. Everyone
+else gets an 800×44 banner and a flare on the scoring tile's edge light, which
+occludes nothing and repaints 35,200 px instead of 156,000.
+
+### New — auto-focus
+
+A followed team's game opens itself when it reaches a tense state: a man
+advantage, the red zone, or a runner in scoring position with two out. It hands
+the screen back when the moment passes, and stands down for 90 seconds if the
+user closes a game themselves.
+
+Leverage is judged on **structured facts only**. The game clock is upstream
+prose — "3rd 04:21", "Bot 7", "90'+4" — and parsing it to find "inside the
+final five minutes" would be a guess that differs per sport and per locale. If
+clock leverage is wanted, the honest route is a remaining-seconds field on the
+wire, not a parser on the device.
+
+### New — the board sorts and marks
+
+Followed-live first, then live, then upcoming, then finals. The followed side
+carries a 2 px ring on its badge: a ring rather than a coloured hairline
+because it works for Pittsburgh black and Seattle ice alike, and it marks the
+**team** rather than the game, so a favourite-vs-favourite tie correctly shows
+two.
+
+### New — the settings screen
+
+Three panes: BOARD, NETWORK, SYSTEM. What lives here rather than in the browser
+follows one test:
+
+> Does this get touched more than twice a year, or is it needed when the
+> browser is unreachable?
+
+The original rule was "anything expressible without typing", but the argument
+was never that this panel is hard to type on — it is that a better input device
+is permanently two feet away. So region, timezone, cadence, clock format and
+the alert-on-start/final toggles are browser-only. So are leagues: the board's
+league strip already filters per session, so persistent league choice was a
+set-once setting wearing a costume.

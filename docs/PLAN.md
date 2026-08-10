@@ -303,8 +303,14 @@ There are ~3,000 selectable teams across this league scope. A touchscreen
 keyboard on an 800×480 panel is a bad way to find "Notts County", and building a
 scrolling 360-item picker is worse.
 
-**Setup happens in the browser.** The device boots into AP mode, serves a portal
-at `scoredeck.local`, and the phone/laptop does the work:
+**Setup happens in the browser.** The phone or laptop does the work:
+
+> **Corrected.** This paragraph used to say the device boots into AP mode. It
+> does not, and it should not: it boots into the on-panel setup screen, which
+> takes Wi-Fi credentials and nothing else. That avoids a captive-portal DNS
+> hijack, AP/STA mode switching and a second IP stack — and there is no softAP
+> anywhere in the firmware. The browser portal takes over the moment there is a
+> network to serve it on.
 
 1. Wi-Fi credentials.
 2. Proxy URL + token.
