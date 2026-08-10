@@ -17,6 +17,15 @@ struct PollJob {
   char url[420];
   char token[80];
 };
+// The last poll's outcome, for the diagnostics page. "Proxy unreachable",
+// "proxy answered 401" and "proxy answered slowly" are three different
+// problems and the status line cannot tell them apart.
+static int      s_lastPollCode = 0;
+static uint16_t s_lastPollMsV  = 0;
+
+int      apiLastPollCode() { return s_lastPollCode; }
+uint16_t apiLastPollMs()   { return s_lastPollMsV; }
+
 static PollJob s_job;
 
 static void copyStr(char* dst, size_t cap, JsonVariantConst v) {
@@ -723,6 +732,34 @@ int netProbeProxy(uint16_t* outMs) {
   const uint32_t t0 = millis();
   const int code = http.GET();
   if (outMs) *outMs = (uint16_t)min<uint32_t>(millis() - t0, 65535);
+  http.end();
+  return code;
+}
+
+/**
+ * Fetch one allowlisted path from the configured proxy and hand back the body.
+ *
+ * This is the browser portal's fallback for when it can reach the panel but
+ * not the proxy — a phone on a guest VLAN, or a proxy behind Tailscale. The
+ * caller has ALREADY checked the path against an allowlist; never accept a
+ * host from a client here, or this becomes an SSRF primitive aimed at the
+ * user's own network.
+ *
+ * Body is read with getString() rather than streamed, because the response is
+ * chunked and deserialising a stream stops at the first chunk marker — that
+ * has cost this project three separate debugging sessions.
+ */
+int netRelayGet(const String& path, String& out) {
+  if (!g_set.proxy.length() || WiFi.status() != WL_CONNECTED) return -1;
+  HTTPClient http;
+  String url = g_set.proxy;
+  if (url.endsWith("/")) url.remove(url.length() - 1);
+  url += path;
+  if (!http.begin(url)) return -1;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  if (g_set.token.length()) http.addHeader("Authorization", "Bearer " + g_set.token);
+  const int code = http.GET();
+  if (code == 200) out = http.getString();
   http.end();
   return code;
 }

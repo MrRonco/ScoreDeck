@@ -28,3 +28,7 @@ wrangler.toml.local
 proxy/node_modules/
 proxy/package-lock.json
 firmware/ScoreDeck/src/dev_defaults.h
+
+# The portal source is authored as HTML and generated into svc/portal.h by
+# tools/embed-portal.mjs. BOTH are tracked: the header must be in the repo so
+# building the firmware never requires node.

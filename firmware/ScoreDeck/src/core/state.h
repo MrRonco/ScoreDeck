@@ -126,6 +126,12 @@ const char* lastGoodClock();
 void stateInit();
 void settingsLoad();
 void settingsSave();
+/** Erase every stored setting and leave the device as it shipped. */
+void settingsFactoryReset();
+/** The device's own idea of the local time, "9:14 PM", or "" with no clock.
+ *  The portal shows it because a wrong TZ is the usual cause of quiet hours
+ *  firing at the wrong moment, and this catches it in one glance. */
+const char* localClockNow();
 
 /**
  * TLS/heap gate. Check in LOOP context BEFORE spawning a network task —

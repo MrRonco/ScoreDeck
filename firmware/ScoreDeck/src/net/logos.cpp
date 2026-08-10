@@ -11,6 +11,12 @@
 // what every install sees until the user runs the logo build. See
 // docs/OPEN_SOURCE.md §1 for why the artwork is never shipped.
 #include "logos.h"
+
+// Cache hit rate answers "why are my tiles letter badges", which is almost
+// always because the logo build was never run.
+static uint16_t s_hits, s_misses;
+uint16_t logoCacheHits()   { return s_hits; }
+uint16_t logoCacheMisses() { return s_misses; }
 #include <HTTPClient.h>
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
@@ -57,7 +63,9 @@ const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
   Slot* s = find(key);
   if (!s) return nullptr;
   s->lastUse = ++s_tick;
-  return (s->miss || !s->data) ? nullptr : &s->dsc;
+  const bool got = !(s->miss || !s->data);
+  got ? (void)s_hits++ : (void)s_misses++;
+  return got ? &s->dsc : nullptr;
 }
 
 bool logoKnown(const char* league, const char* abbr) {

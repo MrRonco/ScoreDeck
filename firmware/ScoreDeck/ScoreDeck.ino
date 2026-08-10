@@ -18,11 +18,18 @@
 #include "src/ui/theme.h"
 #include "src/ui/ui.h"
 #include "src/net/api.h"
+#include <esp_system.h>
 #include "src/svc/web.h"
 #include "src/net/logos.h"
 
 static uint32_t s_nextPollMs = 0;
 static uint16_t s_pollGapS   = POLL_DEFAULT_S;
+
+// Diagnostics counters. Every one of these has an increment site below; the
+// portal renders a dash for anything unwired rather than a zero you cannot
+// trust. INHERITED_RULES.md §19.
+static uint16_t s_declGate, s_declFlight, s_declNoProxy;
+static uint32_t s_lastPollMs;
 static uint32_t s_lastWifiTry = 0;
 static uint32_t s_lastClockMs = 0;
 
@@ -48,6 +55,7 @@ static void applyPending() {
   // Only fresh data updates the mark — a stale reply is the proxy telling us
   // it could not reach upstream, and stamping it would hide exactly that.
   if (!g_pendStale) g_lastGoodUtc = (uint32_t)time(nullptr);
+  s_lastPollMs = millis();
 
   // The sequence is per-proxy-instance, not global. A restarted container, a
   // redeployed Worker, or simply pointing at a different proxy all reset it to
@@ -336,6 +344,12 @@ void loop() {
       if (apiPollStart()) {
         s_nextPollMs = millis() + (uint32_t)s_pollGapS * 1000UL;
       } else {
+        // Break the decline down by cause. "Poll declined" on its own is
+        // unactionable — three causes need three counters, and the
+        // diagnostics page reports them separately for exactly that reason.
+        if (!netGateOpen())            s_declGate++;
+        else if (g_pollInFlight)       s_declFlight++;
+        else if (g_set.proxy.isEmpty()) s_declNoProxy++;
         Serial.printf("[net] poll declined (gate=%d inflight=%d proxy=%d)\n",
                       netGateOpen(), g_pollInFlight, !g_set.proxy.isEmpty());
         s_nextPollMs = millis() + 3000;
@@ -355,4 +369,42 @@ void loop() {
   }
 
   delay(4);
+}
+
+/** Distinguishes a crash loop from a user reboot — one esp_reset_reason(). */
+static const char* resetReasonName() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:  return "POWER_ON";
+    case ESP_RST_SW:       return "SW_RESTART";
+    case ESP_RST_PANIC:    return "PANIC";
+    case ESP_RST_INT_WDT:  return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT:      return "WDT";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_DEEPSLEEP:return "DEEP_SLEEP";
+    default:               return "UNKNOWN";
+  }
+}
+
+// ── diagnostics ────────────────────────────────────────────────────────────
+// The sketch owns the poll loop, so it owns these numbers. web.cpp only
+// formats them.
+
+uint16_t webNextPollSecs() {
+  const uint32_t now = millis();
+  return s_nextPollMs > now ? (uint16_t)((s_nextPollMs - now) / 1000) : 0;
+}
+
+void webCollectDiag(WebDiag& d) {
+  d.resetReason  = resetReasonName();
+  d.pollAgeS     = s_lastPollMs ? (millis() - s_lastPollMs) / 1000 : 0;
+  d.pollCode     = apiLastPollCode();
+  d.pollMs       = apiLastPollMs();
+  d.declGate     = s_declGate;
+  d.declFlight   = s_declFlight;
+  d.declNoProxy  = s_declNoProxy;
+  d.stale        = (g_net == NET_STALE);
+  d.proxySeq     = g_pendSeq;
+  d.logoHit      = logoCacheHits();
+  d.logoMiss     = logoCacheMisses();
 }

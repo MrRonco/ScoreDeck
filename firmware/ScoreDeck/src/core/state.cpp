@@ -299,3 +299,21 @@ bool favMoveUp(uint8_t i) {
   g_set.favs = out;
   return true;
 }
+
+void settingsFactoryReset() {
+  Preferences p;
+  p.begin(NVS_NS, false);
+  p.clear();
+  p.end();
+}
+
+const char* localClockNow() {
+  static char buf[12];
+  buf[0] = '\0';
+  const time_t now = time(nullptr);
+  if (now < 100000) return buf;          // clock not set yet
+  struct tm lt;
+  localtime_r(&now, &lt);
+  strftime(buf, sizeof buf, "%l:%M %p", &lt);
+  return buf[0] == ' ' ? buf + 1 : buf;
+}

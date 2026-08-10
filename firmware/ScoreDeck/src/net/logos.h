@@ -20,3 +20,7 @@ void logoTick();
 bool headshotRequest(const char* league, const char* athleteId);
 const lv_img_dsc_t* headshotGet(const char* athleteId);
 extern volatile bool g_headshotArrived;
+
+/** RAM cache effectiveness, for the diagnostics page. */
+uint16_t logoCacheHits();
+uint16_t logoCacheMisses();

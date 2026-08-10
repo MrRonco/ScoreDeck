@@ -27,3 +27,11 @@ bool apiPlayerStart(const char* league, const char* athleteId);
  *  Returns the HTTP status, or a negative code when it could not ask.
  *  Blocking and loop-context only — see the note on the definition. */
 int netProbeProxy(uint16_t* outMs);
+
+/** Relay one ALLOWLISTED path to the proxy for the browser portal. The caller
+ *  owns the allowlist — see the definition. Loop context only. */
+int netRelayGet(const String& path, String& out);
+
+/** The last state poll's HTTP status and round-trip, for diagnostics. */
+int      apiLastPollCode();
+uint16_t apiLastPollMs();

@@ -1,0 +1,621 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Franco Raso
+//
+// GENERATED FILE — do not edit. Source: portal/index.html
+// Regenerate with:  node tools/embed-portal.mjs
+//
+// Served straight from flash with sendContent_P, so it costs no heap. That
+// matters more than it looks: the web server runs inside the same loop() that
+// drives the display, so response time IS panel stall time, and building this
+// page into a String first would put 27.8 KB through the allocator on
+// every request.
+#pragma once
+#include <pgmspace.h>
+
+static const char PORTAL_HTML[] PROGMEM = R"SDHTML(<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ScoreDeck</title>
+<style>
+:root{
+  /* Lifted from firmware/ScoreDeck/src/ui/theme.h so the two surfaces are the
+     same material. The panel has no accent colour because 3,000 team colours
+     arrive as content; here the only team colour is a 3px swatch in the
+     picker, so status colour is allowed — but only for state, never decor. */
+  --plate:#0A0F18; --frost:#1A2432; --frost2:#141C28;
+  --ink:#F3F7FB; --ink2:#93A5B8; --ink3:#6E7E8F;
+  --edge:#2A3646; --edge-hi:#46566A;
+  --ok:#7FD4A0; --warn:#FFC061; --bad:#FF6472;
+  --r:10px; --tap:44px;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--plate);color:var(--ink);font:15px/1.5 var(--sans);
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+a{color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px 64px}
+header .wrap{padding-bottom:0}   /* the 64px tail is for page content, not the bar */
+
+header{position:sticky;top:0;z-index:5;background:rgba(10,15,24,.92);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--edge)}
+.top{display:flex;align-items:center;gap:14px;padding:14px 0;flex-wrap:wrap}
+.mark{font-weight:600;letter-spacing:.02em}
+.host{font:12px/1 var(--mono);color:var(--ink3)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;
+  font:500 11px/1.6 var(--mono);text-transform:uppercase;margin-left:auto}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--ok);background:rgba(127,212,160,.1)}
+.pill.warn{color:var(--warn);background:rgba(255,192,97,.1)}
+.pill.bad{color:var(--bad);background:rgba(255,100,114,.1)}
+nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav a{flex:0 0 auto;min-height:38px;display:flex;align-items:center;padding:0 14px;
+  border-radius:var(--r);text-decoration:none;color:var(--ink3);font-size:14px}
+nav a.on{background:var(--frost);color:var(--ink)}
+
+h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);
+  font-weight:500;margin:26px 0 10px}
+.card{background:var(--frost2);border:1px solid var(--edge);border-radius:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 28px rgba(0,0,0,.34);padding:6px 20px}
+.row{display:flex;align-items:center;gap:16px;min-height:var(--tap);padding:12px 0;
+  border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap}
+.row:first-child{border-top:0}
+.row .k{flex:1 1 220px;min-width:0}
+.row .k small{display:block;color:var(--ink3);font-size:12.5px;margin-top:2px}
+.row .v{flex:0 0 auto;display:flex;gap:8px;align-items:center}
+
+button,.btn{min-height:var(--tap);padding:0 16px;border-radius:var(--r);
+  border:1px solid var(--edge);background:var(--frost);color:var(--ink);
+  font:500 14px/1 var(--sans);cursor:pointer;transition:background .12s,border-color .12s}
+button:hover{background:#202C3C;border-color:var(--edge-hi)}
+button:active{transform:translateY(1px)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--edge-hi);outline-offset:2px}
+button.danger{border-color:rgba(255,100,114,.42);color:var(--bad)}
+button.ghost{background:transparent}
+button[disabled]{opacity:.45;cursor:default}
+
+input,select{width:100%;min-height:var(--tap);padding:0 12px;background:var(--plate);
+  border:1px solid var(--edge);border-radius:var(--r);color:var(--ink);
+  font:16px/1 var(--sans)}  /* 16px: iOS zooms the page below it */
+input[data-mono]{font-family:var(--mono);font-size:14px}
+label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
+.grid{display:grid;gap:14px}
+@media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}}
+@media(min-width:420px){.grid.four{grid-template-columns:1fr 1fr}}
+@media(min-width:1100px){.grid.four{grid-template-columns:repeat(4,1fr)}}
+.stat{background:var(--frost2);border:1px solid var(--edge);border-radius:12px;padding:14px 16px}
+.stat b{display:block;font-size:24px;font-variant-numeric:tabular-nums;margin-bottom:2px}
+.stat span{font:11px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+
+.seg{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r);overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent;color:var(--ink3);min-height:40px}
+.seg button[aria-pressed=true]{background:var(--frost);color:var(--ink)}
+.sw{appearance:none;width:52px;height:30px;border-radius:999px;background:var(--edge);
+  border:1px solid var(--edge-hi);position:relative;cursor:pointer;transition:background .15s;flex:0 0 auto}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+  background:var(--ink2);transition:transform .15s,background .15s}
+.sw:checked{background:var(--edge-hi)}
+.sw:checked::after{transform:translateX(22px);background:var(--ink)}
+
+.wrapx{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font:14px/1.5 var(--mono);font-variant-numeric:tabular-nums}
+th{text-align:left;font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink3);padding:0 12px 8px 0}
+td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,255,.05)}
+.sw3{display:inline-block;width:3px;height:14px;border-radius:2px;vertical-align:-2px;margin-right:8px}
+
+.banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-radius:12px;
+  padding:14px 18px;margin:16px 0;border:1px solid;font-size:14px}
+.banner.warn{border-color:rgba(255,192,97,.4);background:rgba(255,192,97,.08);color:var(--warn)}
+.banner.bad{border-color:rgba(255,100,114,.4);background:rgba(255,100,114,.08);color:var(--bad)}
+.banner button{margin-left:auto}
+.hint{color:var(--ink3);font-size:13px;margin:10px 0 0}
+.bar{height:6px;border-radius:3px;background:var(--edge);overflow:hidden;margin:10px 0}
+.bar i{display:block;height:100%;background:var(--edge-hi);width:0}
+.list{max-height:340px;overflow:auto}
+.item{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.05)}
+.item:first-child{border-top:0}
+.item .nm{flex:1;min-width:0}
+.item .nm b{display:block;font-weight:500}
+.item .nm span{color:var(--ink3);font:12px/1.4 var(--mono)}
+.view{display:none}.view.on{display:block}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header>
+  <div class="wrap">
+    <div class="top">
+      <span class="mark">ScoreDeck</span>
+      <span class="host" id="host"></span>
+      <span class="pill" id="net">…</span>
+    </div>
+    <nav id="nav"></nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="warn"></div>
+
+  <!-- BOARD -->
+  <section class="view" id="v-board">
+    <div class="grid four" id="stats"></div>
+    <h2>On the board now</h2>
+    <div class="card"><div class="wrapx"><table id="board">
+      <thead><tr><th>LG</th><th>Matchup</th><th>Score</th><th>Status</th><th>TV</th></tr></thead>
+      <tbody></tbody></table></div></div>
+    <p class="hint">Refreshes every 10 seconds while this tab is visible.</p>
+  </section>
+
+  <!-- TEAMS -->
+  <section class="view" id="v-teams">
+    <h2>Your teams <span id="favN" class="host"></span></h2>
+    <div class="card"><div id="favs" class="list"></div></div>
+    <p class="hint">Order breaks ties on the board — the first team wins.</p>
+
+    <h2>Add a team</h2>
+    <div class="card">
+      <div class="row"><div class="k"><input id="q" placeholder="Search 25 leagues…" autocomplete="off"></div></div>
+      <div class="row"><div class="k"><small id="catInfo">Catalog not loaded.</small></div>
+        <div class="v"><button id="loadCat">Load catalog</button></div></div>
+      <div id="results" class="list"></div>
+    </div>
+
+    <h2>Enter ids by hand</h2>
+    <div class="card"><div class="row">
+      <div class="k"><input id="favsRaw" data-mono placeholder="nhl:21,eng.1:359">
+        <small>Always available, even with no catalog and no proxy.</small></div>
+      <div class="v"><button id="saveRaw">Save</button></div>
+    </div></div>
+  </section>
+
+  <!-- ALERTS -->
+  <section class="view" id="v-alerts">
+    <h2>Alerts</h2>
+    <div class="card">
+      <div class="row"><div class="k">Score alerts
+        <small>A followed team takes over the screen. Everyone else gets a banner.</small></div>
+        <div class="v"><input type="checkbox" class="sw" id="alen"></div></div>
+      <div class="row"><div class="k">Open tense games automatically
+        <small>Power play, red zone, or a runner in scoring position with two out.</small></div>
+        <div class="v"><input type="checkbox" class="sw" id="focus"></div></div>
+    </div>
+
+    <h2>Quiet hours</h2>
+    <div class="card">
+      <div class="row"><div class="k">Enabled</div>
+        <div class="v"><input type="checkbox" class="sw" id="qen"></div></div>
+      <div class="row"><div class="k">From</div><div class="v"><input type="time" id="qfr" style="width:150px"></div></div>
+      <div class="row"><div class="k">To</div><div class="v"><input type="time" id="qto" style="width:150px"></div></div>
+      <div class="row"><div class="k"><small id="tznow"></small></div></div>
+    </div>
+    <p class="hint">Alerts lag the broadcast by 30–80 seconds either way — the proxy polls, it is not pushed.</p>
+    <div class="row"><div class="v"><button id="saveAlerts">Save</button></div></div>
+  </section>
+
+  <!-- NETWORK -->
+  <section class="view" id="v-network">
+    <h2>Wi-Fi</h2>
+    <div class="card">
+      <div class="row"><div class="k"><label>Network<input id="ssid" autocomplete="off"></label></div></div>
+      <div class="row"><div class="k"><label>Password<input id="wpass" type="password" autocomplete="new-password">
+        <small>Blank keeps the stored one. A single “-” clears it.</small></label></div></div>
+      <div class="row"><div class="k"><small>Saving reboots the panel.</small></div>
+        <div class="v"><button id="saveWifi" class="danger">Save &amp; reboot</button></div></div>
+    </div>
+
+    <h2>Proxy</h2>
+    <div class="card">
+      <div class="row"><div class="k"><label>URL<input id="proxy" data-mono placeholder="http://192.168.20.11:8787"></label></div></div>
+      <div class="row"><div class="k"><label>Token<input id="token" data-mono placeholder="unchanged">
+        <small>Blank keeps the stored one. A single “-” clears it.</small></label></div></div>
+      <div class="row"><div class="k">Reachability
+        <small id="reach">Not tested.</small></div>
+        <div class="v"><button id="probe">Test</button></div></div>
+    </div>
+
+    <h2>Region &amp; time</h2>
+    <div class="card">
+      <div class="row"><div class="k">Broadcast region
+        <small>Which channel a game is on depends where you are.</small></div>
+        <div class="v"><select id="rgn" style="width:200px"></select></div></div>
+      <div class="row"><div class="k"><label>Time zone<input id="tz" data-mono placeholder="EST5EDT,M3.2.0,M11.1.0">
+        <small>POSIX TZ. The panel shows its own clock under Alerts — check it after saving.</small></label></div></div>
+    </div>
+
+    <h2>Display</h2>
+    <div class="card">
+      <div class="row"><div class="k">Density
+        <small>Auto follows the number of games: roomy when quiet, dense when busy.</small></div>
+        <div class="v"><div class="seg" id="dens"></div></div></div>
+    </div>
+    <div class="row"><div class="v"><button id="saveNet">Save</button></div></div>
+  </section>
+
+  <!-- DIAGNOSTICS -->
+  <section class="view" id="v-diag">
+    <h2>Diagnostics <span class="host" id="diagAge"></span></h2>
+    <div class="grid four" id="diagStats"></div>
+    <h2>Detail</h2>
+    <div class="card"><div class="wrapx"><table id="diagTable"><tbody></tbody></table></div></div>
+    <p class="hint">Every counter here has a real increment site in the firmware. Anything
+      not yet wired shows a dash rather than a zero — a zero you cannot trust is worse than
+      no number, and it has cost this project days before.</p>
+  </section>
+
+  <!-- SYSTEM -->
+  <section class="view" id="v-system">
+    <h2>Firmware</h2>
+    <div class="card">
+      <div class="row"><div class="k">Running <small id="fwv"></small></div>
+        <div class="v"><input type="file" id="bin" accept=".bin" style="max-width:230px"></div></div>
+      <div class="row"><div class="k"><small id="otaMsg">Choose a .bin to flash.</small>
+        <div class="bar"><i id="otaBar"></i></div></div>
+        <div class="v"><button id="flash" disabled>Flash &amp; reboot</button></div></div>
+    </div>
+
+    <h2>Portal access</h2>
+    <div class="card"><div class="row">
+      <div class="k"><label>Password<input id="ppass" type="password" autocomplete="new-password">
+        <small>Protects this page and firmware updates. Blank keeps, “-” clears.
+          You can also clear it on the panel itself.</small></label></div>
+      <div class="v"><button id="savePass">Set</button></div>
+    </div></div>
+
+    <h2>Danger zone</h2>
+    <div class="card"><div class="row">
+      <div class="k"><small>Forget Wi-Fi and factory reset can only be undone at the panel.</small></div>
+      <div class="v">
+        <button id="reboot">Reboot</button>
+        <button id="forget" class="danger">Forget Wi-Fi</button>
+        <button id="reset" class="danger">Factory reset</button>
+      </div>
+    </div></div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c;
+  if (x != null) n.textContent = x; return n; };
+const VIEWS = [['board','Board'],['teams','Teams'],['alerts','Alerts'],
+               ['network','Network'],['diag','Diagnostics'],['system','System']];
+let CFG = {}, CAT = null, busy = false;
+
+/* Upstream strings reach this page. Everything user-visible goes in through
+   textContent, never innerHTML — the CSP is a backstop, not the plan. */
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.text()) || r.status);
+  const t = r.headers.get('content-type') || '';
+  return t.includes('json') ? r.json() : r.text();
+}
+/* The status pill is global chrome — it must not go stale just because you
+   are looking at a different tab. */
+function paintNet(s) {
+  $('#net').className = 'pill ' + (s.net === 4 ? 'ok' : s.net === 5 ? 'warn' : 'bad');
+  $('#net').textContent = ['booting','no wi-fi','no proxy','error','live','stale'][s.net] || '?';
+}
+function toast(msg, bad) {
+  const b = el('div', 'banner ' + (bad ? 'bad' : 'warn'), msg);
+  $('#warn').prepend(b);
+  setTimeout(() => b.remove(), 4000);
+}
+
+/* ---------- routing ---------- */
+function route() {
+  const id = (location.hash.replace('#/', '') || 'board');
+  VIEWS.forEach(([v]) => {
+    $('#v-' + v).classList.toggle('on', v === id);
+    $('#nav a[href="#/' + v + '"]').classList.toggle('on', v === id);
+  });
+  if (id === 'board') refreshBoard();
+  if (id === 'diag') refreshDiag();
+}
+VIEWS.forEach(([v, label]) => {
+  const a = el('a', '', label); a.href = '#/' + v; $('#nav').append(a);
+});
+addEventListener('hashchange', route);
+
+/* ---------- config ---------- */
+const REGIONS = [['us','United States'],['ca','Canada'],['gb','United Kingdom'],
+  ['ie','Ireland'],['au','Australia'],['nz','New Zealand'],['de','Germany'],
+  ['fr','France'],['es','Spain'],['it','Italy'],['mx','Mexico'],['in','India']];
+const DENS = ['Roomy','Standard','Dense','Auto'];
+
+async function loadConfig() {
+  CFG = await api('/api/config');
+  $('#host').textContent = CFG.host + ' · ' + CFG.ip;
+  $('#fwv').textContent = CFG.v;
+  $('#ssid').value = CFG.ssid || '';
+  $('#proxy').value = CFG.proxy || '';
+  $('#token').placeholder = CFG.hasToken ? 'unchanged' : 'not set';
+  $('#ppass').placeholder = CFG.hasPass ? 'unchanged' : 'not set';
+  $('#tz').value = CFG.tz || '';
+  $('#alen').checked = !!CFG.alen;
+  $('#focus').checked = !!CFG.focus;
+  $('#qen').checked = !!CFG.qen;
+  $('#qfr').value = hhmm(CFG.qfr); $('#qto').value = hhmm(CFG.qto);
+  $('#favsRaw').value = CFG.favs || '';
+  $('#tznow').textContent = CFG.now
+    ? 'The panel currently reads ' + CFG.now + '. If that is wrong, the time zone is.'
+    : 'The panel has no clock yet.';
+
+  const r = $('#rgn'); r.textContent = '';
+  REGIONS.forEach(([c, n]) => { const o = el('option', '', n + ' (' + c + ')');
+    o.value = c; if (c === CFG.rgn) o.selected = true; r.append(o); });
+
+  const d = $('#dens'); d.textContent = '';
+  DENS.forEach((n, i) => {
+    const b = el('button', '', n);
+    b.setAttribute('aria-pressed', String(i === CFG.dens));
+    b.onclick = () => { CFG.dens = i; [...d.children].forEach((c, j) =>
+      c.setAttribute('aria-pressed', String(j === i))); };
+    d.append(b);
+  });
+
+  if (!CFG.hasPass) {
+    const b = el('div', 'banner warn');
+    b.append(el('span', '', 'No portal password. Anyone on this network can reflash this panel.'));
+    const go = el('button', '', 'Set one'); go.onclick = () => location.hash = '#/system';
+    b.append(go); $('#warn').append(b);
+  }
+  renderFavs();
+}
+const hhmm = m => String((m / 60) | 0).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+const mins = s => { const [h, m] = (s || '0:0').split(':').map(Number); return h * 60 + m; };
+
+/* ---------- board ---------- */
+async function refreshBoard() {
+  let s;
+  try { s = await api('/api/state'); } catch { return; }
+  paintNet(s);
+  const st = $('#stats'); st.textContent = '';
+  [['Games', s.games], ['Live', s.live], ['Next poll', s.next + ' s'],
+   ['Heap', ((s.heap / 1024) | 0) + ' K']].forEach(([k, v]) => {
+    const c = el('div', 'stat'); c.append(el('b', '', String(v)), el('span', '', k)); st.append(c);
+  });
+
+  const tb = $('#board tbody'); tb.textContent = '';
+  (s.b || []).forEach(g => {
+    const tr = el('tr');
+    tr.append(el('td', '', g.l.toUpperCase()));
+    const td = el('td');
+    const sw = el('span', 'sw3'); sw.style.background = '#' + (g.ac || '5D6D7E');
+    td.append(sw, document.createTextNode(g.a + ' @ ' + g.h));
+    tr.append(td);
+    tr.append(el('td', '', g.g === 0 ? '–' : g.as + ' – ' + g.hs));
+    tr.append(el('td', '', g.st + (g.f ? '  ★' : '')));
+    tr.append(el('td', '', g.b || ''));
+    tb.append(tr);
+  });
+}
+
+/* ---------- teams ---------- */
+function favList() { return ($('#favsRaw').value || '').split(',').map(s => s.trim()).filter(Boolean); }
+function setFavs(list) { $('#favsRaw').value = list.join(','); renderFavs(); }
+
+function nameFor(key) {
+  if (!CAT) return null;
+  const [lg, id] = key.split(':');
+  const row = CAT.t.find(r => r[0] === lg);
+  const t = row && row[3].find(x => x[0] === id);
+  return t ? { n: t[2], a: t[1], c: t[3], lg: row[1] } : null;
+}
+
+function renderFavs() {
+  const list = favList(), box = $('#favs');
+  box.textContent = '';
+  $('#favN').textContent = list.length + ' of 20';
+  if (!list.length) { box.append(el('p', 'hint', 'None yet. Search below, or type ids by hand.')); return; }
+  list.forEach((key, i) => {
+    const it = el('div', 'item');
+    const meta = nameFor(key);
+    const sw = el('span', 'sw3');
+    sw.style.background = meta ? '#' + Number(meta.c || 0).toString(16).padStart(6, '0') : 'var(--edge-hi)';
+    sw.style.height = '28px';
+    const nm = el('div', 'nm');
+    nm.append(el('b', '', meta ? meta.n : key), el('span', '', meta ? meta.a + ' · ' + meta.lg : 'id only'));
+    const up = el('button', 'ghost', '↑'); up.style.minHeight = '38px';
+    up.onclick = () => { if (!i) return; const l = favList(); [l[i-1], l[i]] = [l[i], l[i-1]]; setFavs(l); };
+    const rm = el('button', 'ghost', '✕'); rm.style.minHeight = '38px';
+    rm.onclick = () => { const l = favList(); l.splice(i, 1); setFavs(l); };
+    it.append(sw, nm, up, rm);
+    box.append(it);
+  });
+}
+
+async function loadCatalog() {
+  const cached = localStorage.getItem('sd.cat');
+  if (cached) { try { CAT = JSON.parse(cached); } catch {} }
+  if (CAT) { $('#catInfo').textContent = catInfoText(); renderFavs(); return; }
+  if (!CFG.proxy) { toast('No proxy configured — search needs one.', true); return; }
+  $('#catInfo').textContent = 'Loading…';
+  const url = CFG.proxy.replace(/\/$/, '') + '/v1/catalog?teams=1';
+  const headers = CFG.token ? { authorization: 'Bearer ' + CFG.token } : {};
+  try {
+    const r = await fetch(url, { headers, credentials: 'omit' });
+    if (!r.ok) throw new Error(r.status);
+    CAT = await r.json();
+  } catch {
+    // The browser may simply be on a different network than the proxy, which
+    // is not the same as the proxy being down — say so, and try the device.
+    $('#catInfo').textContent = 'Direct fetch failed — trying via the panel…';
+    try { CAT = await api('/api/relay?p=' + encodeURIComponent('/v1/catalog?teams=1')); }
+    catch { $('#catInfo').textContent = 'Could not reach the proxy from here or from the panel.';
+            return; }
+  }
+  try { localStorage.setItem('sd.cat', JSON.stringify(CAT)); } catch {}
+  $('#catInfo').textContent = catInfoText();
+  renderFavs();
+}
+function catInfoText() {
+  const n = CAT.t.reduce((a, r) => a + r[3].length, 0);
+  return n.toLocaleString() + ' teams across ' + CAT.t.length + ' leagues, cached here.';
+}
+
+let searchTimer;
+$('#q').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(search, 120); };
+function search() {
+  const q = $('#q').value.trim().toLowerCase(), box = $('#results');
+  box.textContent = '';
+  if (!q) return;
+  if (!CAT) { box.append(el('p', 'hint', 'Load the catalog first.')); return; }
+  let n = 0;
+  for (const [lg, label, , teams] of CAT.t) {
+    for (const [id, ab, nm, col] of teams) {
+      if (n >= 40) break;
+      if (!nm.toLowerCase().includes(q) && !ab.toLowerCase().includes(q)) continue;
+      n++;
+      const key = lg + ':' + id;
+      const it = el('div', 'item');
+      const sw = el('span', 'sw3');
+      sw.style.background = '#' + Number(col || 0).toString(16).padStart(6, '0');
+      sw.style.height = '28px';
+      const d = el('div', 'nm');
+      d.append(el('b', '', nm), el('span', '', ab + ' · ' + label));
+      const add = el('button', '', favList().includes(key) ? 'Added' : 'Add');
+      add.disabled = favList().includes(key) || favList().length >= 20;
+      add.onclick = () => { const l = favList(); l.push(key); setFavs(l); add.textContent = 'Added'; add.disabled = true; };
+      it.append(sw, d, add);
+      box.append(it);
+    }
+  }
+  if (!n) box.append(el('p', 'hint', 'Nothing matched.'));
+}
+$('#loadCat').onclick = loadCatalog;
+$('#saveRaw').onclick = () => postFavs();
+
+async function postFavs() {
+  try {
+    await api('/api/favs', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ favs: favList().join(',') }) });
+    toast('Teams saved.');
+  } catch (e) { toast(String(e.message || e), true); }
+}
+
+/* ---------- saves ---------- */
+async function postConfig(fields, msg) {
+  if (busy) return; busy = true;
+  try {
+    await api('/api/config', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(fields) });
+    toast(msg || 'Saved.');
+    await loadConfig();
+  } catch (e) { toast(String(e.message || e), true); }
+  busy = false;
+}
+$('#saveAlerts').onclick = () => postConfig({
+  alen: $('#alen').checked ? 1 : 0, focus: $('#focus').checked ? 1 : 0,
+  qen: $('#qen').checked ? 1 : 0, qfr: mins($('#qfr').value), qto: mins($('#qto').value) });
+$('#saveNet').onclick = () => postConfig({
+  proxy: $('#proxy').value.trim(), token: $('#token').value,
+  rgn: $('#rgn').value, tz: $('#tz').value.trim(), dens: CFG.dens });
+$('#savePass').onclick = () => postConfig({ ppass: $('#ppass').value }, 'Password updated.');
+$('#saveWifi').onclick = async () => {
+  if (!confirm('Save Wi-Fi and reboot the panel?')) return;
+  try {
+    await api('/api/wifi', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ssid: $('#ssid').value.trim(), pass: $('#wpass').value }) });
+    toast('Rebooting — this page will stop responding.');
+  } catch (e) { toast(String(e.message || e), true); }
+};
+$('#probe').onclick = async () => {
+  $('#reach').textContent = 'Testing…';
+  try {
+    const r = await api('/api/probe');
+    $('#reach').textContent = r.code > 0
+      ? 'From the panel: HTTP ' + r.code + ' in ' + r.ms + ' ms'
+      : 'The panel could not reach it.';
+  } catch { $('#reach').textContent = 'Test failed.'; }
+};
+const danger = (id, path, q) => $(id).onclick = async () => {
+  if (!confirm(q)) return;
+  try { await api(path, { method: 'POST' }); toast('Done — the panel is restarting.'); }
+  catch (e) { toast(String(e.message || e), true); }
+};
+danger('#reboot', '/api/reboot', 'Reboot the panel?');
+danger('#forget', '/api/forget', 'Forget the Wi-Fi network? You will have to re-enter it on the panel.');
+danger('#reset',  '/api/reset',  'Erase Wi-Fi, proxy, token and every favourite?');
+
+/* ---------- OTA ---------- */
+$('#bin').onchange = () => {
+  const f = $('#bin').files[0];
+  if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    // Two client-side checks that cost nothing and catch the two failure modes
+    // that leave a panel looking bricked.
+    const magic = new Uint8Array(fr.result)[0];
+    if (magic !== 0xE9) { $('#otaMsg').textContent = 'That is not an ESP32 firmware image.';
+                          $('#flash').disabled = true; return; }
+    if (CFG.slot && f.size > CFG.slot) {
+      $('#otaMsg').textContent = 'Too large for the free slot (' + CFG.slot + ' bytes).';
+      $('#flash').disabled = true; return;
+    }
+    $('#otaMsg').textContent = f.name + ' · ' + f.size.toLocaleString() + ' bytes · header OK';
+    $('#flash').disabled = false;
+  };
+  fr.readAsArrayBuffer(f.slice(0, 4));
+};
+$('#flash').onclick = () => {
+  const f = $('#bin').files[0]; if (!f) return;
+  $('#flash').disabled = true;
+  const fd = new FormData(); fd.append('f', f);
+  const x = new XMLHttpRequest();
+  x.open('POST', '/update');
+  x.upload.onprogress = e => {
+    if (!e.lengthComputable) return;
+    const p = (e.loaded / e.total * 100) | 0;
+    $('#otaBar').style.width = p + '%';
+    $('#otaMsg').textContent = p + '% — do not power off. The screen will shake; that is expected.';
+  };
+  x.onload = () => { $('#otaMsg').textContent = x.status === 200
+    ? 'Flashed. Rebooting.' : 'Failed: ' + x.responseText; };
+  x.onerror = () => { $('#otaMsg').textContent = 'Upload failed.'; };
+  x.send(fd);
+};
+
+/* ---------- diagnostics ---------- */
+async function refreshDiag() {
+  let d; try { d = await api('/api/diag'); } catch { return; }
+  const g = $('#diagStats'); g.textContent = '';
+  [['Heap free', ((d.heap / 1024) | 0) + ' K'], ['Largest block', ((d.largest / 1024) | 0) + ' K'],
+   ['TLS gate', d.gate ? 'OPEN' : 'SHUT'], ['Wi-Fi', d.rssi + ' dBm']].forEach(([k, v]) => {
+    const c = el('div', 'stat'); c.append(el('b', '', String(v)), el('span', '', k)); g.append(c);
+  });
+  const rows = [
+    ['Uptime', d.up + ' s'],
+    ['Reset reason', d.reset],
+    ['Wi-Fi sleep', d.sleep + (d.sleep === 0 ? '  (must be 0)' : '  — SHOULD BE 0')],
+    ['Last poll', d.pollAge + ' s ago · HTTP ' + d.pollCode + ' · ' + d.pollMs + ' ms'],
+    ['Next poll', 'in ' + d.next + ' s'],
+    ['Polls declined', d.declGate + ' gate · ' + d.declFlight + ' in-flight · ' + d.declNoProxy + ' no proxy'],
+    ['Upstream stale', d.stale ? 'yes' : 'no'],
+    ['Alert sequence', 'committed ' + d.seq + ' · proxy ' + d.proxySeq],
+    ['Logo cache', d.logoHit + ' hit · ' + d.logoMiss + ' miss'],
+    ['Board', d.games + ' games · ' + d.live + ' live'],
+  ];
+  const tb = $('#diagTable tbody'); tb.textContent = '';
+  rows.forEach(([k, v]) => { const tr = el('tr');
+    tr.append(el('td', '', k), el('td', '', String(v))); tb.append(tr); });
+  $('#diagAge').textContent = 'updated just now';
+}
+
+let timer;
+function poll() {
+  clearInterval(timer);
+  if (document.hidden) return;
+  timer = setInterval(() => {
+    const h = location.hash;
+    if (h.includes('board')) refreshBoard();
+    else if (h.includes('diag')) refreshDiag();
+  }, 10000);
+}
+document.addEventListener('visibilitychange', poll);
+
+loadConfig().then(() => { route(); poll(); api('/api/state').then(paintNet).catch(() => {}); }).catch(e => {
+  document.body.prepend(el('div', 'banner bad', 'Could not load settings: ' + e.message));
+});
+</script>
+)SDHTML";

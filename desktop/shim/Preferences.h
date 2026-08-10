@@ -23,6 +23,11 @@ class Preferences {
   // ScoreDeck stores density, quiet-hour minutes and the alert sequence as
   // fixed-width integers. They share the integer map — the widths only matter
   // to NVS, and the harness has no NVS.
+  // Factory reset. The harness has no NVS, so this just empties the maps —
+  // enough for the settings screen and the portal to be exercised.
+  bool clear() { s.clear(); n.clear(); return true; }
+  bool remove(const char* k) { s.erase(k); n.erase(k); return true; }
+
   uint8_t  getUChar (const char* k, uint8_t d = 0)  { auto i = n.find(k); return i == n.end() ? d : (uint8_t)i->second; }
   uint16_t getUShort(const char* k, uint16_t d = 0) { auto i = n.find(k); return i == n.end() ? d : (uint16_t)i->second; }
   uint32_t getULong (const char* k, uint32_t d = 0) { auto i = n.find(k); return i == n.end() ? d : (uint32_t)i->second; }
