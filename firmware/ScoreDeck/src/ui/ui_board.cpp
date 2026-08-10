@@ -51,6 +51,8 @@ struct TileUI {
   lv_obj_t* badgeLbl[2];
   lv_obj_t* logo[2];
   char     cLogoKey[2][10];   // league:abbr the logo was set FOR
+  bool     cLogoVis[2];
+  bool     cBadgeVis[2];
   lv_obj_t* abbr[2];
   lv_obj_t* rec[2];
   lv_obj_t* score[2];
@@ -280,6 +282,9 @@ static void buildTile(TileUI& t, int idx) {
   memset(t.cBcast, 0, sizeof t.cBcast);
   t.cLogoKey[0][0] = t.cLogoKey[1][0] = '\0';
   t.cFav[0] = t.cFav[1] = false;
+  // Must match the objects' real state at build time: badge visible, logo not.
+  t.cBadgeVis[0] = t.cBadgeVis[1] = true;
+  t.cLogoVis[0] = t.cLogoVis[1] = false;
   t.cScore[0] = t.cScore[1] = -1;
   t.cColor[0] = t.cColor[1] = 0xFFFFFFFF;
   t.cEdge = 0xFFFFFFFF;
@@ -707,10 +712,25 @@ void uiBoardRefresh() {
     // edge light are identical, only the contents differ.
     const bool isField = (g.model == SM_LEADERBOARD || g.model == SM_GRID);
     const bool isSet   = (g.model == SM_SET);
-    lv_obj_t* const twoSided[] = { t.badge[0], t.badge[1], t.abbr[0], t.abbr[1],
+    // NOTE the badges are NOT in this list. This loop runs on every refresh, so
+    // including them meant the badge was un-hidden every time — straight back
+    // out from under the logo that had just replaced it. The abbreviation then
+    // showed through the logo drawn on top of it.
+    //
+    // Badge and logo visibility belong to exactly one place: the logo block
+    // below. Two owners of one flag is not a race here, it is just a bug that
+    // repaints forever.
+    lv_obj_t* const twoSided[] = { t.abbr[0], t.abbr[1],
                                    t.rec[0], t.rec[1], t.score[0], t.score[1] };
     for (lv_obj_t* o : twoSided)
       isField ? lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+    if (isField) {
+      for (int k = 0; k < 2; k++) {
+        setHiddenCached(t.badge[k], &t.cBadgeVis[k], true);
+        setHiddenCached(t.logo[k],  &t.cLogoVis[k],  true);
+        setHiddenCached(t.favRing[k], &t.cFav[k], true);
+      }
+    }
     lv_obj_t* const fieldOnly[] = { t.fldTitle, t.fldPos[0], t.fldPos[1], t.fldPos[2],
                                     t.fldName[0], t.fldName[1], t.fldName[2],
                                     t.fldVal[0], t.fldVal[1], t.fldVal[2] };
@@ -767,21 +787,20 @@ void uiBoardRefresh() {
 
       // Logo when we have one, colour badge otherwise. Change-cached: setting
       // the same source still repaints, and that is what fights the panel DMA.
+      // Keyed on the TEAM, not on the descriptor pointer. Slots are a static
+      // array, so evicting one and refilling it with another club hands back
+      // the same pointer — a pointer-keyed cache would call that "unchanged"
+      // and leave one team's logo sitting beside another team's name.
       const lv_img_dsc_t* img = logoGet(g.league, side[k]->abbr);
       char lkey[10];
       snprintf(lkey, sizeof lkey, "%s%s", img ? "" : "-", side[k]->abbr);
       if (strncmp(t.cLogoKey[k], lkey, sizeof t.cLogoKey[k] - 1) != 0) {
         strncpy(t.cLogoKey[k], lkey, sizeof t.cLogoKey[k] - 1);
         t.cLogoKey[k][sizeof t.cLogoKey[k] - 1] = '\0';
-        if (img) {
-          lv_img_set_src(t.logo[k], img);
-          lv_obj_clear_flag(t.logo[k], LV_OBJ_FLAG_HIDDEN);
-          lv_obj_add_flag(t.badge[k], LV_OBJ_FLAG_HIDDEN);
-        } else {
-          lv_obj_add_flag(t.logo[k], LV_OBJ_FLAG_HIDDEN);
-          lv_obj_clear_flag(t.badge[k], LV_OBJ_FLAG_HIDDEN);
-        }
+        if (img) lv_img_set_src(t.logo[k], img);
       }
+      setHiddenCached(t.logo[k],  &t.cLogoVis[k],  img == nullptr);
+      setHiddenCached(t.badge[k], &t.cBadgeVis[k], img != nullptr);
     }
 
     // Tennis: the per-set scores go where the record line sits, so they never

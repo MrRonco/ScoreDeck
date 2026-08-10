@@ -77,38 +77,51 @@ volatile bool g_headshotArrived = false;
 //
 // SDLOGO=0 restores the old behaviour when the badge path is what you want to
 // look at.
-static uint8_t*     s_fakeData;
-static lv_img_dsc_t s_fakeDsc;
+// A SMALL POOL, keyed by team — not one shared image. A single shared logo
+// would render identically on every tile, which is exactly the failure mode
+// this is here to catch: a cache that hands the same descriptor back for
+// different teams looks completely correct if the fixture cannot tell teams
+// apart either.
+#define FAKE_N 8
+static uint8_t*     s_fakeData[FAKE_N];
+static lv_img_dsc_t s_fakeDsc[FAKE_N];
 
 const lv_img_dsc_t* logoGet(const char*, const char* abbr) {
   if (!abbr || !*abbr) return nullptr;
   const char* env = getenv("SDLOGO");
   if (env && env[0] == '0') return nullptr;
 
-  if (!s_fakeData) {
-    // 48x48 TRUE_COLOR_ALPHA, same shape the proxy serves: a ring so the
-    // bounds of the image are unmistakable if anything clips or overlaps.
+  uint32_t h = 2166136261u;                       // FNV-1a over the abbr
+  for (const char* p = abbr; *p; p++) { h ^= (uint8_t)*p; h *= 16777619u; }
+  const int idx = (int)(h % FAKE_N);
+
+  if (!s_fakeData[idx]) {
     const int W = 48;
-    s_fakeData = (uint8_t*)calloc(W * W, 3);
+    s_fakeData[idx] = (uint8_t*)calloc(W * W, 3);
+    // A distinct wedge count per slot, so two teams sharing a descriptor is
+    // visible at a glance rather than something you have to measure.
+    const int wedges = idx + 2;
     for (int y = 0; y < W; y++) {
       for (int x = 0; x < W; x++) {
-        const int dx = x - W / 2, dy = y - W / 2;
-        const int d2 = dx * dx + dy * dy;
-        const bool on = d2 < (W / 2) * (W / 2) && d2 > (W / 4) * (W / 4);
-        uint8_t* px = s_fakeData + (y * W + x) * 3;
-        const uint16_t c = on ? 0xFFFF : 0x39E7;
+        const float dx = x - W / 2.0f, dy = y - W / 2.0f;
+        const float d2 = dx * dx + dy * dy;
+        const bool inside = d2 < (W / 2.0f) * (W / 2.0f);
+        const float ang = atan2f(dy, dx) + 3.14159f;
+        const bool on = inside && ((int)(ang / (6.2832f / wedges)) & 1);
+        uint8_t* px = s_fakeData[idx] + (y * W + x) * 3;
+        const uint16_t c = on ? 0xFFFF : 0x4A69;
         px[0] = c & 0xFF; px[1] = c >> 8;
-        px[2] = d2 < (W / 2) * (W / 2) ? 0xFF : 0x00;
+        px[2] = inside ? 0xFF : 0x00;
       }
     }
-    s_fakeDsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
-    s_fakeDsc.header.always_zero = 0;
-    s_fakeDsc.header.w = W;
-    s_fakeDsc.header.h = W;
-    s_fakeDsc.data_size = W * W * 3;
-    s_fakeDsc.data = s_fakeData;
+    s_fakeDsc[idx].header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+    s_fakeDsc[idx].header.always_zero = 0;
+    s_fakeDsc[idx].header.w = W;
+    s_fakeDsc[idx].header.h = W;
+    s_fakeDsc[idx].data_size = W * W * 3;
+    s_fakeDsc[idx].data = s_fakeData[idx];
   }
-  return &s_fakeDsc;
+  return &s_fakeDsc[idx];
 }
 bool logoKnown(const char*, const char*)                  { return true; }
 bool logoRequest(const char*, const char*)                { return false; }
