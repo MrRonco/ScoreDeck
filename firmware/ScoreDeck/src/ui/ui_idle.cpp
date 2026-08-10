@@ -11,6 +11,7 @@
 #include "theme.h"
 #include "../config.h"
 #include "../core/state.h"
+#include "../net/logos.h"
 #include <time.h>
 
 static lv_obj_t* s_root;
@@ -25,6 +26,11 @@ static lv_obj_t* s_nextAway;
 static lv_obj_t* s_nextHome;
 static lv_obj_t* s_nextBadgeA;
 static lv_obj_t* s_nextBadgeH;
+// The idle screen is the one on screen for twenty hours a day and it was the
+// only one still drawing colour badges — the board had used real logos for
+// weeks. Same fallback rule: a logo when one is cached, the badge otherwise.
+static lv_obj_t* s_nextLogoA;
+static lv_obj_t* s_nextLogoH;
 static lv_obj_t* s_nextLblA;
 static lv_obj_t* s_nextLblH;
 static lv_obj_t* s_countdown;
@@ -43,6 +49,14 @@ static char s_cClock[8], s_cDate[24], s_cSummary[64], s_cCountdown[16], s_cMeta[
 static char s_cNextId[12];
 
 lv_obj_t* uiIdleRoot() { return s_root; }
+
+static void onIdleSettings(lv_event_t*) { uiSettingsOpen(); }
+static void onIdleNews(lv_event_t*)     { uiNewsOpen(); }
+static void onIdleTable(lv_event_t*) {
+  // Whichever league has the most going on — nearly always the one you meant.
+  const char* lg = g_leagueCount ? g_leagues[0].slug : "nhl";
+  uiStandingsOpen(lg);
+}
 
 static lv_obj_t* lbl(lv_obj_t* p, int x, int y, lv_color_t c, const lv_font_t* f,
                      lv_text_align_t align = LV_TEXT_ALIGN_LEFT, int w = 0) {
@@ -76,9 +90,13 @@ void uiIdleInit(lv_obj_t* parent) {
 
   // ── header strip ─────────────────────────────────────────────────────────
   lv_obj_t* bar = glassPanel(s_root, 0, 0, SCR_W, BAR_H, 0);
-  lv_obj_t* brand = lbl(bar, 18, 17, C_INK2, F_MICRO);
+  // Centred from the face's own line height, not a hardcoded y — BAR_H is 44,
+  // 48 or 58 depending on density.
+  const int hdrY = (BAR_H - (int)lv_font_get_line_height(F_MICRO)) / 2;
+  lv_obj_t* brand = lbl(bar, 18, hdrY, C_INK2, F_MICRO);
   lv_label_set_text(brand, "SCOREDECK");
-  s_hdrStatus = lbl(bar, SCR_W - 18 - 320, 17, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 320);
+  // Stops short of the three buttons at the right — they end at SCR_W-18-148.
+  s_hdrStatus = lbl(bar, SCR_W - 174 - 260, hdrY, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 260);
 
   // ── clock block ──────────────────────────────────────────────────────────
   lv_obj_t* clockCard = glassPanel(s_root, 16, 60, 372, 190, 12);
@@ -96,18 +114,58 @@ void uiIdleInit(lv_obj_t* parent) {
   lv_obj_set_style_bg_opa(s_nextEdge, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(s_nextEdge, 2, 0);
 
+  // Standings, news and settings were reachable only from the board — and the
+  // board is not what is on screen for most of the day. The same three buttons
+  // belong here.
+  auto navBtn = [&](int x, const char* text, lv_event_cb_t cb) {
+    lv_obj_t* b = lv_btn_create(s_root);
+    lv_obj_set_size(b, 44, 36);
+    lv_obj_set_pos(b, x, 6);
+    lv_obj_set_style_bg_color(b, C_EDGE, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(b, C_EDGE_HI, 0);
+    lv_obj_set_style_border_width(b, 1, 0);
+    lv_obj_set_style_radius(b, 8, 0);
+    lv_obj_set_style_bg_color(b, C_EDGE_HI, LV_STATE_PRESSED);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* l = lv_label_create(b);
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_font(l, F_MICRO, 0);
+    lv_obj_set_style_text_color(l, C_INK2, 0);
+    lv_obj_center(l);
+  };
+  navBtn(SCR_W - 18 - 44,  "SET",  onIdleSettings);
+  navBtn(SCR_W - 18 - 96,  "NEWS", onIdleNews);
+  navBtn(SCR_W - 18 - 148, "TBL",  onIdleTable);
+
   lv_obj_t* nextHdr = lbl(nextCard, 22, 14, C_INK3, F_MICRO);
   lv_label_set_text(nextHdr, "NEXT UP");
+
+  // Same geometry rules as the board: no explicit size on the image, because
+  // in LVGL 8.3 that CLIPS the source instead of scaling it. SIZE_MODE_REAL
+  // plus a 0,0 pivot lands it exactly where the badge would be.
+  auto logoAt = [&](int x, int y) {
+    lv_obj_t* im = lv_img_create(nextCard);
+    lv_img_set_antialias(im, true);
+    lv_img_set_zoom(im, (uint16_t)((256 * 34) / 48));
+    lv_img_set_pivot(im, 0, 0);
+    lv_img_set_size_mode(im, LV_IMG_SIZE_MODE_REAL);
+    lv_obj_set_pos(im, x, y);
+    lv_obj_add_flag(im, LV_OBJ_FLAG_HIDDEN);
+    return im;
+  };
 
   s_nextBadgeA = teamBadge(nextCard, "", 0x5D6D7E, 34);
   lv_obj_set_pos(s_nextBadgeA, 22, 40);
   s_nextLblA = lv_obj_get_child(s_nextBadgeA, 0);
+  s_nextLogoA = logoAt(22, 40);
   s_nextAway = lbl(nextCard, 64, 48, C_INK, F_ABBR);
 
   s_nextHome = lbl(nextCard, 150, 48, C_INK2, F_ABBR);
   s_nextBadgeH = teamBadge(nextCard, "", 0x5D6D7E, 34);
   lv_obj_set_pos(s_nextBadgeH, 210, 40);
   s_nextLblH = lv_obj_get_child(s_nextBadgeH, 0);
+  s_nextLogoH = logoAt(210, 40);
 
   s_countdown = lbl(nextCard, 22, 92, C_INK, F_DISPLAY);   // carries "H"/"M"/"NOW"
   s_nextMeta  = lbl(nextCard, 22, 156, C_INK3, F_MICRO);
@@ -196,12 +254,29 @@ void uiIdleTick() {
     strncpy(s_cNextId, nx->id, sizeof s_cNextId - 1);
     lv_label_set_text(s_nextAway, nx->away.abbr);
     lv_label_set_text(s_nextHome, nx->home.abbr);
+  }
+  // Outside the id cache on purpose: a logo arrives LATER than the fixture it
+  // belongs to, so gating this on "the game changed" left the badge showing
+  // until the next fixture came round.
+  {
+    const lv_img_dsc_t* la = logoGet(nx->league, nx->away.abbr);
+    const lv_img_dsc_t* lh = logoGet(nx->league, nx->home.abbr);
+    if (la) { lv_img_set_src(s_nextLogoA, la); lv_obj_clear_flag(s_nextLogoA, LV_OBJ_FLAG_HIDDEN); }
+    else    { lv_obj_add_flag(s_nextLogoA, LV_OBJ_FLAG_HIDDEN); }
+    if (lh) { lv_img_set_src(s_nextLogoH, lh); lv_obj_clear_flag(s_nextLogoH, LV_OBJ_FLAG_HIDDEN); }
+    else    { lv_obj_add_flag(s_nextLogoH, LV_OBJ_FLAG_HIDDEN); }
+    la ? lv_obj_add_flag(s_nextBadgeA, LV_OBJ_FLAG_HIDDEN)
+       : lv_obj_clear_flag(s_nextBadgeA, LV_OBJ_FLAG_HIDDEN);
+    lh ? lv_obj_add_flag(s_nextBadgeH, LV_OBJ_FLAG_HIDDEN)
+       : lv_obj_clear_flag(s_nextBadgeH, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(s_nextLblA, nx->away.abbr);
     lv_label_set_text(s_nextLblH, nx->home.abbr);
-    lv_obj_set_style_bg_color(s_nextBadgeA, lv_color_hex(nx->away.color), 0);
-    lv_obj_set_style_bg_color(s_nextBadgeH, lv_color_hex(nx->home.color), 0);
+    // Through the normaliser, like everywhere else: setting bg_color directly
+    // leaves the label ink unmatched, and a Pittsburgh badge a hole in the card.
+    teamBadgeSet(s_nextBadgeA, nx->away.color);
+    teamBadgeSet(s_nextBadgeH, nx->home.color);
     lv_obj_set_style_bg_color(s_nextEdge,
-        lv_color_hex(nx->isFav ? nx->home.color : 0x2A3646), 0);
+        nx->isFav ? lv_color_hex(teamInk(nx->home.color)) : C_EDGE, 0);
   }
 
   // Countdown is the hero — it is the reason this screen exists.

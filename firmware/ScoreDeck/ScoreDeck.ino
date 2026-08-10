@@ -376,7 +376,15 @@ void loop() {
     applyLineup();
     // Repaint once when a logo lands, not on every tick — a pointless
     // traversal every 4 ms is the shape of the bug in INHERITED_RULES.md 8.
-    if (g_logoArrived) { g_logoArrived = false; uiBoardRefresh(); }
+    if (g_logoArrived) {
+      g_logoArrived = false;
+      uiBoardRefresh();
+      // The idle screen draws logos too, and it only picks them up when the
+      // NEXT UP game changes — which it will not, because the logo arriving is
+      // not a change of game. Without this the badge stays until the fixture
+      // does. Same shape as the headshot flag.
+      if (uiCurrent() == SCR_IDLE) uiIdleRefresh();
+    }
     // A headshot lands AFTER the player sheet has already drawn its fallback,
     // so without this the picture is fetched, stored, and never shown. The
     // flag was being set by the fetch task and read by nothing —
