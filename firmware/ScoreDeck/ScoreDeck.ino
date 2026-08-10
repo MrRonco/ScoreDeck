@@ -364,6 +364,14 @@ void loop() {
     // Repaint once when a logo lands, not on every tick — a pointless
     // traversal every 4 ms is the shape of the bug in INHERITED_RULES.md 8.
     if (g_logoArrived) { g_logoArrived = false; uiBoardRefresh(); }
+    // A headshot lands AFTER the player sheet has already drawn its fallback,
+    // so without this the picture is fetched, stored, and never shown. The
+    // flag was being set by the fetch task and read by nothing —
+    // INHERITED_RULES.md §19, the same shape as the situation field.
+    if (g_headshotArrived) {
+      g_headshotArrived = false;
+      if (uiPlayerIsOpen()) uiPlayerRender();
+    }
     tickOpenGame();
     uiSetStatus();
   }

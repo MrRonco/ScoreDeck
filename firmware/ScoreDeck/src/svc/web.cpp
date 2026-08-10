@@ -32,6 +32,7 @@
 #include <esp_system.h>
 #include "../core/state.h"
 #include "../net/api.h"
+#include "../hal/hal_display.h"
 #include "../ui/ui.h"
 
 static WebServer s_srv(80);
@@ -458,6 +459,56 @@ static void apiReset() {
   ESP.restart();
 }
 
+/**
+ * The live panel as a BMP.
+ *
+ * hal_display.h has documented this as "used by /screen.bmp" since the
+ * beginning and the route was never built — which meant that every report of
+ * something looking wrong on the panel had to be reproduced from a written
+ * description. It is worth the 1.15 MB.
+ *
+ * MANUAL ONLY, and never polled: reading back the framebuffer blocks the
+ * display for roughly two seconds. It is streamed one row at a time so the
+ * whole image is never in RAM.
+ */
+static void pageScreen() {
+  if (!guard()) return;
+
+  const uint32_t rowBytes = (SCR_W * 3 + 3) & ~3u;
+  const uint32_t dataSize = rowBytes * SCR_H;
+  s_srv.setContentLength(54 + dataSize);
+  s_srv.sendHeader("Content-Disposition", "inline; filename=\"scoredeck.bmp\"");
+  s_srv.send(200, "image/bmp", "");
+
+  uint8_t h[54] = {};
+  const uint32_t fileSize = 54 + dataSize, off = 54, hdr = 40;
+  const int32_t w = SCR_W, ht = SCR_H;
+  const uint16_t planes = 1, bpp = 24;
+  h[0] = 'B'; h[1] = 'M';
+  memcpy(h + 2, &fileSize, 4);  memcpy(h + 10, &off, 4);
+  memcpy(h + 14, &hdr, 4);      memcpy(h + 18, &w, 4);
+  memcpy(h + 22, &ht, 4);       memcpy(h + 26, &planes, 2);
+  memcpy(h + 28, &bpp, 2);      memcpy(h + 34, &dataSize, 4);
+  s_srv.sendContent((const char*)h, 54);
+
+  static uint16_t line[SCR_W];
+  uint8_t* row = (uint8_t*)malloc(rowBytes);
+  if (!row) return;
+  // BMP rows run bottom-up.
+  for (int y = SCR_H - 1; y >= 0; y--) {
+    halReadRect(0, y, SCR_W, 1, line);
+    for (int x = 0; x < SCR_W; x++) {
+      const uint16_t p = line[x];
+      // RGB565 -> RGB888 with the low bits replicated, so greys stay neutral.
+      row[x * 3 + 2] = (uint8_t)(((p >> 11) & 0x1F) << 3 | ((p >> 13) & 0x07));
+      row[x * 3 + 1] = (uint8_t)(((p >> 5) & 0x3F) << 2 | ((p >> 9) & 0x03));
+      row[x * 3 + 0] = (uint8_t)((p & 0x1F) << 3 | ((p >> 2) & 0x07));
+    }
+    s_srv.sendContent((const char*)row, rowBytes);
+  }
+  free(row);
+}
+
 // ── OTA ────────────────────────────────────────────────────────────────────
 
 static void pageUpdate() {
@@ -529,6 +580,7 @@ void webBegin() {
   s_srv.on("/api/reboot", HTTP_POST, apiReboot);
   s_srv.on("/api/forget", HTTP_POST, apiForget);
   s_srv.on("/api/reset", HTTP_POST, apiReset);
+  s_srv.on("/screen.bmp", HTTP_GET, pageScreen);
   s_srv.on("/update", HTTP_POST, pageUpdate, pageUpload);
   s_srv.onNotFound([] { s_srv.send(404, "text/plain", "not found"); });
   s_srv.begin();

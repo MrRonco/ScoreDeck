@@ -7,7 +7,7 @@
 // Served straight from flash with sendContent_P, so it costs no heap. That
 // matters more than it looks: the web server runs inside the same loop() that
 // drives the display, so response time IS panel stall time, and building this
-// page into a String first would put 28.7 KB through the allocator on
+// page into a String first would put 29.1 KB through the allocator on
 // every request.
 #pragma once
 #include <pgmspace.h>
@@ -241,6 +241,12 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
     <div class="grid four" id="diagStats"></div>
     <h2>Detail</h2>
     <div class="card"><div class="wrapx"><table id="diagTable"><tbody></tbody></table></div></div>
+    <div class="card" style="margin-top:18px"><div class="row">
+      <div class="k">Mirror the panel
+        <small>1.15 MB, and it blocks the display for about two seconds. Manual only.</small></div>
+      <div class="v"><a class="btn" href="/screen.bmp" target="_blank"
+        style="display:inline-flex;align-items:center;text-decoration:none">Capture</a></div>
+    </div></div>
     <p class="hint">Every counter here has a real increment site in the firmware. Anything
       not yet wired shows a dash rather than a zero — a zero you cannot trust is worse than
       no number, and it has cost this project days before.</p>

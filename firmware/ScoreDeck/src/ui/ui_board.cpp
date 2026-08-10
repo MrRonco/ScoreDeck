@@ -909,7 +909,10 @@ void uiSetClock(const char* hhmm, const char* date) {
 }
 
 void uiSetStatus() {
-  static char last[96] = "";
+  // NOT "" — the healthy state now IS the empty string, so an empty cache
+  // matched it on the very first call and the "starting" placeholder that
+  // buildBar() wrote was never cleared.
+  static char last[96] = "\x01";
   uint8_t live = 0;
   for (uint8_t i = 0; i < g_gameCount; i++) if (g_board[i].state == GS_LIVE) live++;
 
@@ -937,6 +940,16 @@ void uiSetStatus() {
   if (strcmp(last, buf) == 0) return;
   strncpy(last, buf, sizeof last - 1);
   lv_label_set_text(s_lblStatus, buf);
+
+  // The status and the league chips share the right of the bar, and with five
+  // leagues they collided — "MLB" and "starting" printed over each other.
+  // They are never both worth reading: if the network is down, the live counts
+  // are stale by definition. So the status takes the space when it has
+  // something to say, and gives it back when it does not.
+  const bool quiet = (buf[0] == '\0');
+  for (uint8_t i = 0; i < s_chipCount; i++)
+    quiet ? lv_obj_clear_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN)
+          : lv_obj_add_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN);
 }
 
 bool uiShouldIdle() {

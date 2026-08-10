@@ -10,7 +10,11 @@ enum GameState  : uint8_t { GS_PRE = 0, GS_LIVE, GS_FINAL };
 
 struct Side {
   char     abbr[5];    // "TOR"
-  char     name[20];   // "Maple Leafs"
+  // 32, not 20. Team short names fit in 20 easily — but LEADERBOARD and GRID
+  // put the EVENT title here, and "Wyndham Championship" is exactly 20
+  // characters, so it arrived as "Wyndham Championshi". Costs 12 bytes x 2
+  // sides x 48 games.
+  char     name[32];   // "Maple Leafs" | "Wyndham Championship"
   char     rec[10];    // "21-6-4" — the inline context chip
   uint16_t score;
   uint32_t color;      // 0xRRGGBB, content not chrome
