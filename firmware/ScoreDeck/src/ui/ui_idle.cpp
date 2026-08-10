@@ -223,8 +223,8 @@ void uiIdleTick() {
   const time_t startT = (time_t)nx->startUtc;
   localtime_r(&startT, &st);
   char tbuf[16];
-  strftime(tbuf, sizeof tbuf, "%l:%M %p", &st);
-  snprintf(buf, sizeof buf, "%s   %s%s%s", tbuf[0] == ' ' ? tbuf + 1 : tbuf,
+  clockFormat(st, tbuf, sizeof tbuf);
+  snprintf(buf, sizeof buf, "%s   %s%s%s", tbuf,
            nx->league, nx->bcast[0] ? "   " : "", nx->bcast);
   setCached(s_nextMeta, s_cMeta, sizeof s_cMeta, buf);
 }
@@ -245,7 +245,7 @@ void uiIdleRefresh() {
     const time_t t = (time_t)nx->startUtc;
     localtime_r(&t, &st);
     char tb[16];
-    strftime(tb, sizeof tb, "%l:%M %p", &st);
+    clockFormat(st, tb, sizeof tb);
     snprintf(buf, sizeof buf, "%u scheduled  -  first at %s",
              today, tb[0] == ' ' ? tb + 1 : tb);
   } else {
@@ -274,8 +274,15 @@ void uiIdleRefresh() {
     const time_t t = (time_t)g.startUtc;
     localtime_r(&t, &st);
     char tb[16];
-    strftime(tb, sizeof tb, "%l:%M", &st);
-    lv_label_set_text(s_todayTime[row], tb[0] == ' ' ? tb + 1 : tb);
+    if (g_set.clock24) {
+      strftime(tb, sizeof tb, "%H:%M", &st);
+      lv_label_set_text(s_todayTime[row], tb);
+    } else {
+      // The meridiem is dropped here on purpose: the column is narrow and the
+      // list is all within one day, so AM/PM adds width without adding sense.
+      strftime(tb, sizeof tb, "%l:%M", &st);
+      lv_label_set_text(s_todayTime[row], tb[0] == ' ' ? tb + 1 : tb);
+    }
     snprintf(buf, sizeof buf, "%s  %s  %s", g.away.abbr, g.isFav ? "vs" : "@", g.home.abbr);
     lv_label_set_text(s_todayGame[row], buf);
     lv_label_set_text(s_todayLg[row], g.league);

@@ -214,6 +214,8 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
       <div class="row"><div class="k">Density
         <small>Auto follows the number of games: roomy when quiet, dense when busy.</small></div>
         <div class="v"><div class="seg" id="dens"></div></div></div>
+      <div class="row"><div class="k">Clock</div>
+        <div class="v"><div class="seg" id="clk"></div></div></div>
     </div>
     <div class="row"><div class="v"><button id="saveNet">Save</button></div></div>
   </section>
@@ -330,6 +332,15 @@ async function loadConfig() {
   const r = $('#rgn'); r.textContent = '';
   REGIONS.forEach(([c, n]) => { const o = el('option', '', n + ' (' + c + ')');
     o.value = c; if (c === CFG.rgn) o.selected = true; r.append(o); });
+
+  const c = $('#clk'); c.textContent = '';
+  ['12-hour', '24-hour'].forEach((n, i) => {
+    const b = el('button', '', n);
+    b.setAttribute('aria-pressed', String(!!CFG.clk24 === (i === 1)));
+    b.onclick = () => { CFG.clk24 = i; [...c.children].forEach((x, j) =>
+      x.setAttribute('aria-pressed', String(j === i))); };
+    c.append(b);
+  });
 
   const d = $('#dens'); d.textContent = '';
   DENS.forEach((n, i) => {
@@ -496,7 +507,8 @@ $('#saveAlerts').onclick = () => postConfig({
   qen: $('#qen').checked ? 1 : 0, qfr: mins($('#qfr').value), qto: mins($('#qto').value) });
 $('#saveNet').onclick = () => postConfig({
   proxy: $('#proxy').value.trim(), token: $('#token').value,
-  rgn: $('#rgn').value, tz: $('#tz').value.trim(), dens: CFG.dens });
+  rgn: $('#rgn').value, tz: $('#tz').value.trim(), dens: CFG.dens,
+  clk24: CFG.clk24 ? 1 : 0 });
 $('#savePass').onclick = () => postConfig({ ppass: $('#ppass').value }, 'Password updated.');
 $('#saveWifi').onclick = async () => {
   if (!confirm('Save Wi-Fi and reboot the panel?')) return;

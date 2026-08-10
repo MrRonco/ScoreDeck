@@ -260,8 +260,8 @@ static void tickClock() {
   if (now < 100000) { uiSetClock("--:--", "no clock"); return; }
   struct tm lt;
   localtime_r(&now, &lt);
-  char hhmm[8], date[24];
-  strftime(hhmm, sizeof hhmm, "%H:%M", &lt);
+  char hhmm[12], date[24];
+  clockFormat(lt, hhmm, sizeof hhmm);
   strftime(date, sizeof date, "%a %b %e", &lt);
   uiSetClock(hhmm, date);
   uiIdleTick();

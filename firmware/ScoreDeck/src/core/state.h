@@ -28,6 +28,7 @@ struct Settings {
   uint8_t density;
   bool    alertsOn;
   bool    focusOn;
+  bool    clock24;
   bool    quietOn;
   uint16_t quietFrom, quietTo;
   uint32_t lastSeq;
@@ -132,6 +133,11 @@ void settingsFactoryReset();
  *  The portal shows it because a wrong TZ is the usual cause of quiet hours
  *  firing at the wrong moment, and this catches it in one glance. */
 const char* localClockNow();
+
+/** Format a local time the way the user has asked for it. ONE place, so the
+ *  board, the idle screen, the portal and the settings screen cannot
+ *  disagree about whether it is 7:00 PM or 19:00. */
+void clockFormat(const struct tm& lt, char* out, size_t cap);
 
 /**
  * TLS/heap gate. Check in LOOP context BEFORE spawning a network task —

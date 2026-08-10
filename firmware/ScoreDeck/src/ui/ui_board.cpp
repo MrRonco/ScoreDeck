@@ -46,9 +46,11 @@ struct TileUI {
   lv_obj_t* root;
   lv_obj_t* edge;
   lv_obj_t* badge[2];
+  lv_obj_t* favRing[2];
+  bool      cFav[2];
   lv_obj_t* badgeLbl[2];
   lv_obj_t* logo[2];
-  const void* cLogo[2];
+  char     cLogoKey[2][10];   // league:abbr the logo was set FOR
   lv_obj_t* abbr[2];
   lv_obj_t* rec[2];
   lv_obj_t* score[2];
@@ -162,9 +164,20 @@ static void buildTile(TileUI& t, int idx) {
     // independent of the team's own colour, it marks the TEAM rather than the
     // game (so a favourite-vs-favourite tie correctly shows two), and it does
     // not compete with the edge light for the tile perimeter.
-    lv_obj_set_style_border_color(t.badge[i], C_INK, 0);
-    lv_obj_set_style_border_opa(t.badge[i], LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(t.badge[i], 0, 0);
+    //
+    // It is its OWN object rather than a border on the badge, because the badge
+    // is hidden the moment a logo replaces it — the mark used to show only on
+    // teams whose logo had not loaded, which is exactly backwards.
+    t.favRing[i] = lv_obj_create(t.root);
+    lv_obj_remove_style_all(t.favRing[i]);
+    lv_obj_set_size(t.favRing[i], d.badge + 6, d.badge + 6);
+    lv_obj_set_pos(t.favRing[i], TILE_PAD_X - 3, mid - d.badge / 2 - 3);
+    lv_obj_set_style_radius(t.favRing[i], 10, 0);
+    lv_obj_set_style_bg_opa(t.favRing[i], LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(t.favRing[i], C_INK, 0);
+    lv_obj_set_style_border_opa(t.favRing[i], LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(t.favRing[i], 2, 0);
+    lv_obj_add_flag(t.favRing[i], LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(t.badge[i], LV_OBJ_FLAG_SCROLLABLE);
 
     // Logos are 48 px on the wire and drawn smaller. Do NOT set an explicit
@@ -182,7 +195,7 @@ static void buildTile(TileUI& t, int idx) {
     lv_img_set_size_mode(t.logo[i], LV_IMG_SIZE_MODE_REAL);
     lv_obj_set_pos(t.logo[i], TILE_PAD_X, mid - d.badge / 2);
     lv_obj_add_flag(t.logo[i], LV_OBJ_FLAG_HIDDEN);
-    t.cLogo[i] = nullptr;
+    t.cLogoKey[i][0] = '\0';
 
     t.badgeLbl[i] = lv_label_create(t.badge[i]);
     lv_obj_set_style_text_font(t.badgeLbl[i], F_MICRO, 0);
@@ -265,7 +278,8 @@ static void buildTile(TileUI& t, int idx) {
   memset(t.cRec, 0, sizeof t.cRec);
   memset(t.cStatus, 0, sizeof t.cStatus);
   memset(t.cBcast, 0, sizeof t.cBcast);
-  t.cLogo[0] = t.cLogo[1] = nullptr;
+  t.cLogoKey[0][0] = t.cLogoKey[1][0] = '\0';
+  t.cFav[0] = t.cFav[1] = false;
   t.cScore[0] = t.cScore[1] = -1;
   t.cColor[0] = t.cColor[1] = 0xFFFFFFFF;
   t.cEdge = 0xFFFFFFFF;
@@ -378,9 +392,16 @@ static void onNewsBtn(lv_event_t*) { uiNewsOpen(); }
 static void onSettingsBtn(lv_event_t*) { uiSettingsOpen(); }
 
 static void buildBar() {
-  s_bar = glassPanel(s_board, 0, 0, SCR_W, spec().barH, 0);
-  s_lblClock = microLabel(s_bar, 18, 12, C_INK, F_ABBR);
-  s_lblDate  = microLabel(s_bar, 84, 17, C_INK2, F_MICRO);
+  const int barH = spec().barH;
+  // One optical midline for everything in the bar. Each label is placed from
+  // its OWN line height, because a 17 px face and an 11 px face centred on the
+  // same y are not centred together.
+  auto midY = [barH](const lv_font_t* f) {
+    return (barH - (int)lv_font_get_line_height(f)) / 2;
+  };
+  s_bar = glassPanel(s_board, 0, 0, SCR_W, barH, 0);
+  s_lblClock = microLabel(s_bar, 18, midY(F_ABBR), C_INK, F_ABBR);
+  s_lblDate  = microLabel(s_bar, 84, midY(F_MICRO), C_INK2, F_MICRO);
 
   // Standings and news were built, tested, and reachable only from a serial
   // command and the desktop harness — two finished screens shipping dark.
@@ -396,7 +417,7 @@ static void buildBar() {
   // wrapped out of the bar. Narrower, and it now only carries network state —
   // the live/game counts already live in the ALL chip.
   lv_obj_set_width(s_lblStatus, 150);
-  lv_obj_set_pos(s_lblStatus, SCR_W - 174 - 150, 17);
+  lv_obj_set_pos(s_lblStatus, SCR_W - 174 - 150, midY(F_MICRO));
   lv_label_set_text(s_lblStatus, "starting");
 
   buildChips(s_bar);
@@ -439,6 +460,10 @@ static void buildBar() {
   lv_obj_set_style_text_color(s_toastLbl, C_INK, 0);
   lv_label_set_text(s_toastLbl, "");
   lv_obj_center(s_toastLbl);
+}
+
+int8_t uiBoardTileGame(uint8_t slot) {
+  return slot < TILES_PER_PAGE ? s_tile[slot].gameIdx : -1;
 }
 
 void uiToast(const char* text) {
@@ -730,9 +755,9 @@ void uiBoardRefresh() {
                            ((k == 1) == g.leaderHome) && (g.away.score != g.home.score);
       lv_obj_set_style_text_color(t.score[k], leading ? si.ink : si.ink2, 0);
 
-      // Followed teams keep a ring on the badge — see buildTile().
+      // Followed teams keep a ring — see buildTile().
       const bool fav = sideIsFav(g.league, side[k]->id);
-      lv_obj_set_style_border_width(t.badge[k], fav ? 2 : 0, 0);
+      setHiddenCached(t.favRing[k], &t.cFav[k], !fav);
 
       if (t.cColor[k] != side[k]->color) {
         t.cColor[k] = side[k]->color;
@@ -743,8 +768,11 @@ void uiBoardRefresh() {
       // Logo when we have one, colour badge otherwise. Change-cached: setting
       // the same source still repaints, and that is what fights the panel DMA.
       const lv_img_dsc_t* img = logoGet(g.league, side[k]->abbr);
-      if (t.cLogo[k] != (const void*)img) {
-        t.cLogo[k] = img;
+      char lkey[10];
+      snprintf(lkey, sizeof lkey, "%s%s", img ? "" : "-", side[k]->abbr);
+      if (strncmp(t.cLogoKey[k], lkey, sizeof t.cLogoKey[k] - 1) != 0) {
+        strncpy(t.cLogoKey[k], lkey, sizeof t.cLogoKey[k] - 1);
+        t.cLogoKey[k][sizeof t.cLogoKey[k] - 1] = '\0';
         if (img) {
           lv_img_set_src(t.logo[k], img);
           lv_obj_clear_flag(t.logo[k], LV_OBJ_FLAG_HIDDEN);

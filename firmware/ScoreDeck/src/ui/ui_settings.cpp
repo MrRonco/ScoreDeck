@@ -44,11 +44,15 @@
 #include "../net/api.h"
 #include <WiFi.h>
 
-#define PANE_COUNT 3
+// Four panes, not three. The split of WHAT belongs on the panel has not
+// changed — this is a layout consequence: adding the clock row left 46 px
+// under the last setting, which is not a list. Favourites get their own card
+// and room to show full team names.
+#define PANE_COUNT 4
 #define ROW_H      56
 #define ROW_PITCH  57
 #define ROWS_MAX    6
-#define FAV_ROWS    5
+#define FAV_ROWS    8
 
 static lv_obj_t* s_root;
 static lv_obj_t* s_seg[PANE_COUNT];
@@ -62,6 +66,7 @@ static lv_obj_t* s_denSeg[DEN_COUNT];
 static lv_obj_t* s_swAlerts;
 static lv_obj_t* s_swFocus;
 static lv_obj_t* s_swQuiet;
+static lv_obj_t* s_clkSeg[2];
 static lv_obj_t* s_favRow[FAV_ROWS];
 static lv_obj_t* s_favSwatch[FAV_ROWS];
 static lv_obj_t* s_favLbl[FAV_ROWS];
@@ -174,6 +179,14 @@ static void onAlerts(lv_event_t*) { g_set.alertsOn = !g_set.alertsOn; markDirty(
 static void onFocus(lv_event_t*)  { g_set.focusOn  = !g_set.focusOn;  markDirty(); uiSettingsRender(); }
 static void onQuiet(lv_event_t*)  { g_set.quietOn  = !g_set.quietOn;  markDirty(); uiSettingsRender(); }
 
+static void onClock(lv_event_t* e) {
+  g_set.clock24 = (bool)(intptr_t)lv_event_get_user_data(e);
+  markDirty();
+  // No need to force a repaint: tickClock() rewrites the bar every second and
+  // the idle screen with it, so the new format lands on its own.
+  uiSettingsRender();
+}
+
 static void onFavPage(lv_event_t*) {
   const uint8_t n = favCount();
   const uint8_t pages = n ? (n + FAV_ROWS - 1) / FAV_ROWS : 1;
@@ -221,11 +234,11 @@ void uiSettingsInit(lv_obj_t* parent) {
   label(bar, 20, 15, "SETTINGS", C_INK, F_ABBR);
 
   // Three panes do not justify a 176 px rail, so the selector is a segment.
-  static const char* kTab[PANE_COUNT] = { "BOARD", "NETWORK", "SYSTEM" };
+  static const char* kTab[PANE_COUNT] = { "BOARD", "TEAMS", "NETWORK", "SYSTEM" };
   for (uint8_t i = 0; i < PANE_COUNT; i++) {
     s_seg[i] = lv_btn_create(bar);
-    lv_obj_set_size(s_seg[i], 120, 36);
-    lv_obj_set_pos(s_seg[i], 216 + i * 124, 6);
+    lv_obj_set_size(s_seg[i], 104, 36);
+    lv_obj_set_pos(s_seg[i], 196 + i * 108, 6);
     lv_obj_set_style_radius(s_seg[i], 8, 0);
     lv_obj_set_style_border_width(s_seg[i], 0, 0);
     lv_obj_add_event_cb(s_seg[i], onTab, LV_EVENT_CLICKED, (void*)(intptr_t)i);
@@ -280,11 +293,31 @@ void uiSettingsInit(lv_obj_t* parent) {
       lv_obj_center(l);
     }
 
-    s_swAlerts = switchAt(row(p, 1, "Score alerts", onAlerts), g_set.alertsOn);
-    s_swFocus  = switchAt(row(p, 2, "Open tense games automatically", onFocus), g_set.focusOn);
-    s_swQuiet  = switchAt(row(p, 3, "Quiet hours", onQuiet), g_set.quietOn);
+    lv_obj_t* cr = row(p, 1, "Clock", nullptr);
+    static const char* kClk[2] = { "12H", "24H" };
+    for (uint8_t i = 0; i < 2; i++) {
+      s_clkSeg[i] = lv_btn_create(cr);
+      lv_obj_set_size(s_clkSeg[i], 82, 38);
+      lv_obj_set_pos(s_clkSeg[i], 736 - 8 - (2 - i) * 86, (ROW_H - 38) / 2);
+      lv_obj_set_style_radius(s_clkSeg[i], 8, 0);
+      lv_obj_set_style_border_width(s_clkSeg[i], 0, 0);
+      lv_obj_add_event_cb(s_clkSeg[i], onClock, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+      lv_obj_t* l = lv_label_create(s_clkSeg[i]);
+      lv_label_set_text(l, kClk[i]);
+      lv_obj_set_style_text_font(l, F_MICRO, 0);
+      lv_obj_center(l);
+    }
 
-    lv_obj_t* fr = row(p, 4, "Your teams", nullptr);
+    s_swAlerts = switchAt(row(p, 2, "Score alerts", onAlerts), g_set.alertsOn);
+    s_swFocus  = switchAt(row(p, 3, "Open tense games automatically", onFocus), g_set.focusOn);
+    s_swQuiet  = switchAt(row(p, 4, "Quiet hours", onQuiet), g_set.quietOn);
+
+  }
+
+  // ── TEAMS ────────────────────────────────────────────────────────────────
+  {
+    lv_obj_t* p = s_pane[1];
+    lv_obj_t* fr = row(p, 0, "Your teams", nullptr);
     s_favCount = label(fr, 160, (ROW_H - 13) / 2, "", C_INK3, F_NUM);
     lv_obj_t* pageBtn = lv_btn_create(fr);
     lv_obj_set_size(pageBtn, 60, 38);
@@ -301,23 +334,23 @@ void uiSettingsInit(lv_obj_t* parent) {
     for (uint8_t i = 0; i < FAV_ROWS; i++) {
       s_favRow[i] = lv_obj_create(p);
       lv_obj_remove_style_all(s_favRow[i]);
-      lv_obj_set_size(s_favRow[i], 736, 30);
-      lv_obj_set_pos(s_favRow[i], 16, 16 + 5 * ROW_PITCH + i * 30);
+      lv_obj_set_size(s_favRow[i], 736, 36);
+      lv_obj_set_pos(s_favRow[i], 16, 16 + ROW_PITCH + i * 40);
       lv_obj_set_style_bg_opa(s_favRow[i], LV_OPA_TRANSP, 0);
       lv_obj_clear_flag(s_favRow[i], LV_OBJ_FLAG_SCROLLABLE);
 
       s_favSwatch[i] = lv_obj_create(s_favRow[i]);
       lv_obj_remove_style_all(s_favSwatch[i]);
-      lv_obj_set_size(s_favSwatch[i], 5, 20);
-      lv_obj_set_pos(s_favSwatch[i], 8, 5);
+      lv_obj_set_size(s_favSwatch[i], 5, 24);
+      lv_obj_set_pos(s_favSwatch[i], 8, 6);
       lv_obj_set_style_radius(s_favSwatch[i], 2, 0);
       lv_obj_set_style_bg_opa(s_favSwatch[i], LV_OPA_COVER, 0);
 
-      s_favLbl[i] = label(s_favRow[i], 24, 6, "", C_INK, F_BODY);
+      s_favLbl[i] = label(s_favRow[i], 24, 9, "", C_INK, F_BODY);
 
       lv_obj_t* up = lv_btn_create(s_favRow[i]);
-      lv_obj_set_size(up, 44, 28);
-      lv_obj_set_pos(up, 736 - 8 - 96, 1);
+      lv_obj_set_size(up, 44, 32);
+      lv_obj_set_pos(up, 736 - 8 - 96, 2);
       lv_obj_set_style_radius(up, 6, 0);
       lv_obj_set_style_border_width(up, 0, 0);
       lv_obj_set_style_bg_color(up, C_EDGE, 0);
@@ -328,8 +361,8 @@ void uiSettingsInit(lv_obj_t* parent) {
       lv_obj_center(ul);
 
       lv_obj_t* rm = lv_btn_create(s_favRow[i]);
-      lv_obj_set_size(rm, 44, 28);
-      lv_obj_set_pos(rm, 736 - 8 - 44, 1);
+      lv_obj_set_size(rm, 44, 32);
+      lv_obj_set_pos(rm, 736 - 8 - 44, 2);
       lv_obj_set_style_radius(rm, 6, 0);
       lv_obj_set_style_border_width(rm, 0, 0);
       lv_obj_set_style_bg_color(rm, C_EDGE, 0);
@@ -339,13 +372,13 @@ void uiSettingsInit(lv_obj_t* parent) {
       lv_obj_set_style_text_font(rl, F_MICRO, 0);
       lv_obj_center(rl);
     }
-    label(p, 16, 380, "Add teams in the browser  -  everything else lives there too",
+    label(p, 16, 380, "Add and search teams in the browser  -  this list only reorders",
           C_INK3, F_MICRO);
   }
 
   // ── NETWORK ──────────────────────────────────────────────────────────────
   {
-    lv_obj_t* p = s_pane[1];
+    lv_obj_t* p = s_pane[2];
     static const char* kRow[4] = { "Wi-Fi", "Proxy", "Proxy token", "Panel password" };
     for (uint8_t i = 0; i < 4; i++) {
       lv_obj_t* r = row(p, i, kRow[i], nullptr);
@@ -392,7 +425,7 @@ void uiSettingsInit(lv_obj_t* parent) {
 
   // ── SYSTEM ───────────────────────────────────────────────────────────────
   {
-    lv_obj_t* p = s_pane[2];
+    lv_obj_t* p = s_pane[3];
     static const char* kRow[5] = { "Version", "Address", "Uptime", "Heap", "Last poll" };
     for (uint8_t i = 0; i < 5; i++) {
       lv_obj_t* r = row(p, i, kRow[i], nullptr);
@@ -427,6 +460,12 @@ void uiSettingsRender() {
     const bool on = (g_set.density == i);
     lv_obj_set_style_bg_color(s_denSeg[i], on ? C_EDGE_HI : C_FROST_2, 0);
     lv_obj_t* l = lv_obj_get_child(s_denSeg[i], 0);
+    if (l) lv_obj_set_style_text_color(l, on ? C_INK : C_INK3, 0);
+  }
+  for (uint8_t i = 0; i < 2; i++) {
+    const bool on = (g_set.clock24 == (i == 1));
+    lv_obj_set_style_bg_color(s_clkSeg[i], on ? C_EDGE_HI : C_FROST_2, 0);
+    lv_obj_t* l = lv_obj_get_child(s_clkSeg[i], 0);
     if (l) lv_obj_set_style_text_color(l, on ? C_INK : C_INK3, 0);
   }
   switchSet(s_swAlerts, g_set.alertsOn);

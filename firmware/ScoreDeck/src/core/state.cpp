@@ -92,6 +92,9 @@ void settingsLoad() {
   g_set.density   = p.getUChar(K_DENSITY, DEN_AUTO);
   g_set.alertsOn  = p.getBool(K_ALERT_EN, true);
   g_set.focusOn   = p.getBool(K_FOCUS_EN, true);
+  // 24-hour is the default outside North America; region is the best guess
+  // available at first boot, and the user can override it either way.
+  g_set.clock24   = p.getBool(K_CLK24, !(g_set.region == "us" || g_set.region == "ca"));
   g_set.quietOn   = p.getBool(K_QUIET_EN, false);
   g_set.quietFrom = p.getUShort(K_QUIET_FR, QUIET_DEFAULT_FROM);
   g_set.quietTo   = p.getUShort(K_QUIET_TO, QUIET_DEFAULT_TO);
@@ -129,6 +132,7 @@ void settingsSave() {
   p.putUChar(K_DENSITY, g_set.density);
   p.putBool(K_ALERT_EN, g_set.alertsOn);
   p.putBool(K_FOCUS_EN, g_set.focusOn);
+  p.putBool(K_CLK24, g_set.clock24);
   p.putBool(K_QUIET_EN, g_set.quietOn);
   p.putUShort(K_QUIET_FR, g_set.quietFrom);
   p.putUShort(K_QUIET_TO, g_set.quietTo);
@@ -227,8 +231,8 @@ const char* lastGoodClock() {
   const time_t t = (time_t)g_lastGoodUtc;
   struct tm lt;
   localtime_r(&t, &lt);
-  strftime(buf, sizeof buf, "%l:%M %p", &lt);
-  return buf[0] == ' ' ? buf + 1 : buf;
+  clockFormat(lt, buf, sizeof buf);
+  return buf;
 }
 
 // ── the favourites list ────────────────────────────────────────────────────
@@ -314,6 +318,16 @@ const char* localClockNow() {
   if (now < 100000) return buf;          // clock not set yet
   struct tm lt;
   localtime_r(&now, &lt);
-  strftime(buf, sizeof buf, "%l:%M %p", &lt);
-  return buf[0] == ' ' ? buf + 1 : buf;
+  clockFormat(lt, buf, sizeof buf);
+  return buf;
+}
+
+void clockFormat(const struct tm& lt, char* out, size_t cap) {
+  if (g_set.clock24) {
+    strftime(out, cap, "%H:%M", &lt);
+    return;
+  }
+  char tmp[16];
+  strftime(tmp, sizeof tmp, "%l:%M %p", &lt);          // %l pads with a space
+  snprintf(out, cap, "%s", tmp[0] == ' ' ? tmp + 1 : tmp);
 }

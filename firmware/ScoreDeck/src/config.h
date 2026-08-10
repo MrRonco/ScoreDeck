@@ -103,6 +103,7 @@ static const DensitySpec kDensity[3] = {
 #define K_QUIET_TO  "qto"
 #define K_ALERT_EN  "alen"
 #define K_FOCUS_EN  "focus"
+#define K_CLK24     "clk24"
 
 #define FAVS_MAX_LEN 240
 #define FAVS_MAX      20   // the proxy caps at 20 pairs too

@@ -239,6 +239,7 @@ static void apiConfigGet() {
   j += ",\"favs\":" + jstr(g_set.favs);
   j += ",\"dens\":" + String(g_set.density);
   j += ",\"alen\":" + String(g_set.alertsOn ? 1 : 0);
+  j += ",\"clk24\":" + String(g_set.clock24 ? 1 : 0);
   j += ",\"focus\":" + String(g_set.focusOn ? 1 : 0);
   j += ",\"qen\":" + String(g_set.quietOn ? 1 : 0);
   j += ",\"qfr\":" + String(g_set.quietFrom);
@@ -262,6 +263,7 @@ static void apiConfigPost() {
   String why, sProxy, sRgn, sTz, sToken, sPass;
   long dens = g_set.density, alen = g_set.alertsOn, focus = g_set.focusOn;
   long qen = g_set.quietOn, qfr = g_set.quietFrom, qto = g_set.quietTo;
+  long clk24 = g_set.clock24;
 
   if (jsonField(body, "proxy", sProxy)) {
     if (sProxy.length() && !sProxy.startsWith("http://") && !sProxy.startsWith("https://"))
@@ -276,6 +278,7 @@ static void apiConfigPost() {
   if (dens < 0 || dens >= DEN_COUNT) return fail(400, "unknown density");
   jsonInt(body, "alen", alen);
   jsonInt(body, "focus", focus);
+  jsonInt(body, "clk24", clk24);
   jsonInt(body, "qen", qen);
   jsonInt(body, "qfr", qfr);
   jsonInt(body, "qto", qto);
@@ -291,6 +294,7 @@ static void apiConfigPost() {
   g_set.density  = (uint8_t)dens;
   g_set.alertsOn = alen != 0;
   g_set.focusOn  = focus != 0;
+  g_set.clock24  = clk24 != 0;
   g_set.quietOn  = qen != 0;
   g_set.quietFrom = (uint16_t)qfr;
   g_set.quietTo   = (uint16_t)qto;

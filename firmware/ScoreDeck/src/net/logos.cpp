@@ -23,8 +23,16 @@ uint16_t logoCacheMisses() { return s_misses; }
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include "../core/state.h"
+#include "../ui/ui.h"
 
-#define LOGO_SLOTS 24
+// Must exceed the WORKING SET, not the page size. The densest layout is 4x3
+// tiles = 24 logos, so a 24-slot cache sat exactly at the cap: every refresh
+// evicted one entry and refetched it, forever, hammering the proxy. Auto
+// density made that reachable on any busy night.
+//
+// 36 covers a full Dense page plus the page you just swiped away from, which
+// is the real working set when paging. Each slot is ~6.9 KB of PSRAM.
+#define LOGO_SLOTS 36
 #define LOGO_SIZE  48
 #define LOGO_BYTES (4 + LOGO_SIZE * LOGO_SIZE * 3)
 
@@ -58,6 +66,10 @@ static Slot* victim() {
 }
 
 const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
+  // Leaderboard and grid tiles have no team on a side, so they ask with an
+  // empty abbreviation. That is not a cache miss to be filled — the proxy has
+  // nothing to give, and requesting it produced a 400 on every single refresh.
+  if (!abbr || !*abbr) return nullptr;
   char key[16];
   snprintf(key, sizeof key, "%s:%s", league, abbr);
   Slot* s = find(key);
@@ -69,6 +81,9 @@ const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
 }
 
 bool logoKnown(const char* league, const char* abbr) {
+  // A side with no team — a golf field, an F1 grid — is permanently "known":
+  // there is nothing to fetch, and asking produced a 400 every refresh.
+  if (!abbr || !*abbr) return true;
   char key[16];
   snprintf(key, sizeof key, "%s:%s", league, abbr);
   return find(key) != nullptr;
@@ -173,8 +188,14 @@ bool logoRequest(const char* league, const char* abbr) {
  */
 void logoTick() {
   if (s_inFlight) return;
-  for (uint8_t i = 0; i < g_gameCount; i++) {
-    const Game& g = g_board[i];
+  // ONLY what is on screen. This used to walk all of g_board, which on a
+  // 48-game night wants 96 logos against a 36-slot cache — every refresh would
+  // evict something it was about to need and fetch it again, forever. Bounding
+  // the working set to one page is what makes the cache a cache.
+  for (uint8_t slot = 0; slot < TILES_PER_PAGE; slot++) {
+    const int8_t gi = uiBoardTileGame(slot);
+    if (gi < 0 || gi >= g_gameCount) continue;
+    const Game& g = g_board[gi];
     if (!logoKnown(g.league, g.home.abbr)) { logoRequest(g.league, g.home.abbr); return; }
     if (!logoKnown(g.league, g.away.abbr)) { logoRequest(g.league, g.away.abbr); return; }
   }

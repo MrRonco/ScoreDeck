@@ -68,7 +68,48 @@ int  netRelayGet(const String&, String&)             { return -1; }
 // wiring a cache the harness cannot populate.
 volatile bool g_logoArrived = false;
 volatile bool g_headshotArrived = false;
-const lv_img_dsc_t* logoGet(const char*, const char*)     { return nullptr; }
+// Logos: synthesised, not fetched.
+//
+// This used to return nullptr always, which meant the harness rendered the
+// colour-badge FALLBACK on every tile and the logo path — the one the panel
+// actually uses — was never drawn here at all. A layering bug in it was
+// therefore invisible to every screenshot this harness has ever produced.
+//
+// SDLOGO=0 restores the old behaviour when the badge path is what you want to
+// look at.
+static uint8_t*     s_fakeData;
+static lv_img_dsc_t s_fakeDsc;
+
+const lv_img_dsc_t* logoGet(const char*, const char* abbr) {
+  if (!abbr || !*abbr) return nullptr;
+  const char* env = getenv("SDLOGO");
+  if (env && env[0] == '0') return nullptr;
+
+  if (!s_fakeData) {
+    // 48x48 TRUE_COLOR_ALPHA, same shape the proxy serves: a ring so the
+    // bounds of the image are unmistakable if anything clips or overlaps.
+    const int W = 48;
+    s_fakeData = (uint8_t*)calloc(W * W, 3);
+    for (int y = 0; y < W; y++) {
+      for (int x = 0; x < W; x++) {
+        const int dx = x - W / 2, dy = y - W / 2;
+        const int d2 = dx * dx + dy * dy;
+        const bool on = d2 < (W / 2) * (W / 2) && d2 > (W / 4) * (W / 4);
+        uint8_t* px = s_fakeData + (y * W + x) * 3;
+        const uint16_t c = on ? 0xFFFF : 0x39E7;
+        px[0] = c & 0xFF; px[1] = c >> 8;
+        px[2] = d2 < (W / 2) * (W / 2) ? 0xFF : 0x00;
+      }
+    }
+    s_fakeDsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+    s_fakeDsc.header.always_zero = 0;
+    s_fakeDsc.header.w = W;
+    s_fakeDsc.header.h = W;
+    s_fakeDsc.data_size = W * W * 3;
+    s_fakeDsc.data = s_fakeData;
+  }
+  return &s_fakeDsc;
+}
 bool logoKnown(const char*, const char*)                  { return true; }
 bool logoRequest(const char*, const char*)                { return false; }
 void logoTick()                                           {}

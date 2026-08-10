@@ -52,6 +52,10 @@ lv_obj_t* uiGameRoot();
 /** Page the board. Returns false when there is nowhere to go. */
 bool uiBoardPage(int delta);
 
+/** Game index shown in tile `slot`, or -1. Lets the logo fetcher bound its
+ *  working set to what is actually on screen. */
+int8_t uiBoardTileGame(uint8_t slot);
+
 /** A one-line confirmation, centred, 1.2 s. For changes the user made but
  *  cannot see the cause of — density being the first. */
 void uiToast(const char* text);
