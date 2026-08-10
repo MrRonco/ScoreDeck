@@ -89,7 +89,7 @@ void settingsLoad() {
   g_set.favs      = p.getString(K_FAVS, "");
   g_set.leagues   = p.getString(K_LEAGUES, "");
   g_set.panelPass = p.getString(K_PPASS, "");
-  g_set.density   = p.getUChar(K_DENSITY, DEN_STANDARD);
+  g_set.density   = p.getUChar(K_DENSITY, DEN_AUTO);
   g_set.alertsOn  = p.getBool(K_ALERT_EN, true);
   g_set.focusOn   = p.getBool(K_FOCUS_EN, true);
   g_set.quietOn   = p.getBool(K_QUIET_EN, false);
@@ -97,7 +97,9 @@ void settingsLoad() {
   g_set.quietTo   = p.getUShort(K_QUIET_TO, QUIET_DEFAULT_TO);
   g_set.lastSeq   = p.getULong(K_SEQ, 0);
   p.end();
-  if (g_set.density > DEN_DENSE) g_set.density = DEN_STANDARD;
+  // Guards corrupt NVS. Must admit DEN_AUTO — it is a real stored value, not
+  // an out-of-range one, and this clamp silently rejected it.
+  if (g_set.density >= DEN_COUNT) g_set.density = DEN_AUTO;
 
   if (g_set.ssid.isEmpty()) importFromAirRadar();
 

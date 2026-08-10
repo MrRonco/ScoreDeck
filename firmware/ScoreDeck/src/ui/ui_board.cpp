@@ -14,6 +14,8 @@
 
 static Screen s_screen = SCR_BOARD;
 
+static bool passesFilter(const Game& g);
+
 static lv_obj_t* s_board;      // page root
 static lv_obj_t* s_bar;
 static lv_obj_t* s_lblClock;
@@ -22,6 +24,15 @@ static lv_obj_t* s_lblStatus;
 static lv_obj_t* s_lblPage;
 static lv_obj_t* s_dot[8];
 static uint8_t   s_dotCount;
+// Whole empty grid rows carry content rather than nothing. A bordered empty
+// region reads as "failed to load", not as "nothing to show" — and on a board
+// that is usually only part full, that is most nights.
+#define FILL_ROWS 5
+static int       s_gridYOff;
+static lv_obj_t* s_fill;
+static lv_obj_t* s_fillHdr[2];
+static lv_obj_t* s_fillRow[2][FILL_ROWS];
+
 static lv_obj_t* s_toast;
 static lv_obj_t* s_toastLbl;
 static uint32_t  s_toastUntil;
@@ -70,7 +81,18 @@ struct TileUI {
 };
 static TileUI s_tile[TILES_PER_PAGE];
 
-static const DensitySpec& spec() { return kDensity[g_set.density]; }
+// Which layout is actually in force. Auto reads the board: a light night gets
+// bigger tiles because there is room, not because anything needs to be larger.
+static uint8_t effectiveDensity() {
+  if (g_set.density != DEN_AUTO) return g_set.density;
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < g_gameCount; i++)
+    if (passesFilter(g_board[i])) n++;
+  if (n <= 6)  return DEN_ROOMY;
+  if (n <= 9)  return DEN_STANDARD;
+  return DEN_DENSE;
+}
+static const DensitySpec& spec() { return kDensity[effectiveDensity()]; }
 
 // ── helpers ────────────────────────────────────────────────────────────────
 static void setTextCached(lv_obj_t* o, char* cache, size_t cap, const char* v) {
@@ -391,6 +413,22 @@ static void buildBar() {
   }
   s_lblPage = nullptr;
 
+  // The filler. Two columns: what has finished, and what is next.
+  s_fill = glassPanel(s_board, 0, 0, 10, 10, 12);
+  lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN);
+  for (int c = 0; c < 2; c++) {
+    s_fillHdr[c] = lv_label_create(s_fill);
+    lv_obj_set_style_text_font(s_fillHdr[c], F_MICRO, 0);
+    lv_obj_set_style_text_color(s_fillHdr[c], C_INK3, 0);
+    lv_label_set_text(s_fillHdr[c], c == 0 ? "FINAL" : "NEXT UP");
+    for (int r = 0; r < FILL_ROWS; r++) {
+      s_fillRow[c][r] = lv_label_create(s_fill);
+      lv_obj_set_style_text_font(s_fillRow[c][r], F_NUM, 0);
+      lv_obj_set_style_text_color(s_fillRow[c][r], C_INK2, 0);
+      lv_label_set_text(s_fillRow[c][r], "");
+    }
+  }
+
   // Toast: one line, centred, 1.2 s. Built once and reused.
   s_toast = glassPanel(s_board, (SCR_W - 220) / 2, SCR_H - 78, 220, 42, 10);
   lv_obj_add_flag(s_toast, LV_OBJ_FLAG_HIDDEN);
@@ -510,11 +548,11 @@ static void onTileEvent(lv_event_t* e) {
     // Density has no settings screen yet; long-press keeps it reachable.
     // It used to change silently — an accidental long-press reformatted the
     // whole board with no explanation and nothing to undo it with.
-    g_set.density = (g_set.density + 1) % 3;
+    g_set.density = (g_set.density + 1) % DEN_COUNT;
     settingsSave();
     uiInit();
     uiBoardRefresh();
-    static const char* kName[3] = { "ROOMY", "STANDARD", "DENSE" };
+    static const char* kName[DEN_COUNT] = { "ROOMY", "STANDARD", "DENSE", "AUTO" };
     uiToast(kName[g_set.density]);
     return;
   }
@@ -539,6 +577,68 @@ static void onGesture(lv_event_t*) {
 }
 
 // ── refresh ────────────────────────────────────────────────────────────────
+/**
+ * Cover the whole empty rows at the foot of the grid with one panel of real
+ * content. Only WHOLE rows: a filler that starts mid-row would sit in the
+ * grid's rhythm wrongly and look like a tile that had grown.
+ */
+static void layoutFiller(const DensitySpec& d, uint8_t used, uint8_t per) {
+  const uint8_t usedRows = (used + d.cols - 1) / d.cols;
+  const uint8_t freeRows = d.rows > usedRows ? d.rows - usedRows : 0;
+  if (freeRows == 0 || used == 0) { lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN); return; }
+
+  const int y = d.gridTop + usedRows * (d.tileH + d.gut) + s_gridYOff;
+  const int hMax = freeRows * d.tileH + (freeRows - 1) * d.gut;
+  const int w = d.cols * d.tileW + (d.cols - 1) * d.gut;
+  const int colW = w / 2;
+  const int rowsFit = (hMax - 46) / 22;
+  const int nRows = rowsFit < FILL_ROWS ? (rowsFit < 0 ? 0 : rowsFit) : FILL_ROWS;
+
+  for (int c = 0; c < 2; c++) {
+    lv_obj_set_pos(s_fillHdr[c], 16 + c * colW, 12);
+    for (int r = 0; r < FILL_ROWS; r++) {
+      lv_obj_set_pos(s_fillRow[c][r], 16 + c * colW, 34 + r * 22);
+      lv_label_set_text(s_fillRow[c][r], "");
+      if (r >= nRows) lv_obj_add_flag(s_fillRow[c][r], LV_OBJ_FLAG_HIDDEN);
+      else            lv_obj_clear_flag(s_fillRow[c][r], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  char buf[48];
+  int fin = 0, nxt = 0;
+  for (uint8_t oi = 0; oi < g_gameCount; oi++) {
+    const uint8_t gi = s_order[oi];
+    const Game& g = g_board[gi];
+    if (!passesFilter(g)) continue;
+    // Anything already on a tile must not appear twice.
+    bool onTile = false;
+    for (uint8_t t = 0; t < used; t++) if (s_tile[t].gameIdx == (int8_t)gi) { onTile = true; break; }
+    if (onTile) continue;
+    if (g.state == GS_FINAL && fin < nRows) {
+      snprintf(buf, sizeof buf, "%-4s %2u   %-4s %2u",
+               g.away.abbr, g.away.score, g.home.abbr, g.home.score);
+      lv_label_set_text(s_fillRow[0][fin++], buf);
+    } else if (g.state == GS_PRE && nxt < nRows) {
+      snprintf(buf, sizeof buf, "%-7s %s @ %s", g.status, g.away.abbr, g.home.abbr);
+      lv_label_set_text(s_fillRow[1][nxt++], buf);
+    }
+  }
+  // An empty panel is worse than empty space: a bordered region with nothing
+  // in it is exactly what "failed to load" looks like.
+  if (!fin && !nxt) { lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN); return; }
+
+  // Height follows the content, not the hole — a half-empty panel is the same
+  // "something is missing" signal in a smaller size.
+  const int rows = fin > nxt ? fin : nxt;
+  int h = 46 + rows * 22;
+  if (h > hMax) h = hMax;
+  lv_obj_set_pos(s_fill, d.marg, y);
+  lv_obj_set_size(s_fill, w, h);
+  lv_obj_clear_flag(s_fill, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_style_opa(s_fillHdr[0], fin ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+  lv_obj_set_style_opa(s_fillHdr[1], nxt ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+}
+
 void uiBoardRefresh() {
   const DensitySpec& d = spec();
   const uint8_t per = d.cols * d.rows;
@@ -692,10 +792,32 @@ void uiBoardRefresh() {
     slot++;
   }
 
+  const uint8_t filled = slot;      // capture BEFORE the hide loop advances it
+
+  // Centre a part-full grid vertically. Top-aligning it leaves the whole lower
+  // half as one void, which reads as content that failed to arrive; splitting
+  // the slack above and below reads as a composition. Cached, because this is
+  // a position write on every tile.
+  const uint8_t usedRows = filled ? (filled + d.cols - 1) / d.cols : 0;
+  int yOff = 0;
+  if (usedRows && usedRows < d.rows) {
+    const int freeH = (d.rows - usedRows) * (d.tileH + d.gut);
+    yOff = freeH / 2;
+  }
+  if (yOff != s_gridYOff) {
+    s_gridYOff = yOff;
+    for (uint8_t i = 0; i < TILES_PER_PAGE; i++) {
+      if (!s_tile[i].root) continue;
+      const int r = i / d.cols, c = i % d.cols;
+      lv_obj_set_pos(s_tile[i].root, d.marg + c * (d.tileW + d.gut),
+                     d.gridTop + r * (d.tileH + d.gut) + yOff);
+    }
+  }
   for (; slot < per; slot++) {
     s_tile[slot].gameIdx = -1;
     setHiddenCached(s_tile[slot].root, &s_tile[slot].cUsed, true);
   }
+  layoutFiller(d, filled, per);
 
   // Dots read as "there is more" far better than "1 / 3" does.
   const uint8_t shown = pages > 1 ? (pages < 8 ? pages : 8) : 0;
@@ -731,7 +853,12 @@ void uiSetStatus() {
     case NET_NOPROXY: snprintf(buf, sizeof buf, "no proxy configured"); break;
     case NET_ERR:     snprintf(buf, sizeof buf, "%s", g_netDetail[0] ? g_netDetail : "proxy unreachable"); break;
     // "stale" is a state; a time is actionable. Say when the data is from.
-    case NET_STALE:   snprintf(buf, sizeof buf, "as of %s", lastGoodClock()); break;
+    case NET_STALE: {
+      const char* t = lastGoodClock();
+      if (t[0]) snprintf(buf, sizeof buf, "as of %s", t);
+      else      snprintf(buf, sizeof buf, "upstream stale");
+      break;
+    }
     case NET_BOOT:    snprintf(buf, sizeof buf, "starting"); break;
     default:          buf[0] = '\0'; break;
   }

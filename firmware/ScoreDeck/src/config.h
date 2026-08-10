@@ -40,6 +40,17 @@ struct DensitySpec {
   uint8_t  cols, rows, badge, scoreFont;
 };
 // scoreFont: index into theme's score face table (0 = 46px, 1 = 38px).
+// DEN_AUTO is the default and is not a layout of its own — it picks one of
+// the three below from how many games there actually are. At the wall distance
+// the design was originally reasoned about, the answer to a quiet night was to
+// make the tiles bigger; on a desk that reads as an accessibility mode, so the
+// rule is to recruit content instead. See uiBoardRefresh().
+#define DEN_ROOMY    0
+#define DEN_STANDARD 1
+#define DEN_DENSE    2
+#define DEN_AUTO     3
+#define DEN_COUNT    4
+
 static const DensitySpec kDensity[3] = {
   { 58, 244, 186, 16, 18, 72, 3, 2, 38, 0 },
   { 48, 248, 128, 12, 16, 60, 3, 3, 30, 1 },
