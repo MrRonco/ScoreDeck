@@ -328,15 +328,23 @@ export function createApp(env: Env) {
     const id = c.req.param('id');
     if (!/^\d{1,12}$/.test(id)) return c.json({ error: 'bad id' }, 400);
     const key = `player:${lg.slug}:${id}`;
+
+    // Whether a headshot exists describes OUR assets, not ESPN's data, so it is
+    // resolved on every request and deliberately NOT cached with the payload.
+    // Cached alongside it, running the headshot build had no visible effect for
+    // six hours: every player anyone had already opened kept reporting img
+    // false, and the device kept drawing the jersey badge.
+    const hasImg = async () => !!(await env.assets?.(`players/${lg.slug}/${id}.bin`));
+
     const hit = await env.store.get(key);
-    if (hit) return c.json(hit);
+    if (hit) return c.json({ ...(hit as object), img: await hasImg() });
     try {
       const p = normalizePlayer(await fetchAthlete(lg, id, doFetch), lg);
       if (!p) return c.json({ error: 'no such player' }, 404);
-      // A headshot exists only if the user ran the build; tell the device so it
-      // does not attempt a fetch that will 404.
-      p.img = !!(await env.assets?.(`players/${lg.slug}/${id}.bin`));
+      // Store WITHOUT img so the cached copy can never go stale against the
+      // asset directory.
       await env.store.put(key, p, 6 * 3600);
+      p.img = await hasImg();
       return c.json(p);
     } catch {
       return c.json({ error: 'upstream' }, 502);

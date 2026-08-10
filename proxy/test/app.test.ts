@@ -173,3 +173,33 @@ test('?teams=1 packs the catalog as arrays and skips the individual sports', asy
   const nhl = body.t.find((row: any[]) => row[0] === 'nhl');
   assert.deepEqual(nhl[3][0].slice(0, 3), ['21', 'TOR', 'Toronto Maple Leafs']);
 });
+
+/**
+ * Whether a headshot exists is a fact about OUR assets, not about ESPN, so it
+ * must not be cached with the upstream payload. It was, and the effect was
+ * that running the headshot build did nothing for six hours: every player
+ * anyone had already opened kept reporting img false and the panel kept
+ * drawing the jersey badge.
+ */
+test('img reflects the asset directory even on a cache hit', async () => {
+  const present = new Set<string>();
+  const app = createApp({
+    store: new MemoryStore(),
+    assets: async (p: string) => (present.has(p) ? new Uint8Array([1]) : null),
+    fetchImpl: async (url: string | URL | Request) => {
+      if (!String(url).includes('/athletes/')) return new Response('{}', { status: 404 });
+      return Response.json({ athlete: { id: '99', displayName: 'A Player',
+                                        position: { displayName: 'Catcher' } } });
+    },
+  } as any);
+
+  const one: any = await (await app.fetch(new Request('http://x/v1/player/mlb/99'))).json();
+  assert.equal(one.img, false, 'no blob yet');
+
+  // The build runs. Nothing about ESPN changed, so the payload is still cached.
+  present.add('players/mlb/99.bin');
+
+  const two: any = await (await app.fetch(new Request('http://x/v1/player/mlb/99'))).json();
+  assert.equal(two.img, true, 'a cache hit must still re-check the assets');
+  assert.equal(two.n, 'A Player', 'and must still serve the cached payload');
+});

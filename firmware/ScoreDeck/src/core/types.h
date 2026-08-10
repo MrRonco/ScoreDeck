@@ -177,7 +177,7 @@ struct PlayerCard {
   bool     loading;
   char     id[12];
   char     name[29];
-  char     pos[17];
+  char     pos[24];   // "Designated Hitter" is 17 and lost its last letter
   char     team[5];
   char     jersey[4];
   char     height[9];
