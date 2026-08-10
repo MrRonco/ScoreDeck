@@ -37,6 +37,7 @@ struct TileUI {
   lv_obj_t* rec[2];
   lv_obj_t* score[2];
   lv_obj_t* status;
+  lv_obj_t* sit;
   lv_obj_t* bcast;
   // Field variants (LEADERBOARD / GRID) reuse the tile with a different shape:
   // an event title and three ranked rows instead of two sides and a score.
@@ -55,7 +56,10 @@ struct TileUI {
   char     cBcast[13];
   uint32_t cEdge;
   bool     cEdgeVis;
-  lv_opa_t cOpa;
+  int8_t   cState;
+  char     cSit[14];
+  bool     cSitVis;
+  bool     cBcastVis;
   bool     cUsed;
   int8_t   gameIdx;   // index into g_board, -1 when the slot is empty
 };
@@ -127,6 +131,13 @@ static void buildTile(TileUI& t, int idx) {
     lv_obj_set_pos(t.badge[i], TILE_PAD_X, mid - d.badge / 2);
     lv_obj_set_style_radius(t.badge[i], 7, 0);
     lv_obj_set_style_bg_opa(t.badge[i], LV_OPA_COVER, 0);
+    // The followed-team mark. A ring rather than a coloured hairline: it is
+    // independent of the team's own colour, it marks the TEAM rather than the
+    // game (so a favourite-vs-favourite tie correctly shows two), and it does
+    // not compete with the edge light for the tile perimeter.
+    lv_obj_set_style_border_color(t.badge[i], C_INK, 0);
+    lv_obj_set_style_border_opa(t.badge[i], LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(t.badge[i], 0, 0);
     lv_obj_clear_flag(t.badge[i], LV_OBJ_FLAG_SCROLLABLE);
 
     // Logos are 48 px on the wire and drawn smaller. Do NOT set an explicit
@@ -154,7 +165,7 @@ static void buildTile(TileUI& t, int idx) {
 
     const int tx = TILE_PAD_X + d.badge + 10;
     t.abbr[i] = microLabel(t.root, tx, mid - textH / 2, C_INK, F_ABBR);
-    t.rec[i]  = microLabel(t.root, tx, mid - textH / 2 + abbrH + 3, C_INK3, F_MICRO);
+    t.rec[i]  = microLabel(t.root, tx, mid - textH / 2 + abbrH + 3, C_INK3, F_NUM);
 
     t.score[i] = lv_label_create(t.root);
     lv_obj_set_style_text_font(t.score[i], F_SCORE, 0);
@@ -171,12 +182,13 @@ static void buildTile(TileUI& t, int idx) {
   lv_label_set_long_mode(t.fldTitle, LV_LABEL_LONG_DOT);
   for (int i = 0; i < 3; i++) {
     const int y = TILE_PAD_Y + 24 + i * 19;
-    t.fldPos[i]  = microLabel(t.root, TILE_PAD_X, y, C_INK3, F_MICRO);
-    t.fldName[i] = microLabel(t.root, TILE_PAD_X + 26, y, C_INK2, F_MICRO);
+    t.fldPos[i]  = microLabel(t.root, TILE_PAD_X, y, C_INK3, F_NUM);
+    // Athlete names carry accents and lowercase — Raikkonen, Perez, Alcaraz.
+    t.fldName[i] = microLabel(t.root, TILE_PAD_X + 26, y, C_INK2, F_BODY);
     lv_obj_set_width(t.fldName[i], d.tileW - 2 * TILE_PAD_X - 26 - 56);
     lv_label_set_long_mode(t.fldName[i], LV_LABEL_LONG_DOT);
     t.fldVal[i]  = lv_label_create(t.root);
-    lv_obj_set_style_text_font(t.fldVal[i], F_MICRO, 0);
+    lv_obj_set_style_text_font(t.fldVal[i], F_NUM, 0);
     lv_obj_set_style_text_color(t.fldVal[i], C_INK, 0);
     lv_obj_set_style_text_align(t.fldVal[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(t.fldVal[i], 54);
@@ -186,7 +198,7 @@ static void buildTile(TileUI& t, int idx) {
   // ── set boxes ────────────────────────────────────────────────────────────
   for (int i = 0; i < 2; i++) {
     t.setLbl[i] = lv_label_create(t.root);
-    lv_obj_set_style_text_font(t.setLbl[i], F_MICRO, 0);
+    lv_obj_set_style_text_font(t.setLbl[i], F_NUM, 0);
     lv_obj_set_style_text_color(t.setLbl[i], C_INK2, 0);
     lv_obj_set_style_text_align(t.setLbl[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(t.setLbl[i], 92);
@@ -195,14 +207,32 @@ static void buildTile(TileUI& t, int idx) {
     lv_label_set_text(t.setLbl[i], "");
   }
 
-  t.status = microLabel(t.root, TILE_PAD_X, d.tileH - TILE_PAD_Y - 13, C_INK2, F_MICRO);
+  t.status = microLabel(t.root, TILE_PAD_X, d.tileH - TILE_PAD_Y - 15, C_INK2, F_NUM);
   t.bcast  = lv_label_create(t.root);
-  lv_obj_set_style_text_font(t.bcast, F_MICRO, 0);
+  lv_obj_set_style_text_font(t.bcast, F_NUM, 0);
   lv_obj_set_style_text_color(t.bcast, C_INK3, 0);
   lv_obj_set_style_text_align(t.bcast, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_width(t.bcast, 86);
-  lv_obj_set_pos(t.bcast, d.tileW - TILE_PAD_X - 86, d.tileH - TILE_PAD_Y - 13);
+  lv_obj_set_pos(t.bcast, d.tileW - TILE_PAD_X - 86, d.tileH - TILE_PAD_Y - 15);
   lv_label_set_text(t.bcast, "");
+
+  // Situation: power play, red zone, bases loaded. The proxy has always sent
+  // this and the device has always parsed it; nothing ever drew it. It sits in
+  // the ~120 px of nothing between the status and the broadcast, and it is the
+  // only thing on a tile that makes you keep watching rather than glance away.
+  //
+  // It shares the broadcast's slot rather than taking its own. The two are
+  // never both worth showing: which channel a game is on matters before it
+  // starts, and a man advantage only exists once it has. Sharing also means
+  // neither can overrun the other, which they did when the chip had its own x.
+  t.sit = lv_label_create(t.root);
+  lv_obj_set_style_text_font(t.sit, F_NUM, 0);
+  lv_obj_set_style_text_color(t.sit, C_INK, 0);
+  lv_obj_set_style_text_align(t.sit, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_width(t.sit, 120);
+  lv_obj_set_pos(t.sit, d.tileW - TILE_PAD_X - 120, d.tileH - TILE_PAD_Y - 15);
+  lv_label_set_text(t.sit, "");
+  lv_obj_add_flag(t.sit, LV_OBJ_FLAG_HIDDEN);
 
   memset(t.cAbbr, 0, sizeof t.cAbbr);
   memset(t.cRec, 0, sizeof t.cRec);
@@ -217,7 +247,11 @@ static void buildTile(TileUI& t, int idx) {
   // A change-cache that disagrees with reality is worse than no cache: it
   // suppresses exactly the update it was meant to make cheap.
   t.cEdgeVis = false;
-  t.cOpa = 0;
+  t.cState = -1;
+  t.cSit[0] = '\0';
+  // Must match the objects' real state at build time — see the note above.
+  t.cSitVis = false;
+  t.cBcastVis = true;
   t.cUsed = true;
 }
 
@@ -318,6 +352,39 @@ static uint8_t visibleCount() {
   return n;
 }
 
+// ── ordering ───────────────────────────────────────────────────────────────
+//
+// The board used to render g_board in whatever order the proxy sent, which on
+// a 48-game Saturday put your own team wherever it happened to land — possibly
+// four pages in, looking exactly like every other tile. For a personal
+// scoreboard that is the deepest defect there is.
+//
+// An index array, insertion-sorted. No allocation, stable, and 48 entries is
+// nothing. Ties keep proxy order, which is already roughly by start time.
+static uint8_t s_order[MAX_GAMES];
+
+static uint8_t rankOf(const Game& g) {
+  switch (g.state) {
+    case GS_LIVE:  return g.isFav ? 0 : 1;
+    case GS_PRE:   return g.isFav ? 2 : 3;
+    default:       return g.isFav ? 4 : 5;
+  }
+}
+
+static void buildOrder() {
+  for (uint8_t i = 0; i < g_gameCount; i++) s_order[i] = i;
+  for (uint8_t i = 1; i < g_gameCount; i++) {
+    const uint8_t v = s_order[i];
+    const uint8_t rv = rankOf(g_board[v]);
+    int j = (int)i - 1;
+    while (j >= 0 && rankOf(g_board[s_order[j]]) > rv) {
+      s_order[j + 1] = s_order[j];
+      j--;
+    }
+    s_order[j + 1] = v;
+  }
+}
+
 bool uiBoardPage(int delta) {
   const uint8_t per = spec().cols * spec().rows;
   const uint8_t pages = (visibleCount() + per - 1) / per;
@@ -368,8 +435,10 @@ void uiBoardRefresh() {
   const uint8_t pages = max<uint8_t>(1, (visibleCount() + per - 1) / per);
   if (g_page >= pages) g_page = 0;
 
+  buildOrder();
   uint8_t seen = 0, slot = 0;
-  for (uint8_t i = 0; i < g_gameCount && slot < per; i++) {
+  for (uint8_t oi = 0; oi < g_gameCount && slot < per; oi++) {
+    const uint8_t i = s_order[oi];
     const Game& g = g_board[i];
     if (!passesFilter(g)) continue;
     if (seen++ < g_page * per) continue;
@@ -378,9 +447,23 @@ void uiBoardRefresh() {
     t.gameIdx = (int8_t)i;
     setHiddenCached(t.root, &t.cUsed, false);
 
-    // Luminance encodes state — live 100%, scheduled 72%, final 55%.
-    const lv_opa_t opa = g.state == GS_LIVE ? OPA_LIVE : g.state == GS_PRE ? OPA_PRE : OPA_FINAL;
-    if (t.cOpa != opa) { t.cOpa = opa; lv_obj_set_style_opa(t.root, opa, 0); }
+    // State ink. This used to be one opacity on the tile root, which faded the
+    // frost and the text together and took a final's record and broadcast to
+    // 1.73:1 — so a finished game read as a tile that had failed to load. It
+    // also pushed every tile through a 63 KB composite buffer.
+    const StateInk& si = kStateInk[g.state];
+    if (t.cState != g.state) {
+      t.cState = g.state;
+      lv_obj_set_style_bg_color(t.root, si.plate, 0);
+      lv_obj_set_style_border_color(t.root, si.edge, 0);
+      for (int k = 0; k < 2; k++) {
+        lv_obj_set_style_text_color(t.abbr[k], si.ink, 0);
+        lv_obj_set_style_text_color(t.rec[k],  si.ink3, 0);
+      }
+      lv_obj_set_style_text_color(t.status, si.ink2, 0);
+      lv_obj_set_style_text_color(t.bcast,  si.ink3, 0);
+      lv_obj_set_style_text_color(t.fldTitle, si.ink, 0);
+    }
 
     // Three models do not have two sides and a score. Show/hide the two
     // shapes rather than building separate tiles: the grid, the frost and the
@@ -408,8 +491,9 @@ void uiBoardRefresh() {
       }
       setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
       setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
-      const lv_opa_t fo = g.state == GS_LIVE ? OPA_LIVE : g.state == GS_PRE ? OPA_PRE : OPA_FINAL;
-      if (t.cOpa != fo) { t.cOpa = fo; lv_obj_set_style_opa(t.root, fo, 0); }
+      // State ink already applied above; a leaderboard has no leader side.
+      setHiddenCached(t.sit,   &t.cSitVis,   true);
+      setHiddenCached(t.bcast, &t.cBcastVis, false);
       setHiddenCached(t.edge, &t.cEdgeVis, true);
       slot++;
       continue;
@@ -432,11 +516,15 @@ void uiBoardRefresh() {
       // The losing side drops to ink-2 — the second half of the state channel.
       const bool leading = (g.state != GS_PRE) &&
                            ((k == 1) == g.leaderHome) && (g.away.score != g.home.score);
-      lv_obj_set_style_text_color(t.score[k], leading ? C_INK : C_INK2, 0);
+      lv_obj_set_style_text_color(t.score[k], leading ? si.ink : si.ink2, 0);
+
+      // Followed teams keep a ring on the badge — see buildTile().
+      const bool fav = sideIsFav(g.league, side[k]->id);
+      lv_obj_set_style_border_width(t.badge[k], fav ? 2 : 0, 0);
 
       if (t.cColor[k] != side[k]->color) {
         t.cColor[k] = side[k]->color;
-        lv_obj_set_style_bg_color(t.badge[k], lv_color_hex(side[k]->color), 0);
+        teamBadgeSet(t.badge[k], side[k]->color);
       }
       lv_label_set_text(t.badgeLbl[k], side[k]->abbr);
 
@@ -473,11 +561,21 @@ void uiBoardRefresh() {
     setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
     setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
 
+    char sit[14] = "";
+    situationText(g, sit, sizeof sit);
+    setHiddenCached(t.sit,   &t.cSitVis,   !sit[0]);
+    setHiddenCached(t.bcast, &t.cBcastVis,  sit[0] != '\0');
+    if (sit[0]) setTextCached(t.sit, t.cSit, sizeof t.cSit, sit);
+    else        t.cSit[0] = '\0';
+
     // Edge light: only live games, on the leading side.
     const bool edgeOn = (g.state == GS_LIVE);
     setHiddenCached(t.edge, &t.cEdgeVis, !edgeOn);
     if (edgeOn) {
-      const uint32_t c = g.leaderHome ? g.home.color : g.away.color;
+      // teamInk, not the raw colour: Toronto navy against the tile is 1.11:1,
+      // which made the product's signature element invisible on its own
+      // flagship example. See theme.cpp.
+      const uint32_t c = teamInk(g.leaderHome ? g.home.color : g.away.color);
       if (t.cEdge != c) { t.cEdge = c; lv_obj_set_style_bg_color(t.edge, lv_color_hex(c), 0); }
       lv_obj_set_x(t.edge, g.leaderHome ? d.tileW - EDGE_W - 1 : 0);
     }

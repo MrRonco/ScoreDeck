@@ -134,7 +134,7 @@ void uiAlertEnqueue(const AlertEvent& e) {
 
 static void present(const AlertEvent& e) {
   lv_obj_set_style_bg_color(s_edge, lv_color_hex(e.color), 0);
-  lv_obj_set_style_bg_color(s_badge, lv_color_hex(e.color), 0);
+  teamBadgeSet(s_badge, e.color);
   lv_obj_set_style_bg_color(s_pulse, lv_color_hex(e.color), 0);
   lv_label_set_text(s_badgeLbl, e.abbr);
   lv_label_set_text(s_verb, e.verb);

@@ -146,7 +146,7 @@ void uiNewsRender() {
 
     if (it.abbr[0]) {
       lv_obj_clear_flag(s_chip[r], LV_OBJ_FLAG_HIDDEN);
-      lv_obj_set_style_bg_color(s_chip[r], lv_color_hex(it.color), 0);
+      teamBadgeSet(s_chip[r], it.color);
       lv_label_set_text(s_chipLbl[r], it.abbr);
       lv_obj_set_x(s_head[r], 52);
       lv_obj_set_x(s_desc[r], 52);

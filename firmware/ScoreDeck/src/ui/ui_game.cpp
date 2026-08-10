@@ -187,8 +187,8 @@ void uiGameOpen(const Game& g) {
   lv_label_set_text(s_abbrA, g.away.abbr);   lv_label_set_text(s_lblA, g.away.abbr);
   lv_label_set_text(s_abbrH, g.home.abbr);   lv_label_set_text(s_lblH, g.home.abbr);
   lv_label_set_text(s_recA, g.away.rec);     lv_label_set_text(s_recH, g.home.rec);
-  lv_obj_set_style_bg_color(s_badgeA, lv_color_hex(g.away.color), 0);
-  lv_obj_set_style_bg_color(s_badgeH, lv_color_hex(g.home.color), 0);
+  teamBadgeSet(s_badgeA, g.away.color);
+  teamBadgeSet(s_badgeH, g.home.color);
   char b[8];
   snprintf(b, sizeof b, "%u", g.away.score); lv_label_set_text(s_scoreA, b);
   snprintf(b, sizeof b, "%u", g.home.score); lv_label_set_text(s_scoreH, b);

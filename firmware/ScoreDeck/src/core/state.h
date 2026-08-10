@@ -84,6 +84,20 @@ extern volatile bool g_standingsInFlight;
 /** True when the followed list contains this league/abbr pair. */
 bool boardFollows(const char* league, const char* abbr);
 
+/** Exact per-side test: is THIS team one of the user's favourites?
+ *  boardFollows() marks a whole game and would ring the opponent too. */
+bool sideIsFav(const char* league, const char* teamId);
+
+/**
+ * Render Game::situation as a short chip: "BASES LOADED", "2 ON 1 OUT",
+ * "RED ZONE", "POWER PLAY". Writes "" when there is nothing worth saying.
+ *
+ * The packing is sport-dependent and lives in types.h; this is the only place
+ * that turns it into words, so the board and the game screen cannot disagree.
+ * Output is CAPS + digits so it is safe in any face.
+ */
+void situationText(const Game& g, char* out, size_t cap);
+
 // ── status, for the top bar ─────────────────────────────────────────────────
 enum NetStatus : uint8_t { NET_BOOT = 0, NET_NOWIFI, NET_NOPROXY, NET_ERR, NET_OK, NET_STALE };
 extern NetStatus g_net;

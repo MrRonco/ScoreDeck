@@ -161,3 +161,56 @@ bool inQuietHours() {
   return (from <= to) ? (mins >= from && mins < to)
                       : (mins >= from || mins < to);   // window crosses midnight
 }
+
+/**
+ * The only place that turns packed situation bits into words.
+ *
+ * Kept deliberately terse. This chip sits in ~120 px beside the clock, and its
+ * whole job is to be recognised, not read — "BASES LOADED" and "RED ZONE" are
+ * shapes you know before you have finished reading them.
+ */
+void situationText(const Game& g, char* out, size_t cap) {
+  out[0] = '\0';
+  if (!g.situation || g.state != GS_LIVE) return;
+  const uint16_t s = g.situation;
+
+  if (g.model == SM_INNING) {
+    const uint8_t on = (uint8_t)sitOnFirst(s) + (uint8_t)sitOnSecond(s) + (uint8_t)sitOnThird(s);
+    const uint8_t outs = sitOuts(s);
+    if (on == 3)      snprintf(out, cap, "BASES LOADED");
+    else if (on)      snprintf(out, cap, "%u ON %u OUT", on, outs);
+    else if (outs)    snprintf(out, cap, "%u OUT", outs);
+    return;
+  }
+
+  if (g.model == SM_CLOCK) {
+    // Bit 2 is set only for sports where a man advantage is a real state.
+    if (s & 0x04)      snprintf(out, cap, "POWER PLAY");
+    else if (sitRedZone(s)) snprintf(out, cap, "RED ZONE");
+  }
+}
+
+/**
+ * Is this specific SIDE one of the user's teams?
+ *
+ * boardFollows() answers a different question — "does this league have a
+ * followed game involving that abbreviation" — which is enough for a standings
+ * table but wrong for a tile: it would ring both sides of a followed game,
+ * including the opponent. Favourites are stored as `league:teamId`, and Side
+ * carries the id, so this can be exact.
+ */
+bool sideIsFav(const char* league, const char* teamId) {
+  if (!teamId || !*teamId || !g_set.favs.length()) return false;
+  char key[24];
+  const int n = snprintf(key, sizeof key, "%s:%s", league, teamId);
+  if (n <= 0 || n >= (int)sizeof key) return false;
+
+  const char* hay = g_set.favs.c_str();
+  const size_t klen = strlen(key);
+  for (const char* p = hay; (p = strstr(p, key)) != nullptr; p += klen) {
+    const bool startOk = (p == hay) || p[-1] == ',';
+    const char after = p[klen];
+    if (startOk && (after == '\0' || after == ',')) return true;   // whole entry
+  }
+  return false;
+}

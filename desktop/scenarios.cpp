@@ -40,8 +40,12 @@ static Game& push(const char* league, GameState st, const char* status,
   g.isFav = fav;
   g.startUtc = (uint32_t)time(nullptr) + 3600;
   g.winProbHome = 255;
-  setSide(g.away, aAbbr, aAbbr, "12-4-2", aScore, aCol, "1");
-  setSide(g.home, hAbbr, hAbbr, "21-6-4", hScore, hCol, "2");
+  // Ids must be distinct per side or the favourite ring cannot tell them apart.
+  char aid[8], hid[8];
+  snprintf(aid, sizeof aid, "%u", 100u + g_gameCount * 2);
+  snprintf(hid, sizeof hid, "%u", 101u + g_gameCount * 2);
+  setSide(g.away, aAbbr, aAbbr, "12-4-2", aScore, aCol, aid);
+  setSide(g.home, hAbbr, hAbbr, "21-6-4", hScore, hCol, hid);
   g.leaderHome = hScore > aScore;
   g_gameCount++;
   return g;
@@ -64,6 +68,7 @@ static void reset() {
   memset(&g_player, 0, sizeof g_player);
   memset(&g_news, 0, sizeof g_news);
   memset(&g_standings, 0, sizeof g_standings);
+  g_set.favs = "";
 }
 
 // ── secondary-screen fills ───────────────────────────────────────────────────
@@ -314,18 +319,25 @@ void scenarioReapply(int n) {
 void scenarioApply(int n) {
   reset();
   switch (n) {
-    case SCN_TYPICAL:
+    case SCN_TYPICAL: {
       league("nhl", 3); league("nfl", 1); league("mlb", 2);
-      push("nhl", GS_LIVE,  "3rd 04:21", "MTL", 2, 0xAF1E2D, "TOR", 3, 0x00205B, "SN", true);
-      push("nfl", GS_LIVE,  "Q2 11:03",  "BUF", 14, 0x00338D, "KC", 21, 0xE31837, "CBS");
+      // Game 0 home side (TOR) is the followed team: id 101 by push()'s scheme.
+      g_set.favs = "nhl:101";
+      push("nhl", GS_LIVE,  "3rd 04:21", "MTL", 2, 0xAF1E2D, "TOR", 3, 0x00205B, "SN", true)
+        .situation = 0x04;                       // power play
+      push("nfl", GS_LIVE,  "Q2 11:03",  "BUF", 14, 0x00338D, "KC", 21, 0xE31837, "CBS")
+        .situation = 0x02;                       // red zone
       push("nhl", GS_LIVE,  "1st 18:44", "EDM", 1, 0xFF4C00, "CGY", 0, 0xC8102E, "SN");
-      push("mlb", GS_LIVE,  "Bot 7",     "CIN", 1, 0xC6011F, "WSH", 3, 0xAB0003, "MLB.TV");
+      Game& mlb = push("mlb", GS_LIVE, "Bot 7", "CIN", 1, 0xC6011F, "WSH", 3, 0xAB0003, "MLB.TV");
+      mlb.model = SM_INNING;
+      mlb.situation = 0x01 | 0x04 | (1 << 3);    // 1st and 3rd, one out
       push("nhl", GS_PRE,   "7:00 PM",   "BOS", 0, 0xFFB81C, "NYR", 0, 0x0038A8, "ESPN");
       push("mlb", GS_PRE,   "8:10 PM",   "LAD", 0, 0x005A9C, "SF", 0, 0xFD5A1E, "MLB.TV");
       push("nfl", GS_FINAL, "Final",     "DAL", 17, 0x041E42, "PHI", 27, 0x004C54);
       push("nhl", GS_FINAL, "Final/OT",  "VAN", 4, 0x00205B, "SEA", 5, 0x99D9D9);
       push("mlb", GS_FINAL, "Final",     "NYY", 6, 0x132448, "BOS", 2, 0xBD3039);
       break;
+    }
 
     case SCN_EMPTY:
       // Nothing on the board at all — the idle screen's empty state, which is

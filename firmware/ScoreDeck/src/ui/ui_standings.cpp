@@ -173,7 +173,7 @@ void uiStandingsRender() {
     snprintf(n, sizeof n, "%u", idx + 1);
     lv_label_set_text(s_rank[r], n);
     lv_obj_clear_flag(s_badge[r], LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_bg_color(s_badge[r], lv_color_hex(row.color), 0);
+    teamBadgeSet(s_badge[r], row.color);
     lv_label_set_text(s_badgeLbl[r], row.abbr);
     lv_label_set_text(s_team[r], row.name);
 
