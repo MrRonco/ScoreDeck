@@ -66,6 +66,12 @@ static const DensitySpec kDensity[3] = {
 #define ALERT_Y         90
 #define ALERT_HOLD_MS 10000
 #define ALERT_GAP_MS  12000
+#define ALERT_BANNER_MS 4500   // non-followed score: banner, no takeover
+
+// Auto-focus: how long a tense game may hold the screen, and how long to
+// leave the user alone after they close one themselves.
+#define FOCUS_MAX_MS      180000UL
+#define FOCUS_COOLDOWN_MS  90000UL
 #define ALERT_FADE_STEPS   4   // discrete. Never a tween — UI.md §8.
 
 // ── NVS (Preferences namespace "sdeck") ─────────────────────────────────────
@@ -85,6 +91,7 @@ static const DensitySpec kDensity[3] = {
 #define K_QUIET_FR  "qfr"       // minutes from midnight
 #define K_QUIET_TO  "qto"
 #define K_ALERT_EN  "alen"
+#define K_FOCUS_EN  "focus"
 
 #define FAVS_MAX_LEN 240
 #define QUIET_DEFAULT_FROM (23 * 60)

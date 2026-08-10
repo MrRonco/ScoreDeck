@@ -6,4 +6,5 @@ enum { SCN_TYPICAL = 0, SCN_EMPTY, SCN_ALL_LIVE, SCN_EXTREMES,
 void        scenarioApply(int n);
 void        scenarioReapply(int n);
 void        scenarioFireAlert();
+void        scenarioFireBanner();
 const char* scenarioName(int n);

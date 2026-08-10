@@ -32,7 +32,8 @@ LDLIBS   = $(SDL_LIBS)
 # network, flash or the panel is faked in fakes.cpp instead.
 FW_CXX = $(SRC)/ui/ui_board.cpp $(SRC)/ui/ui_idle.cpp $(SRC)/ui/ui_game.cpp \
          $(SRC)/ui/ui_standings.cpp $(SRC)/ui/ui_news.cpp $(SRC)/ui/ui_lineup.cpp \
-         $(SRC)/ui/ui_alert.cpp $(SRC)/ui/ui_setup.cpp $(SRC)/ui/theme.cpp \
+         $(SRC)/ui/ui_alert.cpp $(SRC)/ui/ui_setup.cpp $(SRC)/ui/ui_focus.cpp \
+         $(SRC)/ui/theme.cpp \
          $(SRC)/core/state.cpp
 FW_C   = $(wildcard $(SRC)/assets/*.c)
 LV_C   = $(shell find $(LVGL)/src -name '*.c')
@@ -70,7 +71,7 @@ shots: $(BIN)
 
 # Every secondary screen, on the typical board. These are unreachable from a
 # scenario alone: each one clears its state in Open() and waits on a fetch.
-SCREENS = board idle game standings news lineup player alert setup
+SCREENS = board idle game standings news lineup player alert banner setup
 screens: $(BIN)
 	@mkdir -p shots
 	@for s in $(SCREENS); do ./$(BIN) --shot shots/scr-$$s.bmp --screen $$s; done

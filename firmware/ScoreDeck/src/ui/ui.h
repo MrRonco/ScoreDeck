@@ -57,6 +57,17 @@ bool uiBoardPage(int delta);
 void uiToast(const char* text);
 void uiToastTick();
 
+/** Flare the edge light on one game's tile — the non-occluding half of a
+ *  score alert. No-op when that game is not on the current page. */
+void uiBoardFlash(const char* gameId);
+
+// ── auto-focus ─────────────────────────────────────────────────────────────
+/** Open a followed team's game when it reaches a tense state, and hand the
+ *  screen back when it passes. Call once per loop. */
+void uiFocusTick();
+/** Tell auto-focus the user closed a game themselves, so it backs off. */
+void uiFocusNoteUserClose();
+
 // Standings — UI.md §6. Generic table, labelled cut lines.
 void uiStandingsInit(lv_obj_t* parent);
 void uiStandingsOpen(const char* league);

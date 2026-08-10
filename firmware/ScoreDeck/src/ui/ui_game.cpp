@@ -47,7 +47,7 @@ static lv_obj_t* lb(lv_obj_t* p, int x, int y, lv_color_t c, const lv_font_t* f,
   return l;
 }
 
-static void onBack(lv_event_t*) { uiGameClose(); }
+static void onBack(lv_event_t*) { uiFocusNoteUserClose(); uiGameClose(); }
 static void onLineup(lv_event_t*) {
   if (s_openId[0]) uiLineupOpen(s_openLeague, s_openId);
 }

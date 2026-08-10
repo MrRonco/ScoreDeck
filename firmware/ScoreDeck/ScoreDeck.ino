@@ -304,6 +304,7 @@ void loop() {
   tickClock();
   uiAlertTick();
   uiToastTick();
+  uiFocusTick();
 
   if (!uiSetupActive()) {
     if (WiFi.status() != WL_CONNECTED) {

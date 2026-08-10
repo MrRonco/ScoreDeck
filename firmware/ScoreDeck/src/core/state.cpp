@@ -91,6 +91,7 @@ void settingsLoad() {
   g_set.panelPass = p.getString(K_PPASS, "");
   g_set.density   = p.getUChar(K_DENSITY, DEN_STANDARD);
   g_set.alertsOn  = p.getBool(K_ALERT_EN, true);
+  g_set.focusOn   = p.getBool(K_FOCUS_EN, true);
   g_set.quietOn   = p.getBool(K_QUIET_EN, false);
   g_set.quietFrom = p.getUShort(K_QUIET_FR, QUIET_DEFAULT_FROM);
   g_set.quietTo   = p.getUShort(K_QUIET_TO, QUIET_DEFAULT_TO);
@@ -125,6 +126,7 @@ void settingsSave() {
   p.putString(K_LEAGUES, g_set.leagues);
   p.putUChar(K_DENSITY, g_set.density);
   p.putBool(K_ALERT_EN, g_set.alertsOn);
+  p.putBool(K_FOCUS_EN, g_set.focusOn);
   p.putBool(K_QUIET_EN, g_set.quietOn);
   p.putUShort(K_QUIET_FR, g_set.quietFrom);
   p.putUShort(K_QUIET_TO, g_set.quietTo);

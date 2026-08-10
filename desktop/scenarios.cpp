@@ -277,25 +277,37 @@ static void fillLineup() {
   L.loading = false;
 }
 
-void scenarioFireAlert() {
+static void fireAlert(const char* gameId, const char* abbr, uint32_t colour,
+                      const char* verb, const char* who, uint16_t a, uint16_t h) {
   AlertEvent e;
   memset(&e, 0, sizeof e);
   e.seq = 1;
-  strncpy(e.gameId, g_gameCount ? g_board[0].id : "900000", sizeof e.gameId - 1);
-  strncpy(e.verb,   "GOAL", sizeof e.verb - 1);
-  strncpy(e.abbr,   "TOR",  sizeof e.abbr - 1);
-  e.color = 0x00205B;
-  strncpy(e.who,    "Auston Matthews (41)", sizeof e.who - 1);
+  strncpy(e.gameId, gameId, sizeof e.gameId - 1);
+  strncpy(e.verb, verb, sizeof e.verb - 1);
+  strncpy(e.abbr, abbr, sizeof e.abbr - 1);
+  e.color = colour;
+  strncpy(e.who, who, sizeof e.who - 1);
   strncpy(e.detail, "Nylander, Rielly", sizeof e.detail - 1);
   strncpy(e.status, "3rd 04:21", sizeof e.status - 1);
-  e.scoreAway = 2;
-  e.scoreHome = 3;
+  e.scoreAway = a;
+  e.scoreHome = h;
   uiAlertEnqueue(e);
-  // The card fades in over four discrete steps ~70 ms apart, so a single tick
-  // captures it at 25% and a --shot would libel the design. Run the fade out.
   for (int i = 0; i < 24 && !uiAlertActive(); i++) { uiAlertTick(); usleep(20000); }
   for (int i = 0; i < 24; i++) { uiAlertTick(); usleep(20000); }
 }
+
+/** A followed team scores — the full takeover. */
+void scenarioFireAlert() {
+  fireAlert(g_gameCount ? g_board[0].id : "900000", "TOR", 0x00205B,
+            "GOAL", "Auston Matthews (41)", 2, 3);
+}
+
+/** Someone else scores — the banner, with the board still visible. */
+void scenarioFireBanner() {
+  fireAlert(g_gameCount > 1 ? g_board[1].id : "900001", "KC", 0xE31837,
+            "TOUCHDOWN", "Xavier Worthy (7)", 14, 21);
+}
+
 
 /** Refill the screens whose Open() clears state before fetching. */
 void scenarioReapply(int n) {

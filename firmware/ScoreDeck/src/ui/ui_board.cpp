@@ -409,7 +409,36 @@ void uiToast(const char* text) {
   s_toastUntil = millis() + 1200;
 }
 
+// ── score flare ────────────────────────────────────────────────────────────
+// The non-occluding half of an alert: the scoring team's tile widens and
+// brightens its edge light for a couple of seconds. Nothing is covered, and
+// the whole effect is 3 style writes on one object.
+static int8_t   s_flashTile = -1;
+static uint32_t s_flashUntil;
+
+void uiBoardFlash(const char* gameId) {
+  for (uint8_t i = 0; i < TILES_PER_PAGE; i++) {
+    TileUI& t = s_tile[i];
+    if (!t.root || t.gameIdx < 0 || t.gameIdx >= g_gameCount) continue;
+    if (strcmp(g_board[t.gameIdx].id, gameId) != 0) continue;
+    lv_obj_set_width(t.edge, EDGE_W * 3);
+    lv_obj_clear_flag(t.edge, LV_OBJ_FLAG_HIDDEN);
+    t.cEdgeVis = true;
+    s_flashTile = (int8_t)i;
+    s_flashUntil = millis() + 2000;
+    return;
+  }
+}
+
+static void flashTick() {
+  if (s_flashTile < 0 || millis() < s_flashUntil) return;
+  TileUI& t = s_tile[s_flashTile];
+  if (t.root) lv_obj_set_width(t.edge, EDGE_W);
+  s_flashTile = -1;
+}
+
 void uiToastTick() {
+  flashTick();
   if (!s_toast || !s_toastUntil) return;
   if (millis() >= s_toastUntil) {
     s_toastUntil = 0;

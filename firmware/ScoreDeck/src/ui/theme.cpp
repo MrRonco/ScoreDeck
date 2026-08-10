@@ -75,14 +75,26 @@ static float contrast(uint32_t a, uint32_t b) {
 static uint32_t lift(uint32_t c, uint32_t against, float minRatio) {
   if (contrast(c, against) >= minRatio) return c;      // already fine, leave it
 
-  int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
-  const int mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
-  if (mx > 0) {                                        // stage 1: pure value lift
-    r = r * 255 / mx; g = g * 255 / mx; b = b * 255 / mx;
-    const uint32_t sat = (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b;
-    if (contrast(sat, against) >= minRatio) return sat;
+  const int r0 = (c >> 16) & 0xFF, g0 = (c >> 8) & 0xFF, b0 = c & 0xFF;
+  const int mx = r0 > g0 ? (r0 > b0 ? r0 : b0) : (g0 > b0 ? g0 : b0);
+
+  // Stage 1: raise value toward full saturation, hue exact. Walk it rather
+  // than jumping — going straight to max overshoots badly for a low target
+  // and turns a navy badge into electric blue when a nudge would have done.
+  int r = r0, g = g0, b = b0;
+  if (mx > 0) {
+    for (int t = 1; t <= 20; t++) {
+      const int k = 255 * t / 20;                      // interpolate 0 -> full
+      const int rr = r0 + (r0 * 255 / mx - r0) * k / 255;
+      const int gg = g0 + (g0 * 255 / mx - g0) * k / 255;
+      const int bb = b0 + (b0 * 255 / mx - b0) * k / 255;
+      const uint32_t out = (uint32_t)rr << 16 | (uint32_t)gg << 8 | (uint32_t)bb;
+      if (contrast(out, against) >= minRatio) return out;
+      r = rr; g = gg; b = bb;
+    }
   }
-  for (int t = 1; t <= 100; t++) {                     // stage 2: whiten residual
+  // Stage 2: only now start losing chroma.
+  for (int t = 1; t <= 100; t++) {
     const uint32_t out = (uint32_t)(r + (255 - r) * t / 100) << 16 |
                          (uint32_t)(g + (255 - g) * t / 100) << 8 |
                          (uint32_t)(b + (255 - b) * t / 100);

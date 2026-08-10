@@ -27,6 +27,7 @@ struct Settings {
   String  panelPass;
   uint8_t density;
   bool    alertsOn;
+  bool    focusOn;
   bool    quietOn;
   uint16_t quietFrom, quietTo;
   uint32_t lastSeq;

@@ -106,6 +106,7 @@ static void showScreen(const char* name) {
                                        uiPlayerOpen("nhl", "3024"); }
   else if (!strcmp(name, "setup"))     uiShow(SCR_SETUP);
   else if (!strcmp(name, "alert"))     scenarioFireAlert();
+  else if (!strcmp(name, "banner"))    scenarioFireBanner();
   else if (!strcmp(name, "game") && g_gameCount) uiGameOpen(g_board[0]);
   else fprintf(stderr, "unknown screen '%s'\n", name);
 }

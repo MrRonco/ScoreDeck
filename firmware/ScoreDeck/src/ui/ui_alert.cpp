@@ -8,6 +8,19 @@
 // static. The only thing that moves afterwards is a 200x6 pulse bar.
 //
 // Do not "improve" this with a slide-in.
+//
+// ── who gets the takeover ──────────────────────────────────────────────────
+//
+// The full-screen card was designed for a panel across a room, where a goal is
+// a glance you either catch or you do not. This one sits on a desk, beside a
+// monitor being worked at — and the card hides the other eight games for ten
+// seconds, potentially every twelve. At that distance an unrequested takeover
+// is not ambient, it is an interruption.
+//
+// So it is now earned rather than automatic. A team you follow keeps the whole
+// card. Everyone else gets an 800x44 banner and a flare on the scoring tile's
+// edge light: nothing is occluded, and it repaints 35,200 px instead of
+// 156,000 — cheaper than what it replaces.
 #include "ui.h"
 #include "theme.h"
 #include "../config.h"
@@ -28,6 +41,15 @@ static lv_obj_t* s_homeScore;
 static lv_obj_t* s_status;
 static lv_obj_t* s_pulse;
 static lv_obj_t* s_hint;
+
+// The non-occluding path.
+static lv_obj_t* s_banner;
+static lv_obj_t* s_banEdge;
+static lv_obj_t* s_banAbbr;
+static lv_obj_t* s_banVerb;
+static lv_obj_t* s_banWho;
+static lv_obj_t* s_banScore;
+static uint32_t  s_banUntil;
 
 // Queue: a three-goal burst must not stack four cards on top of each other.
 static AlertEvent s_queue[MAX_EVENTS];
@@ -106,6 +128,51 @@ void uiAlertInit(lv_obj_t* parent) {
   s_hint = lbl(s_card, ALERT_W - 34 - 200, ALERT_H - 24, C_INK3, F_MICRO,
                LV_TEXT_ALIGN_RIGHT, 200);
   lv_label_set_text(s_hint, "TAP OR 10s TO DISMISS");
+
+  // ── the banner ───────────────────────────────────────────────────────────
+  // Same information, no occlusion. Sits over the top bar, which is the least
+  // valuable 44 px on the board.
+  s_banner = glassPanel(parent, 0, 0, SCR_W, 44, 0);
+  lv_obj_add_flag(s_banner, LV_OBJ_FLAG_HIDDEN);
+
+  s_banEdge = lv_obj_create(s_banner);
+  lv_obj_remove_style_all(s_banEdge);
+  lv_obj_set_size(s_banEdge, 4, 44);
+  lv_obj_set_pos(s_banEdge, 0, 0);
+  lv_obj_set_style_bg_opa(s_banEdge, LV_OPA_COVER, 0);
+
+  s_banAbbr  = lbl(s_banner, 20, 13, C_INK, F_ABBR);
+  s_banVerb  = lbl(s_banner, 92, 13, C_INK, F_ABBR);
+  s_banWho   = lbl(s_banner, 230, 14, C_INK2, F_BODY);   // player names
+  s_banScore = lbl(s_banner, SCR_W - 20 - 150, 13, C_INK, F_NUM,
+                   LV_TEXT_ALIGN_RIGHT, 150);
+}
+
+/** True when the side that scored is one the user actually follows. */
+static bool scoredByFavourite(const AlertEvent& e) {
+  for (uint8_t i = 0; i < g_gameCount; i++) {
+    const Game& g = g_board[i];
+    if (strcmp(g.id, e.gameId) != 0) continue;
+    const bool home = strcmp(g.home.abbr, e.abbr) == 0;
+    return sideIsFav(g.league, home ? g.home.id : g.away.id);
+  }
+  return false;
+}
+
+static void presentBanner(const AlertEvent& e) {
+  const uint32_t ink = teamInk(e.color);
+  lv_obj_set_style_bg_color(s_banEdge, lv_color_hex(ink), 0);
+  lv_label_set_text(s_banAbbr, e.abbr);
+  lv_label_set_text(s_banVerb, e.verb);
+  lv_label_set_text(s_banWho, e.who[0] ? e.who : "");
+  char sc[24];
+  snprintf(sc, sizeof sc, "%u - %u", e.scoreAway, e.scoreHome);
+  lv_label_set_text(s_banScore, sc);
+
+  lv_obj_clear_flag(s_banner, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(s_banner);
+  s_banUntil = millis() + ALERT_BANNER_MS;
+  uiBoardFlash(e.gameId);
 }
 
 bool uiAlertActive() { return s_showing; }
@@ -133,7 +200,7 @@ void uiAlertEnqueue(const AlertEvent& e) {
 }
 
 static void present(const AlertEvent& e) {
-  lv_obj_set_style_bg_color(s_edge, lv_color_hex(e.color), 0);
+  lv_obj_set_style_bg_color(s_edge, lv_color_hex(teamInk(e.color)), 0);
   teamBadgeSet(s_badge, e.color);
   lv_obj_set_style_bg_color(s_pulse, lv_color_hex(e.color), 0);
   lv_label_set_text(s_badgeLbl, e.abbr);
@@ -189,10 +256,17 @@ void uiAlertTick() {
     return;
   }
 
+  if (s_banUntil && millis() >= s_banUntil) {
+    s_banUntil = 0;
+    lv_obj_add_flag(s_banner, LV_OBJ_FLAG_HIDDEN);
+  }
+
   if (!s_qCount) return;
   if (millis() - s_lastDismiss < ALERT_GAP_MS && s_lastDismiss) return;
   const AlertEvent e = s_queue[s_qHead];
   s_qHead = (s_qHead + 1) % MAX_EVENTS;
   s_qCount--;
-  present(e);
+  // Earned interruptions only — see the header.
+  if (scoredByFavourite(e)) present(e);
+  else                      presentBanner(e);
 }
