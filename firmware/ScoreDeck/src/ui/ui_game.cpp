@@ -152,7 +152,10 @@ void uiGameInit(lv_obj_t* parent) {
   lv_obj_remove_style_all(s_wpBarA);
   lv_obj_set_pos(s_wpBarA, 0, 16);
   lv_obj_set_size(s_wpBarA, 384, 5);
-  lv_obj_set_style_bg_opa(s_wpBarA, 150, 0);
+  // Was opa 150 against the home bar's COVER, so whoever led, the away half
+  // looked weaker — a false signal in the one element whose whole job is a
+  // like-for-like comparison.
+  lv_obj_set_style_bg_opa(s_wpBarA, LV_OPA_COVER, 0);
   s_wpBarH = lv_obj_create(s_wpWrap);
   lv_obj_remove_style_all(s_wpBarH);
   lv_obj_set_pos(s_wpBarH, 384, 16);

@@ -106,19 +106,20 @@ void uiStandingsInit(lv_obj_t* parent) {
     s_badge[r] = teamBadge(card, "", 0x5D6D7E, 22);
     lv_obj_set_pos(s_badge[r], 44, y + 3);
     s_badgeLbl[r] = lv_obj_get_child(s_badge[r], 0);
-    s_team[r]  = lb(card, 74, y + 6, C_INK, F_MICRO);
+    // Team names are upstream prose — Munchen, Atletico, Besiktas.
+    s_team[r]  = lb(card, 74, y + 5, C_INK, F_BODY);
     for (uint8_t c = 0; c < ST_MAX_COLS; c++)
-      s_cell[r][c] = lb(card, 0, y + 6, C_INK2, F_MICRO, LV_TEXT_ALIGN_RIGHT, 58);
+      s_cell[r][c] = lb(card, 0, y + 5, C_INK2, F_NUM, LV_TEXT_ALIGN_RIGHT, 58);
 
     // A labelled hairline, drawn between rows. No colour spent.
     s_cutRule[r] = lv_obj_create(card);
     lv_obj_remove_style_all(s_cutRule[r]);
-    lv_obj_set_size(s_cutRule[r], 560, 1);
+    lv_obj_set_size(s_cutRule[r], 740, 1);
     lv_obj_set_pos(s_cutRule[r], 14, y + 33);
     lv_obj_set_style_bg_color(s_cutRule[r], C_EDGE_HI, 0);
     lv_obj_set_style_bg_opa(s_cutRule[r], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_cutRule[r], LV_OBJ_FLAG_HIDDEN);
-    s_cutLbl[r] = lb(card, 586, y + 27, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 160);
+    s_cutLbl[r] = lb(card, 594, y + 21, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 160);
     lv_obj_add_flag(s_cutLbl[r], LV_OBJ_FLAG_HIDDEN);
   }
 }
@@ -189,7 +190,7 @@ void uiStandingsRender() {
 
     for (uint8_t c = 0; c < ST_MAX_COLS; c++) {
       const bool on = c < t.colCount;
-      lv_obj_set_pos(s_cell[r][c], colX(c, t.colCount), 34 + r * 36 + 6);
+      lv_obj_set_pos(s_cell[r][c], colX(c, t.colCount), 34 + r * 36 + 5);
       lv_label_set_text(s_cell[r][c], on ? row.cells[c] : "");
       lv_obj_set_style_text_color(s_cell[r][c], (on && c == t.colCount - 1) ? C_INK : C_INK2, 0);
     }

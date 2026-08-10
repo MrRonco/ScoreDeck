@@ -145,18 +145,20 @@ void uiLineupInit(lv_obj_t* parent) {
     const int y = 28 + r * 34;
     s_rowObj[r] = lv_obj_create(card);
     lv_obj_remove_style_all(s_rowObj[r]);
-    lv_obj_set_size(s_rowObj[r], 740, 32);
-    lv_obj_set_pos(s_rowObj[r], 10, y);
+    // Full card width at x=0: the row shares the card's coordinate space, so
+     // colX() means the same thing for a value as it does for its header.
+    lv_obj_set_size(s_rowObj[r], 764, 32);
+    lv_obj_set_pos(s_rowObj[r], 0, y);
     lv_obj_set_style_bg_opa(s_rowObj[r], LV_OPA_TRANSP, 0);
     lv_obj_add_flag(s_rowObj[r], LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_rowObj[r], LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(s_rowObj[r], onRow, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)r);
 
-    s_rowGroup[r] = lb(s_rowObj[r], 6, 9, C_INK3, F_MICRO);
-    s_rowPos[r]   = lb(s_rowObj[r], 6, 8, C_INK3, F_MICRO, LV_TEXT_ALIGN_LEFT, 34);
-    s_rowName[r]  = lb(s_rowObj[r], 46, 6, C_INK, F_BODY);   // names carry accents
+    s_rowGroup[r] = lb(s_rowObj[r], 16, 9, C_INK3, F_MICRO);
+    s_rowPos[r]   = lb(s_rowObj[r], 16, 8, C_INK3, F_NUM, LV_TEXT_ALIGN_LEFT, 34);
+    s_rowName[r]  = lb(s_rowObj[r], 56, 5, C_INK, F_BODY);   // names carry accents
     for (uint8_t c = 0; c < LU_COLS; c++)
-      s_rowVal[r][c] = lb(s_rowObj[r], 0, 8, C_INK2, F_MICRO, LV_TEXT_ALIGN_RIGHT, 70);
+      s_rowVal[r][c] = lb(s_rowObj[r], 0, 7, C_INK2, F_NUM, LV_TEXT_ALIGN_RIGHT, 70);
   }
 
   // ── player sheet: fixed rect, fades in, never slides ─────────────────────
@@ -225,7 +227,13 @@ void uiLineupRender() {
   } else {
     const LineSide& S = L.sides[s_side];
     if (S.formation[0]) snprintf(buf, sizeof buf, "%s  %s", S.abbr, S.formation);
-    else                snprintf(buf, sizeof buf, "%u players", s_lineCount);
+    else {
+      // s_lineCount is the FLATTENED line count, which includes the group
+      // headings — a three-group hockey box score over-counted by three.
+      uint8_t people = 0;
+      for (uint8_t i = 0; i < s_lineCount; i++) if (!s_lines[i].header) people++;
+      snprintf(buf, sizeof buf, "%u players", people);
+    }
     lv_label_set_text(s_hint, buf);
   }
 

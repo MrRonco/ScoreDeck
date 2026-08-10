@@ -32,6 +32,7 @@ const lv_font_t* F_NUM   = &font_num15;
 const lv_font_t* F_MICRO = &font_micro13;
 
 static lv_style_t s_glass;
+static lv_style_t s_glassPressed;
 static lv_style_t s_badge;
 
 // ── team colour normalisation ──────────────────────────────────────────────
@@ -150,6 +151,10 @@ void themeInit() {
   lv_style_set_text_color(&s_glass, C_INK);
   lv_style_set_text_font(&s_glass, F_BODY);
 
+  lv_style_init(&s_glassPressed);
+  lv_style_set_bg_color(&s_glassPressed, lv_color_hex(0x243040));
+  lv_style_set_border_color(&s_glassPressed, C_EDGE_HI);
+
   lv_style_init(&s_badge);
   lv_style_set_radius(&s_badge, 7);
   lv_style_set_bg_opa(&s_badge, LV_OPA_COVER);
@@ -163,6 +168,7 @@ lv_obj_t* glassPanel(lv_obj_t* parent, int x, int y, int w, int h, int radius) {
   lv_obj_t* o = lv_obj_create(parent);
   lv_obj_remove_style_all(o);
   lv_obj_add_style(o, &s_glass, 0);
+  lv_obj_add_style(o, &s_glassPressed, LV_STATE_PRESSED);
   lv_obj_set_style_radius(o, radius, 0);
   lv_obj_set_pos(o, x, y);
   lv_obj_set_size(o, w, h);

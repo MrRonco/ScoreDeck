@@ -20,6 +20,11 @@ static lv_obj_t* s_lblClock;
 static lv_obj_t* s_lblDate;
 static lv_obj_t* s_lblStatus;
 static lv_obj_t* s_lblPage;
+static lv_obj_t* s_dot[8];
+static uint8_t   s_dotCount;
+static lv_obj_t* s_toast;
+static lv_obj_t* s_toastLbl;
+static uint32_t  s_toastUntil;
 
 #define CHIP_MAX (MAX_LEAGUES + 1)     // +1 for ALL
 static lv_obj_t* s_chip[CHIP_MAX];
@@ -317,27 +322,99 @@ static void refreshChips() {
   }
 }
 
+/** A 44x36 bar button. Small enough to fit beside the chips, big enough to
+ *  hit — the ISO 9241-411 floor is 9 mm, which is 47 px on this panel, and
+ *  these sit at 44 so the label stays legible. */
+static lv_obj_t* barButton(lv_obj_t* bar, int x, const char* text, lv_event_cb_t cb) {
+  lv_obj_t* b = lv_btn_create(bar);
+  lv_obj_set_size(b, 44, 36);
+  lv_obj_set_pos(b, x, (spec().barH - 36) / 2);
+  lv_obj_set_style_bg_color(b, C_EDGE, 0);
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(b, C_EDGE_HI, 0);
+  lv_obj_set_style_border_width(b, 1, 0);
+  lv_obj_set_style_radius(b, 8, 0);
+  lv_obj_set_style_bg_color(b, C_EDGE_HI, LV_STATE_PRESSED);
+  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* l = lv_label_create(b);
+  lv_label_set_text(l, text);
+  lv_obj_set_style_text_font(l, F_MICRO, 0);
+  lv_obj_set_style_text_color(l, C_INK2, 0);
+  lv_obj_center(l);
+  return b;
+}
+
+static void onTableBtn(lv_event_t*) {
+  // The filtered league if one is chosen, else whichever league has the most
+  // going on — which is nearly always the one you meant.
+  const char* lg = (g_leagueFilter >= 0 && g_leagueFilter < g_leagueCount)
+                   ? g_leagues[g_leagueFilter].slug
+                   : (g_leagueCount ? g_leagues[0].slug : "nhl");
+  uiStandingsOpen(lg);
+}
+static void onNewsBtn(lv_event_t*) { uiNewsOpen(); }
+
 static void buildBar() {
   s_bar = glassPanel(s_board, 0, 0, SCR_W, spec().barH, 0);
   s_lblClock = microLabel(s_bar, 18, 12, C_INK, F_ABBR);
   s_lblDate  = microLabel(s_bar, 84, 17, C_INK2, F_MICRO);
+
+  // Standings and news were built, tested, and reachable only from a serial
+  // command and the desktop harness — two finished screens shipping dark.
+  barButton(s_bar, SCR_W - 18 - 44, "NEWS", onNewsBtn);
+  barButton(s_bar, SCR_W - 18 - 96, "TBL",  onTableBtn);
+
   s_lblStatus = lv_label_create(s_bar);
   lv_obj_set_style_text_font(s_lblStatus, F_MICRO, 0);
   lv_obj_set_style_text_color(s_lblStatus, C_INK2, 0);
   lv_obj_set_style_text_align(s_lblStatus, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_width(s_lblStatus, 190);
-  lv_obj_set_pos(s_lblStatus, SCR_W - 18 - 190, 17);
+  // Was 190 wide at x = SCR_W-208, which the stale-upstream string overran and
+  // wrapped out of the bar. Narrower, and it now only carries network state —
+  // the live/game counts already live in the ALL chip.
+  lv_obj_set_width(s_lblStatus, 150);
+  lv_obj_set_pos(s_lblStatus, SCR_W - 122 - 150, 17);
   lv_label_set_text(s_lblStatus, "starting");
 
   buildChips(s_bar);
 
-  s_lblPage = lv_label_create(s_board);
-  lv_obj_set_style_text_font(s_lblPage, F_MICRO, 0);
-  lv_obj_set_style_text_color(s_lblPage, C_INK3, 0);
-  lv_obj_set_style_text_align(s_lblPage, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(s_lblPage, 200);
-  lv_obj_set_pos(s_lblPage, (SCR_W - 200) / 2, SCR_H - 14);
-  lv_label_set_text(s_lblPage, "");
+  // Page indicator: real dots, in the bar. It used to be "*  -  -  -" in a
+  // mono face, sitting in a 12 px sliver at the foot of the screen where the
+  // bottom margin breaks the grid's 16 px rhythm — ASCII punctuation pressed
+  // into service as a widget.
+  for (uint8_t i = 0; i < 8; i++) {
+    s_dot[i] = lv_obj_create(s_bar);
+    lv_obj_remove_style_all(s_dot[i]);
+    lv_obj_set_size(s_dot[i], 6, 6);
+    lv_obj_set_style_radius(s_dot[i], 3, 0);
+    lv_obj_set_style_bg_opa(s_dot[i], LV_OPA_COVER, 0);
+    lv_obj_add_flag(s_dot[i], LV_OBJ_FLAG_HIDDEN);
+  }
+  s_lblPage = nullptr;
+
+  // Toast: one line, centred, 1.2 s. Built once and reused.
+  s_toast = glassPanel(s_board, (SCR_W - 220) / 2, SCR_H - 78, 220, 42, 10);
+  lv_obj_add_flag(s_toast, LV_OBJ_FLAG_HIDDEN);
+  s_toastLbl = lv_label_create(s_toast);
+  lv_obj_set_style_text_font(s_toastLbl, F_ABBR, 0);
+  lv_obj_set_style_text_color(s_toastLbl, C_INK, 0);
+  lv_label_set_text(s_toastLbl, "");
+  lv_obj_center(s_toastLbl);
+}
+
+void uiToast(const char* text) {
+  if (!s_toast) return;
+  lv_label_set_text(s_toastLbl, text);
+  lv_obj_clear_flag(s_toast, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(s_toast);
+  s_toastUntil = millis() + 1200;
+}
+
+void uiToastTick() {
+  if (!s_toast || !s_toastUntil) return;
+  if (millis() >= s_toastUntil) {
+    s_toastUntil = 0;
+    lv_obj_add_flag(s_toast, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 // ── paging / filter ────────────────────────────────────────────────────────
@@ -402,10 +479,14 @@ static void onTileEvent(lv_event_t* e) {
 
   if (code == LV_EVENT_LONG_PRESSED) {
     // Density has no settings screen yet; long-press keeps it reachable.
+    // It used to change silently — an accidental long-press reformatted the
+    // whole board with no explanation and nothing to undo it with.
     g_set.density = (g_set.density + 1) % 3;
     settingsSave();
     uiInit();
     uiBoardRefresh();
+    static const char* kName[3] = { "ROOMY", "STANDARD", "DENSE" };
+    uiToast(kName[g_set.density]);
     return;
   }
   if (code == LV_EVENT_SHORT_CLICKED) {
@@ -587,14 +668,15 @@ void uiBoardRefresh() {
     setHiddenCached(s_tile[slot].root, &s_tile[slot].cUsed, true);
   }
 
-  char pg[40] = "";
-  if (pages > 1) {
-    // Dots read as "there is more" far better than "1 / 3" does.
-    char* w = pg;
-    for (uint8_t p = 0; p < pages && p < 8; p++)
-      w += snprintf(w, sizeof pg - (w - pg), "%s", p == g_page ? "*  " : "-  ");
+  // Dots read as "there is more" far better than "1 / 3" does.
+  const uint8_t shown = pages > 1 ? (pages < 8 ? pages : 8) : 0;
+  const int dotsW = shown ? shown * 14 - 8 : 0;
+  for (uint8_t p = 0; p < 8; p++) {
+    if (p >= shown) { lv_obj_add_flag(s_dot[p], LV_OBJ_FLAG_HIDDEN); continue; }
+    lv_obj_clear_flag(s_dot[p], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(s_dot[p], 196 - dotsW / 2 + p * 14, (spec().barH - 6) / 2);
+    lv_obj_set_style_bg_color(s_dot[p], p == g_page ? C_INK : C_EDGE_HI, 0);
   }
-  lv_label_set_text(s_lblPage, pg);
   refreshChips();
   uiSetStatus();
 }
@@ -609,15 +691,22 @@ void uiSetStatus() {
   uint8_t live = 0;
   for (uint8_t i = 0; i < g_gameCount; i++) if (g_board[i].state == GS_LIVE) live++;
 
+  // Network state ONLY. The live and game counts are already in the ALL chip,
+  // and carrying them here is what overran the label on the stale path.
+  //
+  // A hyphen between two numbers reads as a score on a scoreboard, so the
+  // separator throughout is a middle dot.
   char buf[96];
   switch (g_net) {
     case NET_NOWIFI:  snprintf(buf, sizeof buf, "no wi-fi"); break;
     case NET_NOPROXY: snprintf(buf, sizeof buf, "no proxy configured"); break;
     case NET_ERR:     snprintf(buf, sizeof buf, "%s", g_netDetail[0] ? g_netDetail : "proxy unreachable"); break;
-    case NET_STALE:   snprintf(buf, sizeof buf, "stale data  -  %u live  -  %u games", live, g_gameCount); break;
+    // "stale" is a state; a time is actionable. Say when the data is from.
+    case NET_STALE:   snprintf(buf, sizeof buf, "as of %s", lastGoodClock()); break;
     case NET_BOOT:    snprintf(buf, sizeof buf, "starting"); break;
-    default:          snprintf(buf, sizeof buf, "%u live  -  %u games", live, g_gameCount); break;
+    default:          buf[0] = '\0'; break;
   }
+  (void)live;
   if (strcmp(last, buf) == 0) return;
   strncpy(last, buf, sizeof last - 1);
   lv_label_set_text(s_lblStatus, buf);

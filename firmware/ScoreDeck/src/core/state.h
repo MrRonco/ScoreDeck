@@ -103,6 +103,15 @@ enum NetStatus : uint8_t { NET_BOOT = 0, NET_NOWIFI, NET_NOPROXY, NET_ERR, NET_O
 extern NetStatus g_net;
 extern char      g_netDetail[48];
 
+/** Wall clock of the last poll the proxy served from live upstream data.
+ *  Zero until the first good one lands. */
+extern uint32_t  g_lastGoodUtc;
+
+/** g_lastGoodUtc as "6:52 PM" in local time, or "" if there is none.
+ *  A stale board should say WHEN its data is from — "stale" is a state,
+ *  a time is something you can act on. */
+const char* lastGoodClock();
+
 void stateInit();
 void settingsLoad();
 void settingsSave();

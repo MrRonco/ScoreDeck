@@ -48,6 +48,7 @@ volatile bool g_standingsReady = false;
 volatile bool g_standingsInFlight = false;
 
 NetStatus g_net = NET_BOOT;
+uint32_t  g_lastGoodUtc = 0;
 char      g_netDetail[48] = "";
 
 void stateInit() {
@@ -213,4 +214,15 @@ bool sideIsFav(const char* league, const char* teamId) {
     if (startOk && (after == '\0' || after == ',')) return true;   // whole entry
   }
   return false;
+}
+
+const char* lastGoodClock() {
+  static char buf[12];
+  buf[0] = '\0';
+  if (!g_lastGoodUtc) return buf;
+  const time_t t = (time_t)g_lastGoodUtc;
+  struct tm lt;
+  localtime_r(&t, &lt);
+  strftime(buf, sizeof buf, "%l:%M %p", &lt);
+  return buf[0] == ' ' ? buf + 1 : buf;
 }

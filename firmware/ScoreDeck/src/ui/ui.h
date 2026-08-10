@@ -52,6 +52,11 @@ lv_obj_t* uiGameRoot();
 /** Page the board. Returns false when there is nowhere to go. */
 bool uiBoardPage(int delta);
 
+/** A one-line confirmation, centred, 1.2 s. For changes the user made but
+ *  cannot see the cause of — density being the first. */
+void uiToast(const char* text);
+void uiToastTick();
+
 // Standings — UI.md §6. Generic table, labelled cut lines.
 void uiStandingsInit(lv_obj_t* parent);
 void uiStandingsOpen(const char* league);

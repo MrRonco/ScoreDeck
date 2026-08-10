@@ -45,7 +45,7 @@ static void relTime(uint32_t when, char* out, size_t cap) {
   long d = (long)now - (long)when;
   if (d < 90)          snprintf(out, cap, "now");
   else if (d < 5400)   snprintf(out, cap, "%ldm ago", d / 60);
-  else if (d < 172800) snprintf(out, cap, "%ldh ago", d / 3600);
+  else if (d < 86400)  snprintf(out, cap, "%ldh ago", d / 3600);
   else                 snprintf(out, cap, "%ldd ago", d / 86400);
 }
 
@@ -112,7 +112,7 @@ void uiNewsInit(lv_obj_t* parent) {
     lv_obj_set_width(s_desc[i], 690);
     lv_label_set_long_mode(s_desc[i], LV_LABEL_LONG_WRAP);
 
-    s_when[i] = lb(s_card[i], 664, 14, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 90);
+    s_when[i] = lb(s_card[i], 664, 13, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 90);
   }
 }
 

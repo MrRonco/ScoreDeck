@@ -45,6 +45,9 @@ static void applyPending() {
   memcpy(g_leagues, g_pendLeagues, sizeof(LeagueCount) * g_pendLeagueCount);
   g_leagueCount = g_pendLeagueCount;
   s_pollGapS = g_pendNextPoll;
+  // Only fresh data updates the mark — a stale reply is the proxy telling us
+  // it could not reach upstream, and stamping it would hide exactly that.
+  if (!g_pendStale) g_lastGoodUtc = (uint32_t)time(nullptr);
 
   // The sequence is per-proxy-instance, not global. A restarted container, a
   // redeployed Worker, or simply pointing at a different proxy all reset it to
@@ -300,6 +303,7 @@ void loop() {
   serialConsole();
   tickClock();
   uiAlertTick();
+  uiToastTick();
 
   if (!uiSetupActive()) {
     if (WiFi.status() != WL_CONNECTED) {
