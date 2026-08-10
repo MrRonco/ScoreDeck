@@ -160,8 +160,21 @@ static void serialConsole() {
   else if (cmd == "favs")   { g_set.favs = arg;   settingsSave(); }
   else if (cmd == "lgs")    { g_set.leagues = arg; settingsSave(); }
   else if (cmd == "region") { g_set.region = arg; settingsSave(); }
-  else if (cmd == "tz")     { g_set.tz = arg; settingsSave();
-                              setenv("TZ", g_set.tz.c_str(), 1); tzset(); }
+  else if (cmd == "tz")     {
+    // Prefer an IANA name and set BOTH forms through the table, exactly as the
+    // settings screen and the portal do. Writing g_set.tz directly is what a
+    // POSIX rule needs, but it leaves tzIana empty — and then the proxy is
+    // sent "UTC" and answers with the wrong day's fixtures.
+    if (tzApply(arg.c_str())) {
+      Serial.printf("[cli] tz %s (%s)\n", g_set.tzIana.c_str(), g_set.tz.c_str());
+    } else {
+      g_set.tz = arg;                       // raw POSIX, for anything off-table
+      setenv("TZ", g_set.tz.c_str(), 1); tzset();
+      Serial.printf("[cli] tz POSIX %s — no IANA name, the proxy will get %s\n",
+                    g_set.tz.c_str(), tzForProxy());
+    }
+    settingsSave();
+  }
   else if (cmd == "poll")   { s_nextPollMs = 0; Serial.println("[cli] poll queued"); return; }
   else if (cmd == "reboot") { Serial.println("[cli] rebooting"); delay(50); ESP.restart(); }
   else if (cmd == "shot")   { dumpScreen(); return; }

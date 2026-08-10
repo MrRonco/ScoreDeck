@@ -487,6 +487,29 @@ void scenarioApply(int n) {
       }
       break;
     }
+    case SCN_DENSITY_JUMP: {
+      // The panel booted with an empty board, so auto density built a SIX-tile
+      // Roomy grid — and then twelve games arrived, density became Dense, and
+      // the refresh walked into six tiles that had never been created. Null
+      // root, LoadProhibited, panic on real hardware.
+      //
+      // Reproduced by building the UI empty and only then filling the board,
+      // which is exactly the boot order.
+      league("mlb", 12);
+      // The REAL boot order, which is the whole point: the UI is built while
+      // the board is still empty and the games only arrive on the first poll.
+      // This returns early to skip the trailing uiInit() every other scenario
+      // relies on — with it, the tiles are rebuilt for the final density and
+      // the bug cannot happen.
+      uiInit();
+      for (int i = 0; i < 12; i++)
+        push("mlb", GS_LIVE, "Bot 7", "AAA", (uint16_t)i, 0xC6011F,
+             "BBB", (uint16_t)(11 - i), 0xAB0003, "MLB.TV");
+      uiBoardRefresh();
+      uiIdleRefresh();
+      uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
+      return;
+    }
   }
   uiInit();
   uiBoardRefresh();

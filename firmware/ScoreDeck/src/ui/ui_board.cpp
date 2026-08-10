@@ -16,6 +16,14 @@ static Screen s_screen = SCR_BOARD;
 
 static bool passesFilter(const Game& g);
 
+// Which density the tile array was BUILT for. Auto density is computed from
+// the game count, so it can change between uiInit() and a later refresh — and
+// uiInit() only creates `cols * rows` tiles. Booting with an empty board built
+// six Roomy tiles; twelve games then arrived, density became Dense, and the
+// refresh walked into six tiles that had never been created. Null root,
+// LoadProhibited, panic.
+static uint8_t s_builtDensity = 0xFF;
+
 static lv_obj_t* s_board;      // page root
 static lv_obj_t* s_bar;
 static lv_obj_t* s_lblClock;
@@ -113,6 +121,7 @@ static void setNumCached(lv_obj_t* o, int32_t* cache, int32_t v) {
   lv_label_set_text(o, b);
 }
 static void setHiddenCached(lv_obj_t* o, bool* cache, bool hide) {
+  if (!o) return;                // never panic on a tile that was not built
   if (*cache == !hide) return;   // cache stores "visible"
   *cache = !hide;
   if (hide) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
@@ -694,6 +703,11 @@ static void layoutFiller(const DensitySpec& d, uint8_t used, uint8_t per) {
 }
 
 void uiBoardRefresh() {
+  // Rebuild BEFORE touching any tile if the layout the array was built for is
+  // no longer the layout we want. uiInit() does not call back into here, so
+  // this cannot recurse.
+  if (s_builtDensity != effectiveDensity()) { uiInit(); }
+
   const DensitySpec& d = spec();
   const uint8_t per = d.cols * d.rows;
   const uint8_t pages = max<uint8_t>(1, (visibleCount() + per - 1) / per);
@@ -989,6 +1003,8 @@ void uiShow(Screen s) {
 Screen uiCurrent() { return s_screen; }
 
 void uiInit() {
+  s_builtDensity = effectiveDensity();
+  s_gridYOff = 0;                 // tiles are about to be rebuilt at their base y
   lv_obj_t* scr = lv_scr_act();
   if (s_board) { lv_obj_del(s_board); s_board = nullptr; }
 

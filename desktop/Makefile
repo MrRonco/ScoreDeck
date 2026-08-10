@@ -67,7 +67,7 @@ $(BUILD)/lv/%.c.o: $(LVGL)/%.c
 # Render every scenario to a BMP without a display attached.
 shots: $(BIN)
 	@mkdir -p shots
-	@i=0; while [ $$i -lt 9 ]; do ./$(BIN) --shot shots/scn$$i.bmp --scenario $$i; i=$$((i+1)); done
+	@i=0; while [ $$i -lt 10 ]; do ./$(BIN) --shot shots/scn$$i.bmp --scenario $$i; i=$$((i+1)); done
 
 # Every secondary screen, on the typical board. These are unreachable from a
 # scenario alone: each one clears its state in Open() and waits on a fetch.

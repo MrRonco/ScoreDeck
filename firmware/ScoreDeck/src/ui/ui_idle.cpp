@@ -283,7 +283,13 @@ void uiIdleRefresh() {
       strftime(tb, sizeof tb, "%l:%M", &st);
       lv_label_set_text(s_todayTime[row], tb[0] == ' ' ? tb + 1 : tb);
     }
-    snprintf(buf, sizeof buf, "%s  %s  %s", g.away.abbr, g.isFav ? "vs" : "@", g.home.abbr);
+    // A golf field or an F1 grid has no two sides, so the "A @ B" shape would
+    // print a bare "@" with nothing either side of it. The event has a name;
+    // use it.
+    if (g.model == SM_LEADERBOARD || g.model == SM_GRID)
+      snprintf(buf, sizeof buf, "%s", g.away.name[0] ? g.away.name : g.home.name);
+    else
+      snprintf(buf, sizeof buf, "%s  %s  %s", g.away.abbr, g.isFav ? "vs" : "@", g.home.abbr);
     lv_label_set_text(s_todayGame[row], buf);
     lv_label_set_text(s_todayLg[row], g.league);
     row++;
@@ -298,10 +304,19 @@ void uiIdleRefresh() {
   for (uint8_t i = 0; i < g_gameCount && row < IDLE_ROWS; i++) {
     const Game& g = g_board[i];
     if (g.state != GS_FINAL) continue;
-    snprintf(buf, sizeof buf, "%s  @  %s", g.away.abbr, g.home.abbr);
-    lv_label_set_text(s_finalGame[row], buf);
-    snprintf(buf, sizeof buf, "%u - %u", g.away.score, g.home.score);
-    lv_label_set_text(s_finalScore[row], buf);
+    const bool field = (g.model == SM_LEADERBOARD || g.model == SM_GRID);
+    if (field) {
+      // A finished tournament is worth a line, but "0 - 0" is not a score it
+      // ever had — that empty row was what a completed golf event looked like.
+      snprintf(buf, sizeof buf, "%s", g.away.name[0] ? g.away.name : g.home.name);
+      lv_label_set_text(s_finalGame[row], buf);
+      lv_label_set_text(s_finalScore[row], "");
+    } else {
+      snprintf(buf, sizeof buf, "%s  @  %s", g.away.abbr, g.home.abbr);
+      lv_label_set_text(s_finalGame[row], buf);
+      snprintf(buf, sizeof buf, "%u - %u", g.away.score, g.home.score);
+      lv_label_set_text(s_finalScore[row], buf);
+    }
     row++;
   }
   for (; row < IDLE_ROWS; row++) {
