@@ -236,6 +236,15 @@ static void apiConfigGet() {
   j += ",\"hasPass\":" + String(g_set.panelPass.length() ? "true" : "false");
   j += ",\"rgn\":" + jstr(g_set.region);
   j += ",\"tz\":" + jstr(g_set.tz);
+  j += ",\"tzi\":" + jstr(tzForProxy());
+  // The curated table, so the browser offers the same cities the panel does
+  // and neither can pick something the other cannot honour.
+  j += ",\"tzs\":[";
+  for (uint8_t i = 0; i < kTimeZoneCount; i++) {
+    if (i) j += ',';
+    j += "[" + jstr(kTimeZones[i].label) + "," + jstr(kTimeZones[i].iana) + "]";
+  }
+  j += "]";
   j += ",\"favs\":" + jstr(g_set.favs);
   j += ",\"dens\":" + String(g_set.density);
   j += ",\"alen\":" + String(g_set.alertsOn ? 1 : 0);
@@ -260,7 +269,7 @@ static void apiConfigPost() {
   const String body = bodyOf();
 
   // ── validate ─────────────────────────────────────────────────────────────
-  String why, sProxy, sRgn, sTz, sToken, sPass;
+  String why, sProxy, sRgn, sToken, sPass;
   long dens = g_set.density, alen = g_set.alertsOn, focus = g_set.focusOn;
   long qen = g_set.quietOn, qfr = g_set.quietFrom, qto = g_set.quietTo;
   long clk24 = g_set.clock24;
@@ -273,7 +282,9 @@ static void apiConfigPost() {
   if (jsonField(body, "rgn", sRgn)) {
     if (sRgn.length() != 2) return fail(400, "region must be a two-letter code");
   }
-  if (jsonField(body, "tz", sTz) && sTz.length() > 48) return fail(400, "time zone too long");
+  String sTzi;
+  if (jsonField(body, "tzi", sTzi) && sTzi.length() && tzIndexOf(sTzi.c_str()) < 0)
+    return fail(400, "unknown time zone");
   jsonInt(body, "dens", dens);
   if (dens < 0 || dens >= DEN_COUNT) return fail(400, "unknown density");
   jsonInt(body, "alen", alen);
@@ -290,7 +301,7 @@ static void apiConfigPost() {
   // ── apply ────────────────────────────────────────────────────────────────
   if (sProxy.length() || jsonField(body, "proxy", why)) g_set.proxy = sProxy;
   if (sRgn.length()) g_set.region = sRgn;
-  if (jsonField(body, "tz", why)) g_set.tz = sTz;
+  if (sTzi.length()) tzApply(sTzi.c_str());
   g_set.density  = (uint8_t)dens;
   g_set.alertsOn = alen != 0;
   g_set.focusOn  = focus != 0;

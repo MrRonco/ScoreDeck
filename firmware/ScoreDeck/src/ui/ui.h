@@ -83,6 +83,8 @@ void uiSettingsTick();
 lv_obj_t* uiSettingsRoot();
 /** Jump to a pane. Used by the harness to shoot all three. */
 void uiSettingsTab(uint8_t i);
+/** Open the timezone picker directly. Harness only. */
+void uiSettingsTzOpen();
 
 // Standings — UI.md §6. Generic table, labelled cut lines.
 void uiStandingsInit(lv_obj_t* parent);

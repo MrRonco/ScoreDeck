@@ -21,7 +21,18 @@ struct Settings {
   String  proxy;       // "http://192.168.1.50:8787" — empty until onboarded
   String  token;
   String  region;      // "ca"
-  String  tz;          // POSIX TZ, e.g. "EST5EDT,M3.2.0,M11.1.0"
+  // TWO timezone strings, deliberately, because two consumers need different
+  // formats and neither accepts the other's:
+  //
+  //   tz      POSIX, for this device's own libc clock — "EST5EDT,M3.2.0,..."
+  //   tzIana  IANA, for the proxy's Intl API          — "America/Toronto"
+  //
+  // Sending the POSIX string to the proxy is not a formatting nit: Intl rejects
+  // it, the proxy falls back to UTC, and at 22:00 EDT "today" becomes tomorrow
+  // — so the board fills with tomorrow's fixtures and every kickoff time is
+  // shown in UTC. One control sets both; see tzApply().
+  String  tz;
+  String  tzIana;
   String  favs;        // "nhl:21,eng.1:359"
   String  leagues;
   String  panelPass;
@@ -98,6 +109,20 @@ uint8_t favCount();
 bool favAt(uint8_t i, char* league, size_t lcap, char* id, size_t icap);
 bool favMoveUp(uint8_t i);
 bool favRemove(uint8_t i);
+
+/** A timezone as the three things that need it: a person, libc, and the proxy. */
+struct TzEntry { const char* label; const char* iana; const char* posix; };
+extern const TzEntry kTimeZones[];
+extern const uint8_t kTimeZoneCount;
+
+/** Set both timezone strings from an IANA name, using the curated table.
+ *  Returns false if the name is not one we know a POSIX rule for. */
+bool tzApply(const char* iana);
+/** Index into kTimeZones, or -1. */
+int8_t tzIndexOf(const char* iana);
+/** The IANA name to send upstream — never a POSIX rule, which the proxy
+ *  rejects and then silently substitutes UTC for. */
+const char* tzForProxy();
 
 
 /**

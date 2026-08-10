@@ -7,7 +7,7 @@
 // Served straight from flash with sendContent_P, so it costs no heap. That
 // matters more than it looks: the web server runs inside the same loop() that
 // drives the display, so response time IS panel stall time, and building this
-// page into a String first would put 28.3 KB through the allocator on
+// page into a String first would put 28.7 KB through the allocator on
 // every request.
 #pragma once
 #include <pgmspace.h>
@@ -219,8 +219,9 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
       <div class="row"><div class="k">Broadcast region
         <small>Which channel a game is on depends where you are.</small></div>
         <div class="v"><select id="rgn" style="width:200px"></select></div></div>
-      <div class="row"><div class="k"><label>Time zone<input id="tz" data-mono placeholder="EST5EDT,M3.2.0,M11.1.0">
-        <small>POSIX TZ. The panel shows its own clock under Alerts — check it after saving.</small></label></div></div>
+      <div class="row"><div class="k">Time zone
+        <small id="tznow2">The panel's own clock is shown under Alerts — check it after saving.</small></div>
+        <div class="v"><select id="tz" style="width:220px"></select></div></div>
     </div>
 
     <h2>Display</h2>
@@ -342,6 +343,17 @@ async function loadConfig() {
   $('#tznow').textContent = CFG.now
     ? 'The panel currently reads ' + CFG.now + '. If that is wrong, the time zone is.'
     : 'The panel has no clock yet.';
+
+  // Cities, not POSIX rules. The device holds both forms — it needs the POSIX
+  // one for its own clock and the proxy needs the IANA one — but nobody should
+  // have to know that, let alone type "EST5EDT,M3.2.0,M11.1.0".
+  const tzsel = $('#tz'); tzsel.textContent = '';
+  (CFG.tzs || []).forEach(([label, iana]) => {
+    const o = el('option', '', label);
+    o.value = iana;
+    if (iana === CFG.tzi) o.selected = true;
+    tzsel.append(o);
+  });
 
   const r = $('#rgn'); r.textContent = '';
   REGIONS.forEach(([c, n]) => { const o = el('option', '', n + ' (' + c + ')');
@@ -521,7 +533,7 @@ $('#saveAlerts').onclick = () => postConfig({
   qen: $('#qen').checked ? 1 : 0, qfr: mins($('#qfr').value), qto: mins($('#qto').value) });
 $('#saveNet').onclick = () => postConfig({
   proxy: $('#proxy').value.trim(), token: $('#token').value,
-  rgn: $('#rgn').value, tz: $('#tz').value.trim(), dens: CFG.dens,
+  rgn: $('#rgn').value, tzi: $('#tz').value, dens: CFG.dens,
   clk24: CFG.clk24 ? 1 : 0 });
 $('#savePass').onclick = () => postConfig({ ppass: $('#ppass').value }, 'Password updated.');
 $('#saveWifi').onclick = async () => {

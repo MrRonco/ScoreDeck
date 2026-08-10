@@ -692,7 +692,8 @@ bool apiPollStart() {
   if (url.endsWith("/")) url.remove(url.length() - 1);
   url += "/v1/state?seq=" + String(g_set.lastSeq);
   url += "&rgn=";  urlEncodeInto(url, g_set.region);
-  url += "&tz=";   urlEncodeInto(url, g_set.tz);
+  // IANA, not the POSIX rule — see tzForProxy().
+  url += "&tz=";   urlEncodeInto(url, tzForProxy());
   if (g_set.favs.length())    { url += "&f=";  urlEncodeInto(url, g_set.favs); }
   if (g_set.leagues.length()) { url += "&lg="; urlEncodeInto(url, g_set.leagues); }
   if (inQuietHours()) url += "&quiet=1";

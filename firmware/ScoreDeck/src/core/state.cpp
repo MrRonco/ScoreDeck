@@ -86,6 +86,7 @@ void settingsLoad() {
   g_set.token     = p.getString(K_TOKEN, "");
   g_set.region    = p.getString(K_REGION, "us");
   g_set.tz        = p.getString(K_TZ, "UTC0");
+  g_set.tzIana    = p.getString(K_TZ_IANA, "");
   g_set.favs      = p.getString(K_FAVS, "");
   g_set.leagues   = p.getString(K_LEAGUES, "");
   g_set.panelPass = p.getString(K_PPASS, "");
@@ -127,6 +128,7 @@ void settingsSave() {
   p.putString(K_PROXY, g_set.proxy);
   p.putString(K_REGION, g_set.region);
   p.putString(K_TZ, g_set.tz);
+  p.putString(K_TZ_IANA, g_set.tzIana);
   p.putString(K_FAVS, g_set.favs);
   p.putString(K_LEAGUES, g_set.leagues);
   p.putUChar(K_DENSITY, g_set.density);
@@ -330,4 +332,66 @@ void clockFormat(const struct tm& lt, char* out, size_t cap) {
   char tmp[16];
   strftime(tmp, sizeof tmp, "%l:%M %p", &lt);          // %l pads with a space
   snprintf(out, cap, "%s", tmp[0] == ' ' ? tmp + 1 : tmp);
+}
+
+// ── timezones ──────────────────────────────────────────────────────────────
+//
+// One row, three representations, because three things need different ones:
+// a person needs a city, this device's libc needs a POSIX rule, and the proxy
+// needs an IANA name. Deriving any of them from another on-device would mean
+// shipping a zoneinfo database; a curated table is a few hundred bytes.
+//
+// Adding a row is the whole cost of supporting a new region.
+const TzEntry kTimeZones[] = {
+  { "Los Angeles", "America/Los_Angeles", "PST8PDT,M3.2.0,M11.1.0" },
+  { "Denver",      "America/Denver",      "MST7MDT,M3.2.0,M11.1.0" },
+  { "Phoenix",     "America/Phoenix",     "MST7" },
+  { "Chicago",     "America/Chicago",     "CST6CDT,M3.2.0,M11.1.0" },
+  { "Toronto",     "America/Toronto",     "EST5EDT,M3.2.0,M11.1.0" },
+  { "New York",    "America/New_York",    "EST5EDT,M3.2.0,M11.1.0" },
+  { "Halifax",     "America/Halifax",     "AST4ADT,M3.2.0,M11.1.0" },
+  { "St John's",   "America/St_Johns",    "NST3:30NDT,M3.2.0,M11.1.0" },
+  { "Mexico City", "America/Mexico_City", "CST6" },
+  { "Sao Paulo",   "America/Sao_Paulo",   "BRT3" },
+  { "UTC",         "UTC",                 "UTC0" },
+  { "London",      "Europe/London",       "GMT0BST,M3.5.0/1,M10.5.0" },
+  { "Dublin",      "Europe/Dublin",       "GMT0IST,M3.5.0/1,M10.5.0" },
+  { "Paris",       "Europe/Paris",        "CET-1CEST,M3.5.0,M10.5.0/3" },
+  { "Berlin",      "Europe/Berlin",       "CET-1CEST,M3.5.0,M10.5.0/3" },
+  { "Madrid",      "Europe/Madrid",       "CET-1CEST,M3.5.0,M10.5.0/3" },
+  { "Rome",        "Europe/Rome",         "CET-1CEST,M3.5.0,M10.5.0/3" },
+  { "Mumbai",      "Asia/Kolkata",        "IST-5:30" },
+  { "Dubai",       "Asia/Dubai",          "GST-4" },
+  { "Tokyo",       "Asia/Tokyo",          "JST-9" },
+  { "Sydney",      "Australia/Sydney",    "AEST-10AEDT,M10.1.0,M4.1.0/3" },
+  { "Auckland",    "Pacific/Auckland",    "NZST-12NZDT,M9.5.0,M4.1.0/3" },
+};
+const uint8_t kTimeZoneCount = sizeof kTimeZones / sizeof kTimeZones[0];
+
+bool tzApply(const char* iana) {
+  for (uint8_t i = 0; i < kTimeZoneCount; i++) {
+    if (strcmp(kTimeZones[i].iana, iana) != 0) continue;
+    g_set.tzIana = iana;
+    g_set.tz     = kTimeZones[i].posix;
+    setenv("TZ", g_set.tz.c_str(), 1);
+    tzset();
+    return true;
+  }
+  return false;
+}
+
+int8_t tzIndexOf(const char* iana) {
+  for (uint8_t i = 0; i < kTimeZoneCount; i++)
+    if (strcmp(kTimeZones[i].iana, iana) == 0) return (int8_t)i;
+  return -1;
+}
+
+const char* tzForProxy() {
+  if (g_set.tzIana.length()) return g_set.tzIana.c_str();
+  // An install that predates this field still holds only a POSIX rule. Recover
+  // the IANA name from it rather than silently sending something the proxy will
+  // reject — that rejection is what filled the board with tomorrow's fixtures.
+  for (uint8_t i = 0; i < kTimeZoneCount; i++)
+    if (g_set.tz == kTimeZones[i].posix) return kTimeZones[i].iana;
+  return "UTC";
 }

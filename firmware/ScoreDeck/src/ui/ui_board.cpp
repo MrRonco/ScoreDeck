@@ -571,10 +571,28 @@ bool uiBoardPage(int delta) {
   return true;
 }
 
+/**
+ * Where the finger went down. LVGL sends SHORT_CLICKED on release regardless
+ * of how far the press travelled, so a swipe across a tile arrives as BOTH a
+ * gesture and a tap — the board paged AND opened the game you happened to
+ * start the swipe on, and backing out left you on the new page.
+ *
+ * Comparing press to release is order-independent, which matters: gesture and
+ * click are both emitted during release handling and relying on which comes
+ * first is not something to build on.
+ */
+static lv_point_t s_pressPt;
+#define TAP_SLOP 18       // px; a deliberate tap does not travel this far
+
 static void onTileEvent(lv_event_t* e) {
   const lv_event_code_t code = lv_event_get_code(e);
   TileUI* t = (TileUI*)lv_event_get_user_data(e);
   if (!t) return;
+
+  if (code == LV_EVENT_PRESSED) {
+    lv_indev_get_point(lv_indev_get_act(), &s_pressPt);
+    return;
+  }
 
   if (code == LV_EVENT_LONG_PRESSED) {
     // Density has no settings screen yet; long-press keeps it reachable.
@@ -589,6 +607,10 @@ static void onTileEvent(lv_event_t* e) {
     return;
   }
   if (code == LV_EVENT_SHORT_CLICKED) {
+    lv_point_t now;
+    lv_indev_get_point(lv_indev_get_act(), &now);
+    const int dx = now.x - s_pressPt.x, dy = now.y - s_pressPt.y;
+    if (dx * dx + dy * dy > TAP_SLOP * TAP_SLOP) return;   // that was a swipe
     if (t->gameIdx >= 0 && t->gameIdx < g_gameCount) uiGameOpen(g_board[t->gameIdx]);
   }
 }
@@ -975,6 +997,7 @@ void uiInit() {
       lv_obj_add_flag(s_tile[i].root, LV_OBJ_FLAG_CLICKABLE);
       // Without this the tile absorbs the gesture and swiping does nothing.
       lv_obj_clear_flag(s_tile[i].root, LV_OBJ_FLAG_GESTURE_BUBBLE);
+      lv_obj_add_event_cb(s_tile[i].root, onTileEvent, LV_EVENT_PRESSED, &s_tile[i]);
       lv_obj_add_event_cb(s_tile[i].root, onTileEvent, LV_EVENT_SHORT_CLICKED, &s_tile[i]);
       lv_obj_add_event_cb(s_tile[i].root, onTileEvent, LV_EVENT_LONG_PRESSED, &s_tile[i]);
       lv_obj_add_event_cb(s_tile[i].root, onGesture, LV_EVENT_GESTURE, nullptr);

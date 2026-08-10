@@ -74,9 +74,21 @@ static lv_obj_t* s_favCount;
 static uint8_t   s_favPage;
 
 // NETWORK / SYSTEM panes
-static lv_obj_t* s_netVal[4];
+static lv_obj_t* s_netVal[5];
 static lv_obj_t* s_sysVal[5];
 static lv_obj_t* s_testLbl;
+
+// Timezone picker — a sub-view over the NETWORK pane rather than a row, since
+// 22 cities do not fit in a 56 px row and a POSIX rule is not something anyone
+// should have to type on a touchscreen.
+#define TZ_COLS 2
+#define TZ_ROWS 7
+#define TZ_PER  (TZ_COLS * TZ_ROWS)
+static lv_obj_t* s_tzView;
+static lv_obj_t* s_tzBtn[TZ_PER];
+static lv_obj_t* s_tzBtnLbl[TZ_PER];
+static lv_obj_t* s_tzPageLbl;
+static uint8_t   s_tzPage;
 
 // Debounced save — see the file header.
 static bool     s_dirty;
@@ -201,6 +213,49 @@ static void onFavUp(lv_event_t* e) {
 static void onFavDrop(lv_event_t* e) {
   const uint8_t i = s_favPage * FAV_ROWS + (uint8_t)(intptr_t)lv_event_get_user_data(e);
   if (favRemove(i)) { markDirty(); uiSettingsRender(); }
+}
+
+static void tzRender();
+
+static void onTzOpen(lv_event_t*) {
+  s_tzPage = 0;
+  lv_obj_clear_flag(s_tzView, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_move_foreground(s_tzView);
+  tzRender();
+}
+static void onTzClose(lv_event_t*) {
+  lv_obj_add_flag(s_tzView, LV_OBJ_FLAG_HIDDEN);
+  uiSettingsRender();
+}
+static void onTzPage(lv_event_t*) {
+  const uint8_t pages = (kTimeZoneCount + TZ_PER - 1) / TZ_PER;
+  s_tzPage = (uint8_t)((s_tzPage + 1) % pages);
+  tzRender();
+}
+static void onTzPick(lv_event_t* e) {
+  const uint8_t i = s_tzPage * TZ_PER + (uint8_t)(intptr_t)lv_event_get_user_data(e);
+  if (i >= kTimeZoneCount) return;
+  tzApply(kTimeZones[i].iana);
+  markDirty();
+  lv_obj_add_flag(s_tzView, LV_OBJ_FLAG_HIDDEN);
+  uiSettingsRender();
+}
+
+static void tzRender() {
+  const int8_t cur = tzIndexOf(g_set.tzIana.c_str());
+  for (uint8_t k = 0; k < TZ_PER; k++) {
+    const uint8_t i = s_tzPage * TZ_PER + k;
+    if (i >= kTimeZoneCount) { lv_obj_add_flag(s_tzBtn[k], LV_OBJ_FLAG_HIDDEN); continue; }
+    lv_obj_clear_flag(s_tzBtn[k], LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(s_tzBtnLbl[k], kTimeZones[i].label);
+    const bool on = ((int8_t)i == cur);
+    lv_obj_set_style_bg_color(s_tzBtn[k], on ? C_EDGE_HI : C_FROST_2, 0);
+    lv_obj_set_style_text_color(s_tzBtnLbl[k], on ? C_INK : C_INK2, 0);
+  }
+  char b[24];
+  const uint8_t pages = (kTimeZoneCount + TZ_PER - 1) / TZ_PER;
+  snprintf(b, sizeof b, "%u / %u", s_tzPage + 1, pages);
+  lv_label_set_text(s_tzPageLbl, b);
 }
 
 static void onProxyTest(lv_event_t*) {
@@ -379,9 +434,9 @@ void uiSettingsInit(lv_obj_t* parent) {
   // ── NETWORK ──────────────────────────────────────────────────────────────
   {
     lv_obj_t* p = s_pane[2];
-    static const char* kRow[4] = { "Wi-Fi", "Proxy", "Proxy token", "Panel password" };
-    for (uint8_t i = 0; i < 4; i++) {
-      lv_obj_t* r = row(p, i, kRow[i], nullptr);
+    static const char* kRow[5] = { "Wi-Fi", "Proxy", "Proxy token", "Panel password", "Time zone" };
+    for (uint8_t i = 0; i < 5; i++) {
+      lv_obj_t* r = row(p, i, kRow[i], i == 4 ? onTzOpen : nullptr);
       s_netVal[i] = label(r, 220, (ROW_H - 15) / 2, "", C_INK2, F_BODY);
       lv_obj_set_width(s_netVal[i], 380);
       lv_label_set_long_mode(s_netVal[i], LV_LABEL_LONG_DOT);
@@ -402,7 +457,7 @@ void uiSettingsInit(lv_obj_t* parent) {
         lv_obj_set_width(s_testLbl, 122);
         lv_obj_set_style_text_align(s_testLbl, LV_TEXT_ALIGN_RIGHT, 0);
       }
-      if (i >= 2) {
+      if (i == 2 || i == 3) {   // secrets only — NOT the timezone row
         // The panel is the password-recovery path on purpose: physical access
         // is already total access, and a forgotten password must not brick
         // the portal.
@@ -421,6 +476,50 @@ void uiSettingsInit(lv_obj_t* parent) {
       }
     }
     label(p, 16, 380, "Edit the proxy URL and add teams in the browser", C_INK3, F_MICRO);
+
+    // ── timezone sub-view ──────────────────────────────────────────────────
+    s_tzView = glassPanel(s_root, 16, 60, 768, 404, 14);
+    lv_obj_add_flag(s_tzView, LV_OBJ_FLAG_HIDDEN);
+    label(s_tzView, 20, 16, "TIME ZONE", C_INK3, F_MICRO);
+
+    lv_obj_t* back = lv_btn_create(s_tzView);
+    lv_obj_set_size(back, 88, 36);
+    lv_obj_set_pos(back, 768 - 20 - 88, 10);
+    lv_obj_set_style_radius(back, 8, 0);
+    lv_obj_set_style_border_width(back, 0, 0);
+    lv_obj_set_style_bg_color(back, C_EDGE, 0);
+    lv_obj_add_event_cb(back, onTzClose, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* bl = lv_label_create(back);
+    lv_label_set_text(bl, "DONE");
+    lv_obj_set_style_text_font(bl, F_MICRO, 0);
+    lv_obj_center(bl);
+
+    for (uint8_t k = 0; k < TZ_PER; k++) {
+      const int col = k % TZ_COLS, rw = k / TZ_COLS;
+      s_tzBtn[k] = lv_btn_create(s_tzView);
+      lv_obj_set_size(s_tzBtn[k], 356, 38);
+      lv_obj_set_pos(s_tzBtn[k], 20 + col * 372, 52 + rw * 42);
+      lv_obj_set_style_radius(s_tzBtn[k], 8, 0);
+      lv_obj_set_style_border_width(s_tzBtn[k], 0, 0);
+      lv_obj_add_event_cb(s_tzBtn[k], onTzPick, LV_EVENT_CLICKED, (void*)(intptr_t)k);
+      s_tzBtnLbl[k] = lv_label_create(s_tzBtn[k]);
+      lv_obj_set_style_text_font(s_tzBtnLbl[k], F_BODY, 0);   // city names
+      lv_label_set_text(s_tzBtnLbl[k], "");
+      lv_obj_align(s_tzBtnLbl[k], LV_ALIGN_LEFT_MID, 12, 0);
+    }
+
+    lv_obj_t* more = lv_btn_create(s_tzView);
+    lv_obj_set_size(more, 120, 40);
+    lv_obj_set_pos(more, 20, 52 + TZ_ROWS * 42 + 6);
+    lv_obj_set_style_radius(more, 8, 0);
+    lv_obj_set_style_border_width(more, 0, 0);
+    lv_obj_set_style_bg_color(more, C_EDGE, 0);
+    lv_obj_add_event_cb(more, onTzPage, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* ml = lv_label_create(more);
+    lv_label_set_text(ml, "MORE");
+    lv_obj_set_style_text_font(ml, F_MICRO, 0);
+    lv_obj_center(ml);
+    s_tzPageLbl = label(s_tzView, 152, 52 + TZ_ROWS * 42 + 18, "", C_INK3, F_NUM);
   }
 
   // ── SYSTEM ───────────────────────────────────────────────────────────────
@@ -515,6 +614,10 @@ void uiSettingsRender() {
   lv_label_set_text(s_netVal[1], g_set.proxy.length() ? g_set.proxy.c_str() : "not set");
   lv_label_set_text(s_netVal[2], g_set.token.length() ? "set" : "not set");
   lv_label_set_text(s_netVal[3], g_set.panelPass.length() ? "set" : "not set");
+  {
+    const int8_t ti = tzIndexOf(tzForProxy());
+    lv_label_set_text(s_netVal[4], ti >= 0 ? kTimeZones[ti].label : "not set");
+  }
 
   // system
   char b[40];
@@ -538,6 +641,8 @@ void uiSettingsOpen() {
   uiShow(SCR_SETTINGS);
   uiSettingsRender();
 }
+
+void uiSettingsTzOpen() { onTzOpen(nullptr); }
 
 void uiSettingsTab(uint8_t i) { s_tab = i < PANE_COUNT ? i : 0; uiSettingsRender(); }
 
