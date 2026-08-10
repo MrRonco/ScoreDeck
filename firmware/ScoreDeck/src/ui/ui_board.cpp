@@ -375,6 +375,7 @@ static void onTableBtn(lv_event_t*) {
   uiStandingsOpen(lg);
 }
 static void onNewsBtn(lv_event_t*) { uiNewsOpen(); }
+static void onSettingsBtn(lv_event_t*) { uiSettingsOpen(); }
 
 static void buildBar() {
   s_bar = glassPanel(s_board, 0, 0, SCR_W, spec().barH, 0);
@@ -383,8 +384,9 @@ static void buildBar() {
 
   // Standings and news were built, tested, and reachable only from a serial
   // command and the desktop harness — two finished screens shipping dark.
-  barButton(s_bar, SCR_W - 18 - 44, "NEWS", onNewsBtn);
-  barButton(s_bar, SCR_W - 18 - 96, "TBL",  onTableBtn);
+  barButton(s_bar, SCR_W - 18 - 44, "SET",  onSettingsBtn);
+  barButton(s_bar, SCR_W - 18 - 96, "NEWS", onNewsBtn);
+  barButton(s_bar, SCR_W - 18 - 148, "TBL", onTableBtn);
 
   s_lblStatus = lv_label_create(s_bar);
   lv_obj_set_style_text_font(s_lblStatus, F_MICRO, 0);
@@ -394,7 +396,7 @@ static void buildBar() {
   // wrapped out of the bar. Narrower, and it now only carries network state —
   // the live/game counts already live in the ALL chip.
   lv_obj_set_width(s_lblStatus, 150);
-  lv_obj_set_pos(s_lblStatus, SCR_W - 122 - 150, 17);
+  lv_obj_set_pos(s_lblStatus, SCR_W - 174 - 150, 17);
   lv_label_set_text(s_lblStatus, "starting");
 
   buildChips(s_bar);
@@ -898,6 +900,9 @@ void uiShow(Screen s) {
   lv_obj_t* lu = uiLineupRoot();
   if (lu) (s == SCR_LINEUP) ? lv_obj_clear_flag(lu, LV_OBJ_FLAG_HIDDEN)
                             : lv_obj_add_flag(lu, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t* st2 = uiSettingsRoot();
+  if (st2) (s == SCR_SETTINGS) ? lv_obj_clear_flag(st2, LV_OBJ_FLAG_HIDDEN)
+                               : lv_obj_add_flag(st2, LV_OBJ_FLAG_HIDDEN);
 }
 Screen uiCurrent() { return s_screen; }
 

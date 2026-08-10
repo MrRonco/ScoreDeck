@@ -119,3 +119,57 @@ test('unknown leagues and bad favourites are rejected, not trusted', async () =>
   const res = await app.fetch(new Request('http://t/v1/standings/quidditch'));
   assert.equal(res.status, 404);
 });
+
+/**
+ * The portal is served from the device and fetches the catalog from the proxy,
+ * so these are cross-origin. Without CORS they die at preflight — and the
+ * failure looks like "the proxy is down" rather than "the browser refused".
+ */
+test('CORS is allowed on the reference routes and withheld from /v1/state', async () => {
+  const app = createApp({ store: new MemoryStore(), fetchImpl: stubEspn({ homeScore: 3 }) });
+
+  const pre = await app.fetch(new Request('http://x/v1/catalog', { method: 'OPTIONS' }));
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get('access-control-allow-origin'), '*');
+  assert.equal(pre.headers.get('access-control-allow-methods'), 'GET, OPTIONS');
+
+  const cat = await app.fetch(new Request('http://x/v1/catalog'));
+  assert.equal(cat.headers.get('access-control-allow-origin'), '*');
+
+  // Scores are not a reference route and must not be readable cross-origin.
+  const state = await app.fetch(new Request('http://x/v1/state?lg=nhl'));
+  assert.equal(state.headers.get('access-control-allow-origin'), null);
+});
+
+test('preflight does not bypass the bearer check for the actual request', async () => {
+  const app = createApp({ store: new MemoryStore(), token: 'secret',
+                          fetchImpl: stubEspn({ homeScore: 3 }) });
+  // The preflight itself carries no credentials by design...
+  assert.equal((await app.fetch(new Request('http://x/v1/catalog', { method: 'OPTIONS' }))).status, 204);
+  // ...but the GET behind it still has to authenticate.
+  assert.equal((await app.fetch(new Request('http://x/v1/catalog'))).status, 401);
+});
+
+test('?teams=1 packs the catalog as arrays and skips the individual sports', async () => {
+  const fetchImpl = async (url: string | URL | Request): Promise<Response> => {
+    const u = String(url);
+    if (u.includes('/teams')) {
+      return Response.json({ sports: [{ leagues: [{ teams: [
+        { team: { id: '21', abbreviation: 'TOR', displayName: 'Toronto Maple Leafs', color: '00205B' } },
+      ] }] }] });
+    }
+    return new Response('{}', { status: 404 });
+  };
+  const app = createApp({ store: new MemoryStore(), fetchImpl });
+  const body: any = await (await app.fetch(new Request('http://x/v1/catalog?teams=1'))).json();
+
+  assert.equal(body.v, 1);
+  const slugs = body.t.map((row: any[]) => row[0]);
+  // Tennis, golf and racing are fields of individuals — there is no team
+  // endpoint for them and asking would 404.
+  for (const s of ['atp', 'wta', 'pga', 'lpga', 'f1']) assert.ok(!slugs.includes(s), s);
+  assert.ok(slugs.includes('nhl'));
+
+  const nhl = body.t.find((row: any[]) => row[0] === 'nhl');
+  assert.deepEqual(nhl[3][0].slice(0, 3), ['21', 'TOR', 'Toronto Maple Leafs']);
+});

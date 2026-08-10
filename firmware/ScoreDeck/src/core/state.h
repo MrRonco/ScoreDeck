@@ -89,6 +89,16 @@ bool boardFollows(const char* league, const char* abbr);
  *  boardFollows() marks a whole game and would ring the opponent too. */
 bool sideIsFav(const char* league, const char* teamId);
 
+// ── the favourites list ────────────────────────────────────────────────────
+// Stored as "nhl:21,eng.1:359". Order is meaningful: it breaks ties on the
+// board, so reordering is a real edit and not a cosmetic one.
+uint8_t favCount();
+/** Split entry `i` into its league and team id. False when i is out of range. */
+bool favAt(uint8_t i, char* league, size_t lcap, char* id, size_t icap);
+bool favMoveUp(uint8_t i);
+bool favRemove(uint8_t i);
+
+
 /**
  * Render Game::situation as a short chip: "BASES LOADED", "2 ON 1 OUT",
  * "RED ZONE", "POWER PLAY". Writes "" when there is nothing worth saying.

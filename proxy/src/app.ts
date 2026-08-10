@@ -66,19 +66,83 @@ export function createApp(env: Env) {
   const app = new Hono();
   const doFetch = env.fetchImpl ?? fetch;
 
+  /**
+   * The browser portal is served from the DEVICE and fetches the catalog from
+   * the PROXY, so those requests are cross-origin and die at preflight without
+   * this. Scoped deliberately: only the read-only reference routes, never
+   * /v1/state.
+   *
+   * `*` is the right origin here because these fetches carry an explicit
+   * Authorization header and `credentials: 'omit'` — there are no ambient
+   * credentials for a hostile page to ride on, and the bearer token still
+   * gates every response.
+   */
+  const CORS_PATHS = /^\/v1\/(catalog|teams\/[a-z0-9.]{2,8}|health)$/;
+
   app.use('*', async (c, next) => {
+    const corsOk = CORS_PATHS.test(new URL(c.req.url).pathname);
+    if (corsOk && c.req.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'access-control-allow-origin': '*',
+          'access-control-allow-headers': 'authorization',
+          'access-control-allow-methods': 'GET, OPTIONS',
+          'access-control-max-age': '86400',
+        },
+      });
+    }
     if (env.token) {
       const auth = c.req.header('authorization');
       if (auth !== `Bearer ${env.token}`) return c.json({ error: 'unauthorized' }, 401);
     }
     await next();
+    if (corsOk) c.header('access-control-allow-origin', '*');
   });
 
   app.get('/v1/health', async (c) =>
     c.json({ ok: true, leagues: LEAGUES.length, now: Math.floor(Date.now() / 1000) }));
 
-  app.get('/v1/catalog', (c) =>
-    c.json({ leagues: LEAGUES.map(({ slug, label, family }) => ({ slug, label, family })) }));
+  /**
+   * Leagues by default; the whole team catalog with `?teams=1`.
+   *
+   * The full set is ~1,900 teams. As objects that is ~120 KB, which does not
+   * fit on a device holding ~120 KB of free heap and needing 16 KB of it for
+   * TLS — so the DEVICE never asks for this. Only the browser does, and it
+   * caches the answer. Packed as arrays rather than objects because the keys
+   * would otherwise be about a third of the payload.
+   */
+  app.get('/v1/catalog', async (c) => {
+    const leagues = LEAGUES.map(({ slug, label, family }) => ({ slug, label, family }));
+    if (c.req.query('teams') !== '1') return c.json({ leagues });
+
+    const key = 'catalog:teams:v1';
+    const hit = await env.store.get(key);
+    if (hit) return c.json(hit);
+
+    // Tennis, golf and racing have no team endpoint — they are fields of
+    // individuals, and asking would 404.
+    const teamLeagues = LEAGUES.filter((l) => l.model !== SM.SET &&
+                                              l.model !== SM.LEADERBOARD &&
+                                              l.model !== SM.GRID);
+    const out: any[] = [];
+    for (const lg of teamLeagues) {
+      try {
+        const tk = `teams:${lg.slug}`;
+        const cached = await env.store.get(tk);
+        const teams = cached ?? normalizeTeams(await fetchTeams(lg, doFetch), lg);
+        if (!cached) await env.store.put(tk, teams, 24 * 3600);
+        out.push([lg.slug, lg.label, lg.family,
+                  (teams as any[]).map((t) => [t.id, t.a, t.n, t.c ?? 0])]);
+      } catch {
+        // One league failing upstream must not empty the whole catalog.
+        out.push([lg.slug, lg.label, lg.family, []]);
+      }
+    }
+    const body = { v: 1, leagues, t: out };
+    await env.store.put(key, body, 24 * 3600);
+    return c.json(body);
+  });
 
   app.get('/v1/state', async (c) => {
     const q = c.req.query();

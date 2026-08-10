@@ -230,3 +230,72 @@ const char* lastGoodClock() {
   strftime(buf, sizeof buf, "%l:%M %p", &lt);
   return buf[0] == ' ' ? buf + 1 : buf;
 }
+
+// ── the favourites list ────────────────────────────────────────────────────
+//
+// A comma-separated String rather than a parsed array, because that is what
+// NVS holds and what the proxy expects on the wire — parsing it into a struct
+// would mean two representations that can disagree. The list is short (20 max)
+// and edited by hand at human speed, so scanning it is free.
+
+/** Bounds of entry `i` within g_set.favs, or false if there is no such entry. */
+static bool favSpan(uint8_t i, int& from, int& to) {
+  const String& f = g_set.favs;
+  if (!f.length()) return false;
+  int start = 0;
+  for (uint8_t n = 0;; n++) {
+    int comma = f.indexOf(',', start);
+    if (comma < 0) comma = f.length();
+    if (n == i) { from = start; to = comma; return from < to; }
+    if (comma >= (int)f.length()) return false;
+    start = comma + 1;
+  }
+}
+
+uint8_t favCount() {
+  const String& f = g_set.favs;
+  if (!f.length()) return 0;
+  uint8_t n = 1;
+  for (int i = 0; i < (int)f.length(); i++) if (f[i] == ',') n++;
+  return n;
+}
+
+bool favAt(uint8_t i, char* league, size_t lcap, char* id, size_t icap) {
+  int from, to;
+  if (!favSpan(i, from, to)) return false;
+  const String entry = g_set.favs.substring(from, to);
+  const int colon = entry.indexOf(':');
+  if (colon <= 0) return false;
+  snprintf(league, lcap, "%s", entry.substring(0, colon).c_str());
+  snprintf(id, icap, "%s", entry.substring(colon + 1).c_str());
+  return true;
+}
+
+bool favRemove(uint8_t i) {
+  int from, to;
+  if (!favSpan(i, from, to)) return false;
+  String out = g_set.favs.substring(0, from) +
+               g_set.favs.substring(to < (int)g_set.favs.length() ? to + 1 : to);
+  if (out.endsWith(",")) out.remove(out.length() - 1);
+  g_set.favs = out;
+  return true;
+}
+
+bool favMoveUp(uint8_t i) {
+  if (i == 0) return false;
+  char la[10], ia[12], lb[10], ib[12];
+  if (!favAt(i - 1, la, sizeof la, ia, sizeof ia)) return false;
+  if (!favAt(i, lb, sizeof lb, ib, sizeof ib)) return false;
+  // Rebuild rather than splice: two swaps on a String is where off-by-ones live.
+  String out;
+  const uint8_t n = favCount();
+  for (uint8_t k = 0; k < n; k++) {
+    char l[10], d[12];
+    const uint8_t src = (k == i - 1) ? i : (k == i ? i - 1 : k);
+    if (!favAt(src, l, sizeof l, d, sizeof d)) continue;
+    if (out.length()) out += ',';
+    out += l; out += ':'; out += d;
+  }
+  g_set.favs = out;
+  return true;
+}

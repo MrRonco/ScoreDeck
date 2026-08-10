@@ -22,3 +22,8 @@ bool apiNewsStart();
 /** Lineups and one player's card. Loop context only. */
 bool apiLineupStart(const char* league, const char* id);
 bool apiPlayerStart(const char* league, const char* athleteId);
+
+/** One-shot proxy reachability check for the settings screen's Test button.
+ *  Returns the HTTP status, or a negative code when it could not ask.
+ *  Blocking and loop-context only — see the note on the definition. */
+int netProbeProxy(uint16_t* outMs);

@@ -278,6 +278,7 @@ void setup() {
   uiStandingsInit(lv_scr_act());
   uiNewsInit(lv_scr_act());
   uiLineupInit(lv_scr_act());
+  uiSettingsInit(lv_scr_act());
 
   if (g_set.tz.length()) setenv("TZ", g_set.tz.c_str(), 1);
   tzset();
@@ -305,6 +306,7 @@ void loop() {
   uiAlertTick();
   uiToastTick();
   uiFocusTick();
+  uiSettingsTick();
 
   if (!uiSetupActive()) {
     if (WiFi.status() != WL_CONNECTED) {

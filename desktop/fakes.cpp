@@ -58,6 +58,8 @@ bool apiStandingsStart(const char*)                  { return false; }
 bool apiNewsStart()                                  { return false; }
 bool apiLineupStart(const char*, const char*)        { return false; }
 bool apiPlayerStart(const char*, const char*)        { return false; }
+// The Test button has nothing to reach in the harness; report it honestly.
+int  netProbeProxy(uint16_t* ms)                     { if (ms) *ms = 0; return -1; }
 
 // ── logos and headshots: always a miss ─────────────────────────────────────
 // The colour badge IS the shipped fallback, and it is what every install sees

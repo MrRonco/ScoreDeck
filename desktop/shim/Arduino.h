@@ -63,6 +63,11 @@ class String {
     if (a >= v.size() || b <= a) return String();
     return String(v.substr(a, b - a));
   }
+  // Added for the favourites editor in ui_settings.cpp. Both are standard
+  // Arduino String API; the shim simply had not needed them before.
+  void remove(unsigned i)             { if (i < v.size()) v.erase(i); }
+  void remove(unsigned i, unsigned n) { if (i < v.size()) v.erase(i, n); }
+  String& operator+=(char c)          { v += c; return *this; }
   bool startsWith(const char* s) const { return v.rfind(s, 0) == 0; }
   bool startsWith(const String& s) const { return v.rfind(s.v, 0) == 0; }
   bool endsWith(const char* s) const {

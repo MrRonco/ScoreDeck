@@ -105,6 +105,9 @@ static void showScreen(const char* name) {
   else if (!strcmp(name, "player"))  { uiLineupOpen("nhl", "900000");
                                        uiPlayerOpen("nhl", "3024"); }
   else if (!strcmp(name, "setup"))     uiShow(SCR_SETUP);
+  else if (!strcmp(name, "settings"))  uiSettingsOpen();
+  else if (!strcmp(name, "settings-net")) { uiSettingsOpen(); uiSettingsTab(1); }
+  else if (!strcmp(name, "settings-sys")) { uiSettingsOpen(); uiSettingsTab(2); }
   else if (!strcmp(name, "alert"))     scenarioFireAlert();
   else if (!strcmp(name, "banner"))    scenarioFireBanner();
   else if (!strcmp(name, "game") && g_gameCount) uiGameOpen(g_board[0]);
@@ -171,6 +174,7 @@ int main(int argc, char** argv) {
   uiNewsInit(lv_scr_act());
   uiLineupInit(lv_scr_act());
   uiSetupInit(lv_scr_act());
+  uiSettingsInit(lv_scr_act());
 
   scenarioApply(s_scenario);
   showScreen(screen);

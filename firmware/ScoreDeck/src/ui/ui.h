@@ -4,7 +4,7 @@
 #include <lvgl.h>
 #include "../core/types.h"
 
-enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_NEWS, SCR_LINEUP, SCR_SETUP };
+enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_NEWS, SCR_LINEUP, SCR_SETUP, SCR_SETTINGS };
 
 void uiInit();
 /** Rebuild from g_board. Loop context only. Every write is change-cached. */
@@ -67,6 +67,18 @@ void uiBoardFlash(const char* gameId);
 void uiFocusTick();
 /** Tell auto-focus the user closed a game themselves, so it backs off. */
 void uiFocusNoteUserClose();
+
+// ── settings ───────────────────────────────────────────────────────────────
+void uiSettingsInit(lv_obj_t* parent);
+void uiSettingsOpen();
+void uiSettingsRender();
+void uiSettingsClose();
+/** Debounced NVS flush — every write stalls the panel 150-220 ms, so a save
+ *  per toggle would shake the screen. Call once per loop. */
+void uiSettingsTick();
+lv_obj_t* uiSettingsRoot();
+/** Jump to a pane. Used by the harness to shoot all three. */
+void uiSettingsTab(uint8_t i);
 
 // Standings — UI.md §6. Generic table, labelled cut lines.
 void uiStandingsInit(lv_obj_t* parent);

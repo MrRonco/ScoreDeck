@@ -702,3 +702,27 @@ bool apiPollStart() {
   }
   return true;
 }
+
+/**
+ * A one-shot GET {proxy}/v1/health from loop context, for the settings screen's
+ * Test button. Blocking on purpose: it is a deliberate user action, it is
+ * bounded at 4 s, and it must not race the polling task for the TLS buffer.
+ */
+int netProbeProxy(uint16_t* outMs) {
+  if (outMs) *outMs = 0;
+  if (!g_set.proxy.length() || WiFi.status() != WL_CONNECTED) return -1;
+  if (!netGateOpen()) return -2;
+
+  HTTPClient http;
+  String url = g_set.proxy;
+  if (url.endsWith("/")) url.remove(url.length() - 1);
+  url += "/v1/health";
+  if (!http.begin(url)) return -1;
+  http.setTimeout(4000);
+  if (g_set.token.length()) http.addHeader("Authorization", "Bearer " + g_set.token);
+  const uint32_t t0 = millis();
+  const int code = http.GET();
+  if (outMs) *outMs = (uint16_t)min<uint32_t>(millis() - t0, 65535);
+  http.end();
+  return code;
+}
