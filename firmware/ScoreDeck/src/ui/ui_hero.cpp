@@ -40,9 +40,11 @@ static lv_obj_t* s_logo[2];
 static lv_obj_t* s_name[2];
 static lv_obj_t* s_sub[2];
 static lv_obj_t* s_score[2];
+static lv_obj_t* s_bloom[2];
 static lv_obj_t* s_footDot;
 static lv_obj_t* s_foot;
 static lv_obj_t* s_footR;
+static lv_obj_t* s_wp[2];
 static int8_t    s_gameIdx = -1;
 
 // Change cache. Same discipline as the grid: LVGL repaints on any write, even
@@ -50,9 +52,10 @@ static int8_t    s_gameIdx = -1;
 static char     c_league[24], c_status[16], c_foot[16], c_footR[13];
 static char     c_name[2][24], c_sub[2][10], c_logoKey[2][10];
 static int32_t  c_score[2];
-static uint32_t c_color[2], c_scoreInk[2], c_edgeC;
+static uint32_t c_color[2], c_scoreInk[2], c_edgeC, c_bloom[2];
 static bool     c_logoVis[2], c_badgeVis[2], c_dotVis, c_footDotVis, c_edgeVis;
 static int      c_edgeY;
+static int      c_wpW = -1;
 
 static const StateInk& HI() { return kStateInk[SI_HERO]; }
 
@@ -121,6 +124,7 @@ void uiHeroInit(lv_obj_t* parent) {
 
   s_league = lab(s_root, HERO_PAD, 18, HI().ink3, F_MICRO, 200, LV_TEXT_ALIGN_LEFT, 1);
   s_dot    = dot(s_root, 330, 26);
+  pulseRegister(s_dot);
   s_status = lab(s_root, 344, 14, HI().ink, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
   hairline(s_root, HERO_PAD - 4, 46, innerW + 8);
 
@@ -151,11 +155,42 @@ void uiHeroInit(lv_obj_t* parent) {
     lv_obj_set_pos(s_logo[k], HERO_PAD, y);
     lv_obj_add_flag(s_logo[k], LV_OBJ_FLAG_HIDDEN);
 
+    // Created BEFORE the score so it sits behind it in z-order. Centred on
+    // where the digits land, and deliberately allowed to run off the row —
+    // light does not stop at a boundary, and clipping it to the cell is what
+    // would make it read as a shape rather than as illumination.
+    // Centred on where the DIGITS actually land, MEASURED rather than derived.
+    // Two passes of reasoning from the label box were both wrong: F_HERO's
+    // 72 px glyphs do not sit where the line box suggests, and the label is
+    // right-aligned so the digits are not where its origin is. Rendering the
+    // hero and finding the glyph's bounding box put its centre at child
+    // (466, y+18) — 46 px right and 12 px down from the second guess.
+    s_bloom[k] = bloomCreate(s_root, 220, 220);
+    if (s_bloom[k]) lv_obj_set_pos(s_bloom[k], 466 - 110, (y + 18) - 110);
+
     s_name[k] = lab(s_root, 92, y, HI().ink, F_DISPLAY, 240);
     s_sub[k]  = lab(s_root, 92, y + 34, HI().ink3, F_NUM, 240);
     s_score[k] = lab(s_root, 340, y - 8, HI().ink2, F_HERO, 144, LV_TEXT_ALIGN_RIGHT);
   }
   hairline(s_root, HERO_PAD - 4, 148, innerW + 8);
+
+  // Win probability, along the foot of the cell.
+  //
+  // Game::winProbHome has been parsed into every game since the wire contract
+  // was written and drawn in exactly one place — the game-detail screen you
+  // have to tap through to reach. It never appeared on the board at all.
+  //
+  // It earns its 2,032 px because unlike the score it moves CONTINUOUSLY: it
+  // is the only thing on a scoreboard that changes between events, which is
+  // most of the time you are looking at it.
+  for (int k = 0; k < 2; k++) {
+    s_wp[k] = lv_obj_create(s_root);
+    lv_obj_remove_style_all(s_wp[k]);
+    lv_obj_set_size(s_wp[k], 1, 4);
+    lv_obj_set_pos(s_wp[k], 0, HERO_H - 6);
+    lv_obj_set_style_bg_opa(s_wp[k], LV_OPA_COVER, 0);
+    lv_obj_add_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN);
+  }
 
   s_footDot = dot(s_root, HERO_PAD, 238);
   s_foot    = lab(s_root, HERO_PAD + 14, 232, HI().ink, F_NUM, 180);
@@ -174,6 +209,7 @@ void uiHeroInit(lv_obj_t* parent) {
   c_color[0] = c_color[1] = 0xFFFFFFFF;
   c_scoreInk[0] = c_scoreInk[1] = 0xFFFFFFFF;
   c_edgeC = 0xFFFFFFFF;
+  c_bloom[0] = c_bloom[1] = 0xFFFFFFFF;
   c_edgeY = -1;
   c_logoVis[0] = c_logoVis[1] = false;
   c_badgeVis[0] = c_badgeVis[1] = true;
@@ -239,6 +275,17 @@ void uiHeroShow(int8_t gameIdx) {
           want == 0xFFFFFFFF ? si.ink2 : lv_color_hex(want), 0);
     }
 
+    // The signature. Only the leading side, only while the game is live —
+    // light means "this is happening", so a finished game keeps its colour in
+    // the digits and loses the glow.
+    const uint32_t glow = (leading && g.state == GS_LIVE)
+                          ? teamInkOn(side[k]->color, si.fill) : 0xFFFFFFFFu;
+    if (c_bloom[k] != glow) {
+      c_bloom[k] = glow;
+      bloomSet(s_bloom[k], glow == 0xFFFFFFFFu ? 0 : glow,
+               glow == 0xFFFFFFFFu ? 0 : 200);
+    }
+
     if (c_color[k] != side[k]->color) {
       c_color[k] = side[k]->color;
       teamBadgeSet(s_badge[k], side[k]->color);
@@ -266,6 +313,28 @@ void uiHeroShow(int8_t gameIdx) {
     if (c_edgeC != c) { c_edgeC = c; lv_obj_set_style_bg_color(s_edge, lv_color_hex(c), 0); }
     const int y = 66 + (g.leaderHome ? HERO_ROW_H : 0);
     if (c_edgeY != y) { c_edgeY = y; lv_obj_set_pos(s_edge, 0, y); }
+  }
+
+  // 255 is the wire's "unavailable"; anything over 100 is nonsense.
+  const bool wpOn = (g.state == GS_LIVE) && (g.winProbHome <= 100);
+  if (!wpOn) {
+    if (c_wpW != -1) { c_wpW = -1;
+      for (int k = 0; k < 2; k++) lv_obj_add_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN); }
+  } else {
+    const int inner = HERO_W - 2;
+    const int hw = inner * g.winProbHome / 100;
+    if (c_wpW != hw) {
+      c_wpW = hw;
+      // Away on the left, home on the right, meeting where the probability
+      // sits. Two rects and one width write per change.
+      lv_obj_set_size(s_wp[0], inner - hw, 4);
+      lv_obj_set_pos(s_wp[0], 0, HERO_H - 6);
+      lv_obj_set_size(s_wp[1], hw, 4);
+      lv_obj_set_pos(s_wp[1], inner - hw, HERO_H - 6);
+      lv_obj_set_style_bg_color(s_wp[0], lv_color_hex(teamInkOn(g.away.color, si.fill)), 0);
+      lv_obj_set_style_bg_color(s_wp[1], lv_color_hex(teamInkOn(g.home.color, si.fill)), 0);
+      for (int k = 0; k < 2; k++) lv_obj_clear_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN);
+    }
   }
 
   char sit[14] = "";

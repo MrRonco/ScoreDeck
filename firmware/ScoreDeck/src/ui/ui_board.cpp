@@ -354,6 +354,7 @@ static void buildTile(TileUI& t, int idx) {
   lv_obj_set_style_bg_color(t.dot, C_LIVE, 0);
   lv_obj_set_style_bg_opa(t.dot, LV_OPA_COVER, 0);
   lv_obj_add_flag(t.dot, LV_OBJ_FLAG_HIDDEN);
+  pulseRegister(t.dot);
 
   // ── the bottom row: status on the left, ONE right-hand label ─────────────
   //
@@ -1238,6 +1239,8 @@ void uiShow(Screen s) {
 Screen uiCurrent() { return s_screen; }
 
 void uiInit() {
+  // Every tile is about to be deleted; drop the pulse timer's pointers first.
+  pulseForget();
   s_builtDensity = effectiveDensity();
   s_gridYOff = 0;                 // tiles are about to be rebuilt at their base y
   lv_obj_t* scr = lv_scr_act();
@@ -1247,8 +1250,12 @@ void uiInit() {
   lv_obj_remove_style_all(s_board);
   lv_obj_set_size(s_board, SCR_W, SCR_H);
   lv_obj_set_pos(s_board, 0, 0);
+  // Transparent, so the generated plate shows through. Only one screen root
+  // is ever unhidden at a time, so nothing needs an opaque root to cover the
+  // screen beneath it — and painting a flat C_PLATE here would hide the very
+  // thing plate.cpp exists to draw.
   lv_obj_set_style_bg_color(s_board, C_PLATE, 0);
-  lv_obj_set_style_bg_opa(s_board, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_opa(s_board, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(s_board, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(s_board, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(s_board, onGesture, LV_EVENT_GESTURE, nullptr);

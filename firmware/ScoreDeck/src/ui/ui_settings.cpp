@@ -280,8 +280,12 @@ void uiSettingsInit(lv_obj_t* parent) {
   s_root = lv_obj_create(parent);
   lv_obj_remove_style_all(s_root);
   lv_obj_set_size(s_root, SCR_W, SCR_H);
+  // Transparent, so the generated plate shows through. Only one screen root
+  // is ever unhidden at a time, so nothing needs an opaque root to cover the
+  // screen beneath it — and painting a flat C_PLATE here would hide the very
+  // thing plate.cpp exists to draw.
   lv_obj_set_style_bg_color(s_root, C_PLATE, 0);
-  lv_obj_set_style_bg_opa(s_root, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_opa(s_root, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
 

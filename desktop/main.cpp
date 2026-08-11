@@ -181,6 +181,8 @@ int main(int argc, char** argv) {
   // exists to catch.
   if (density >= 0 && density < DEN_COUNT) g_set.density = (uint8_t)density;
   themeInit();
+  plateInit();      // behind every screen; must precede uiInit()
+  bloomInit();
   uiInit();
   uiIdleInit(lv_scr_act());
   uiAlertInit(lv_scr_act());

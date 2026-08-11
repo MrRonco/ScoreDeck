@@ -292,6 +292,10 @@ void setup() {
     Serial.println("[sd] FATAL: display init failed — check PSRAM = OPI PSRAM");
   }
   themeInit();
+  // ~230 ms of PSRAM writes, once, before anything is on screen. See
+  // plate.cpp for why the ground is generated rather than shipped.
+  plateInit();
+  bloomInit();
   uiInit();
   uiIdleInit(lv_scr_act());
   uiAlertInit(lv_scr_act());

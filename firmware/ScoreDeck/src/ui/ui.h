@@ -6,6 +6,27 @@
 
 enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_NEWS, SCR_LINEUP, SCR_SETUP, SCR_SETTINGS };
 
+/** Generate the background plate into PSRAM and park it behind every screen.
+ *  Call once, before uiInit(). Costs ~230 ms at boot and nothing after —
+ *  see plate.cpp for why it is generated rather than shipped. */
+void plateInit();
+lv_obj_t* plateRoot();
+bool plateReady();
+
+// ── the bloom ──────────────────────────────────────────────────────────────
+// One soft alpha sprite, recoloured per team. The signature — see bloom.cpp.
+void bloomInit();
+lv_obj_t* bloomCreate(lv_obj_t* parent, int w, int h);
+void bloomSet(lv_obj_t* o, uint32_t colour, lv_opa_t opa);
+
+// ── motion ─────────────────────────────────────────────────────────────────
+// The live dots breathe, on ONE shared timer. See pulse.cpp for the repaint
+// budget this sits inside, and for the list of things that must not animate.
+void pulseRegister(lv_obj_t* dot);
+/** Drop every registration. Call BEFORE tearing down the board, or the timer
+ *  walks freed objects. */
+void pulseForget();
+
 void uiInit();
 /** Rebuild from g_board. Loop context only. Every write is change-cached. */
 void uiBoardRefresh();
