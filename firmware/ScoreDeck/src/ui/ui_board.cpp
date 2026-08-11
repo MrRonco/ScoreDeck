@@ -35,6 +35,18 @@ static uint8_t   s_dotCount;
 // Whole empty grid rows carry content rather than nothing. A bordered empty
 // region reads as "failed to load", not as "nothing to show" — and on a board
 // that is usually only part full, that is most nights.
+// F_NUM is monospaced at exactly 9.0 px/glyph. 81 px is nine glyphs, which
+// covers every in-play status ("3rd 04:21", "Bot 8th", "Final/OT").
+//
+// It does NOT cover every status: Game::status is char[15], and F1 sends
+// "8/21 - 6:30 AM" at fourteen. So this is the reserve held back only while
+// something is actually sharing the row — when the right-hand label is empty
+// the status takes the whole width, which is what a scheduled race needs.
+#define STATUS_W  81
+// The widest full-vocabulary situation string, "BASES LOADED", is 12 glyphs.
+// A right-hand column narrower than this gets the compact vocabulary instead.
+#define SIT_FULL_W 108
+
 #define FILL_ROWS 5
 static int       s_gridYOff;
 static lv_obj_t* s_fill;
@@ -65,6 +77,7 @@ struct TileUI {
   lv_obj_t* rec[2];
   lv_obj_t* score[2];
   lv_obj_t* status;
+  lv_obj_t* dot;      // the live accent
   lv_obj_t* sit;
   lv_obj_t* bcast;
   // Field variants (LEADERBOARD / GRID) reuse the tile with a different shape:
@@ -88,22 +101,41 @@ struct TileUI {
   char     cSit[14];
   bool     cSitVis;
   bool     cBcastVis;
+  bool     cDotVis;
+  uint32_t cScoreInk[2];
+  int16_t  cStatusW;
   bool     cUsed;
   int8_t   gameIdx;   // index into g_board, -1 when the slot is empty
 };
 static TileUI s_tile[TILES_PER_PAGE];
 
-// Which layout is actually in force. Auto reads the board: a light night gets
-// bigger tiles because there is room, not because anything needs to be larger.
+// Which layout is actually in force.
+//
+// AUTO used to read only the game COUNT, and give a light night bigger tiles
+// because there was room. That is backwards: a quiet night is not a night that
+// needs larger type, it is a night with one game worth looking at. So AUTO now
+// reads the SHAPE of the board — when between one and three games are live,
+// there is something to promote, and it picks the featured layout. Four or
+// more live and nothing deserves a hero, so the grid is the honest answer.
+static uint8_t liveVisible() {
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < g_gameCount; i++)
+    if (g_board[i].state == GS_LIVE && passesFilter(g_board[i])) n++;
+  return n;
+}
+
 static uint8_t effectiveDensity() {
   if (g_set.density != DEN_AUTO) return g_set.density;
   uint8_t n = 0;
   for (uint8_t i = 0; i < g_gameCount; i++)
     if (passesFilter(g_board[i])) n++;
+  const uint8_t live = liveVisible();
+  if (live >= 1 && live <= 3) return LAY_FEATURE;
   if (n <= 6)  return DEN_ROOMY;
   if (n <= 9)  return DEN_STANDARD;
   return DEN_DENSE;
 }
+static bool isFeature() { return effectiveDensity() == LAY_FEATURE; }
 static const DensitySpec& spec() { return kDensity[effectiveDensity()]; }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -120,6 +152,22 @@ static void setNumCached(lv_obj_t* o, int32_t* cache, int32_t v) {
   snprintf(b, sizeof b, "%ld", (long)v);
   lv_label_set_text(o, b);
 }
+/**
+ * Give the status the whole bottom row when nothing is sharing it.
+ *
+ * The reserve exists so a long status cannot run into the situation chip; with
+ * an empty right-hand column there is nothing to run into, and holding 81 px
+ * back only truncates. F1 sends "8/21 - 6:30 AM" for a scheduled session and
+ * it printed as "8/21 -...".
+ */
+static void setStatusWidth(TileUI& t, const DensitySpec& d, bool rightInUse) {
+  const int leftX = TILE_PAD_X + 12;
+  const int w = rightInUse ? STATUS_W : (d.tileW - TILE_PAD_X - leftX);
+  if (t.cStatusW == (int16_t)w) return;
+  t.cStatusW = (int16_t)w;
+  lv_obj_set_width(t.status, w);
+}
+
 static void setHiddenCached(lv_obj_t* o, bool* cache, bool hide) {
   if (!o) return;                // never panic on a tile that was not built
   if (*cache == !hide) return;   // cache stores "visible"
@@ -148,10 +196,18 @@ static void buildTile(TileUI& t, int idx) {
 
   // The signature: a 3px luminous strip on the LEADING team's side, which
   // swaps ends when the lead changes. UI.md §2.
+  // The signature edge light, which now marks the leading team's ROW rather
+  // than the tile's perimeter.
+  //
+  // It used to run the full tile height and jump to the RIGHT edge when the
+  // home side led. Across a 12 px gutter that put it 6 px from the next tile's
+  // left edge, so nine tiles of it read as column rules between cards instead
+  // of as "this side is ahead" — the one thing it exists to say. Anchored to
+  // the row, at x=0, it points at a team.
   t.edge = lv_obj_create(t.root);
   lv_obj_remove_style_all(t.edge);
-  lv_obj_set_size(t.edge, EDGE_W, d.tileH - 2);
-  lv_obj_set_pos(t.edge, 0, 0);
+  lv_obj_set_size(t.edge, EDGE_W, ((d.tileH - 2 * TILE_PAD_Y - STATUS_H) / 2) - 12);
+  lv_obj_set_pos(t.edge, 0, TILE_PAD_Y + 6);
   lv_obj_set_style_bg_opa(t.edge, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(t.edge, 2, 0);
   lv_obj_add_flag(t.edge, LV_OBJ_FLAG_HIDDEN);
@@ -231,19 +287,47 @@ static void buildTile(TileUI& t, int idx) {
   t.fldTitle = microLabel(t.root, TILE_PAD_X, TILE_PAD_Y - 2, C_INK, F_BODY);  // mixed case
   lv_obj_set_width(t.fldTitle, d.tileW - 2 * TILE_PAD_X);
   lv_label_set_long_mode(t.fldTitle, LV_LABEL_LONG_DOT);
+  // LV_LABEL_LONG_DOT only ellipsises once the text exceeds the label's
+  // HEIGHT; with an unconstrained height it wraps freely first. So "Wyndham
+  // Championship" broke onto a second line and printed straight over the
+  // leaderboard's first two rows on the real panel. Pinning the height to one
+  // line is what actually makes the mode ellipsise.
+  lv_obj_set_height(t.fldTitle, (int)lv_font_get_line_height(F_BODY));
+  // Three columns across 160 px on a Dense tile, so every pixel is spoken for,
+  // and the name is the column that was losing.
+  //
+  // LV_LABEL_LONG_DOT with a pinned height wraps at a SPACE and only then
+  // adds the dots, so a name two pixels too wide does not lose two pixels —
+  // it collapses to its first word. "M. Brennan" rendered as "M....", which
+  // names nobody. Widening by four pixels does not fix that; it just moves
+  // which names fall off the cliff.
+  //
+  // So on a narrow tile the POSITION column goes instead. Three rows in rank
+  // order carry their own position, and the ~26 px it was costing is the
+  // difference between a name and an initial. The cost is real and bounded:
+  // a tie ("T3") is no longer marked on Dense.
+  const bool wideTile = d.tileW >= 220;
+  const int posW = wideTile ? 20 : 0;
+  const int valW = 54;
+  const int nameX = TILE_PAD_X + (posW ? posW + 4 : 0);
+  const int nameW = d.tileW - TILE_PAD_X - valW - 6 - nameX;
   for (int i = 0; i < 3; i++) {
     const int y = TILE_PAD_Y + 24 + i * 19;
+    // NOT hidden when posW is 0 — the refresh's fieldOnly[] loop clears the
+    // hidden flag on every field object, so a flag set here would not survive.
+    // The refresh writes an empty string instead.
     t.fldPos[i]  = microLabel(t.root, TILE_PAD_X, y, C_INK3, F_NUM);
     // Athlete names carry accents and lowercase — Raikkonen, Perez, Alcaraz.
-    t.fldName[i] = microLabel(t.root, TILE_PAD_X + 26, y, C_INK2, F_BODY);
-    lv_obj_set_width(t.fldName[i], d.tileW - 2 * TILE_PAD_X - 26 - 56);
+    t.fldName[i] = microLabel(t.root, nameX, y, C_INK2, F_BODY);
+    lv_obj_set_width(t.fldName[i], nameW);
     lv_label_set_long_mode(t.fldName[i], LV_LABEL_LONG_DOT);
+    lv_obj_set_height(t.fldName[i], (int)lv_font_get_line_height(F_BODY));
     t.fldVal[i]  = lv_label_create(t.root);
     lv_obj_set_style_text_font(t.fldVal[i], F_NUM, 0);
     lv_obj_set_style_text_color(t.fldVal[i], C_INK, 0);
     lv_obj_set_style_text_align(t.fldVal[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_width(t.fldVal[i], 54);
-    lv_obj_set_pos(t.fldVal[i], d.tileW - TILE_PAD_X - 54, y);
+    lv_obj_set_width(t.fldVal[i], valW);
+    lv_obj_set_pos(t.fldVal[i], d.tileW - TILE_PAD_X - valW, y);
     lv_label_set_text(t.fldVal[i], "");
   }
   // ── set boxes ────────────────────────────────────────────────────────────
@@ -258,13 +342,52 @@ static void buildTile(TileUI& t, int idx) {
     lv_label_set_text(t.setLbl[i], "");
   }
 
-  t.status = microLabel(t.root, TILE_PAD_X, d.tileH - TILE_PAD_Y - 15, C_INK2, F_NUM);
+  // The state dot. The single accent, doing the one job it exists for: saying
+  // "this is happening now" without spending luminance, which is already fully
+  // committed to encoding state. Hidden unless the game is live.
+  t.dot = lv_obj_create(t.root);
+  lv_obj_remove_style_all(t.dot);
+  lv_obj_set_size(t.dot, 6, 6);
+  lv_obj_set_pos(t.dot, TILE_PAD_X, d.tileH - TILE_PAD_Y - 10);
+  lv_obj_set_style_radius(t.dot, 3, 0);
+  lv_obj_set_style_bg_color(t.dot, C_LIVE, 0);
+  lv_obj_set_style_bg_opa(t.dot, LV_OPA_COVER, 0);
+  lv_obj_add_flag(t.dot, LV_OBJ_FLAG_HIDDEN);
+
+  // ── the bottom row: status on the left, ONE right-hand label ─────────────
+  //
+  // Both columns are now derived from the tile width instead of being fixed,
+  // because a Dense tile is 186 px and the fixed numbers were sized for a
+  // 248 px one. On the real panel that printed "Bot 8tl2 ON 2 OUT" — the
+  // status and the situation chip straight through each other.
+  //
+  // F_NUM is monospaced at exactly 9.0 px. The longest status the proxy sends
+  // is nine glyphs ("3rd 04:21"), so the left column is 81 px on every tile
+  // and the right-hand label takes whatever is left after a 12 px gutter:
+  // 117 px on Standard, 55 px on Dense. situationText() switches to a
+  // five-glyph vocabulary when that is all the room there is.
+  const int rowY   = d.tileH - TILE_PAD_Y - 15;
+  const int leftX  = TILE_PAD_X + 12;      // past the live dot's gutter
+  const int rightX = leftX + STATUS_W + 12;
+  const int rightW = d.tileW - TILE_PAD_X - rightX;
+
+  // Indented past the dot's gutter whether the dot is showing or not, so the
+  // status line does not shift sideways when a game goes live. Bounded, so it
+  // cannot reach the right-hand label however long upstream makes it.
+  t.status = microLabel(t.root, leftX, rowY, C_INK2, F_NUM);
+  lv_obj_set_width(t.status, STATUS_W);
+  lv_label_set_long_mode(t.status, LV_LABEL_LONG_DOT);
+
   t.bcast  = lv_label_create(t.root);
   lv_obj_set_style_text_font(t.bcast, F_NUM, 0);
   lv_obj_set_style_text_color(t.bcast, C_INK3, 0);
   lv_obj_set_style_text_align(t.bcast, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_width(t.bcast, 86);
-  lv_obj_set_pos(t.bcast, d.tileW - TILE_PAD_X - 86, d.tileH - TILE_PAD_Y - 15);
+  lv_obj_set_width(t.bcast, rightW);
+  // Fixed width plus the default LONG_WRAP clips mid-word: "Prime Video" drew
+  // as "Prime Vid" with the rest simply gone. An ellipsis at least says that
+  // something was cut. Confirmed in desktop scenario 3.
+  lv_label_set_long_mode(t.bcast, LV_LABEL_LONG_DOT);
+  lv_obj_set_pos(t.bcast, rightX, rowY);
   lv_label_set_text(t.bcast, "");
 
   // Situation: power play, red zone, bases loaded. The proxy has always sent
@@ -280,8 +403,9 @@ static void buildTile(TileUI& t, int idx) {
   lv_obj_set_style_text_font(t.sit, F_NUM, 0);
   lv_obj_set_style_text_color(t.sit, C_INK, 0);
   lv_obj_set_style_text_align(t.sit, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_width(t.sit, 120);
-  lv_obj_set_pos(t.sit, d.tileW - TILE_PAD_X - 120, d.tileH - TILE_PAD_Y - 15);
+  lv_obj_set_width(t.sit, rightW);
+  lv_label_set_long_mode(t.sit, LV_LABEL_LONG_DOT);
+  lv_obj_set_pos(t.sit, rightX, rowY);
   lv_label_set_text(t.sit, "");
   lv_obj_add_flag(t.sit, LV_OBJ_FLAG_HIDDEN);
 
@@ -307,6 +431,9 @@ static void buildTile(TileUI& t, int idx) {
   // Must match the objects' real state at build time — see the note above.
   t.cSitVis = false;
   t.cBcastVis = true;
+  t.cDotVis = false;
+  t.cScoreInk[0] = t.cScoreInk[1] = 0xFFFFFFFF;
+  t.cStatusW = (int16_t)STATUS_W;      // matches the width set above
   t.cUsed = true;
 }
 
@@ -571,6 +698,9 @@ static void buildOrder() {
 }
 
 bool uiBoardPage(int delta) {
+  // FEATURE has exactly one page — the ledger absorbs whatever does not fit,
+  // so there is never anything on a second one.
+  if (isFeature()) return false;
   const uint8_t per = spec().cols * spec().rows;
   const uint8_t pages = (visibleCount() + per - 1) / per;
   if (pages <= 1) return false;
@@ -709,16 +839,40 @@ void uiBoardRefresh() {
   if (s_builtDensity != effectiveDensity()) { uiInit(); }
 
   const DensitySpec& d = spec();
+  const bool feature = isFeature();
   const uint8_t per = d.cols * d.rows;
-  const uint8_t pages = max<uint8_t>(1, (visibleCount() + per - 1) / per);
-  if (g_page >= pages) g_page = 0;
 
   buildOrder();
+
+  // In FEATURE the hero takes rank 0 and the tiles take the next live games;
+  // everything settled or scheduled falls to the ledger, so there is exactly
+  // one page and nothing to swipe between.
+  int8_t heroIdx = -1;
+  if (feature) {
+    for (uint8_t oi = 0; oi < g_gameCount; oi++) {
+      const Game& g = g_board[s_order[oi]];
+      if (passesFilter(g) && g.state == GS_LIVE) { heroIdx = (int8_t)s_order[oi]; break; }
+    }
+    if (heroIdx >= 0) uiHeroShow(heroIdx); else uiHeroHide();
+    g_page = 0;
+  } else {
+    uiHeroHide();
+    uiLedgerHide();
+  }
+
+  const uint8_t pages = feature ? 1
+                                : max<uint8_t>(1, (visibleCount() + per - 1) / per);
+  if (g_page >= pages) g_page = 0;
+
   uint8_t seen = 0, slot = 0;
   for (uint8_t oi = 0; oi < g_gameCount && slot < per; oi++) {
     const uint8_t i = s_order[oi];
     const Game& g = g_board[i];
     if (!passesFilter(g)) continue;
+    // The hero is not repeated as a tile, and in FEATURE the two tiles are for
+    // live games only — a scheduled fixture belongs in the ledger, not in a
+    // 248x128 box saying "-" and "-".
+    if (feature && ((int8_t)i == heroIdx || g.state != GS_LIVE)) continue;
     if (seen++ < g_page * per) continue;
 
     TileUI& t = s_tile[slot];
@@ -741,6 +895,10 @@ void uiBoardRefresh() {
       lv_obj_set_style_text_color(t.status, si.ink2, 0);
       lv_obj_set_style_text_color(t.bcast,  si.ink3, 0);
       lv_obj_set_style_text_color(t.fldTitle, si.ink, 0);
+      // The score-ink cache stores a team colour or a "use si.ink2" sentinel,
+      // and si.ink2 has just moved. Invalidate, or a non-leading side keeps the
+      // previous state's ink2 for as long as it stays behind.
+      t.cScoreInk[0] = t.cScoreInk[1] = 0xFFFFFFFE;
     }
 
     // Three models do not have two sides and a score. Show/hide the two
@@ -778,16 +936,25 @@ void uiBoardRefresh() {
       const FieldSet* F = (g.fieldIdx >= 0 && g.fieldIdx < FLD_POOL) ? &g_fields[g.fieldIdx] : nullptr;
       for (int k = 0; k < 3; k++) {
         const bool on = F && k < F->count;
-        lv_label_set_text(t.fldPos[k],  on ? F->rows[k].pos : "");
+        // Dropped on narrow tiles so the name gets the width — see buildTile().
+        lv_label_set_text(t.fldPos[k], (on && d.tileW >= 220) ? F->rows[k].pos : "");
         lv_label_set_text(t.fldName[k], on ? F->rows[k].name : (k == 0 && !F ? g.home.name : ""));
         lv_label_set_text(t.fldVal[k],  on ? F->rows[k].val : "");
       }
       setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
       setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
+      setStatusWidth(t, d, g.bcast[0] != '\0');
       // State ink already applied above; a leaderboard has no leader side.
       setHiddenCached(t.sit,   &t.cSitVis,   true);
       setHiddenCached(t.bcast, &t.cBcastVis, false);
       setHiddenCached(t.edge, &t.cEdgeVis, true);
+      setHiddenCached(t.dot,  &t.cDotVis, g.state != GS_LIVE);
+      // The tennis set boxes. They are hidden in the two-sided path below,
+      // which this branch never reaches — so a tile that held a tennis match
+      // and then became a golf leaderboard kept them, printing set scores
+      // straight through the players' names. Same class as the badge/logo bug:
+      // a hide that only ran on one of the two paths out of here.
+      for (int k = 0; k < 2; k++) lv_obj_add_flag(t.setLbl[k], LV_OBJ_FLAG_HIDDEN);
       slot++;
       continue;
     }
@@ -806,10 +973,25 @@ void uiBoardRefresh() {
       } else {
         setNumCached(t.score[k], &t.cScore[k], side[k]->score);
       }
+      // The leading score is drawn in the LEADING TEAM'S OWN COLOUR, lifted
+      // against this state's fill. That is roughly 900 px of team colour at the
+      // point of the tile the eye lands on, which is what the 3 px perimeter
+      // strip was reaching for and could never deliver from the edge.
+      //
       // The losing side drops to ink-2 — the second half of the state channel.
+      // Change-cached: teamInkOn() walks up to 120 contrast evaluations, and
+      // this runs for every side of every tile on every refresh.
       const bool leading = (g.state != GS_PRE) &&
                            ((k == 1) == g.leaderHome) && (g.away.score != g.home.score);
-      lv_obj_set_style_text_color(t.score[k], leading ? si.ink : si.ink2, 0);
+      // 0xFFFFFFFF is the "not leading, use this state's ink2" sentinel — ink2
+      // is not round-tripped through the cache, because lv_color_t is RGB565
+      // here and reconstructing it would quietly shift the colour.
+      const uint32_t want = leading ? teamInkOn(side[k]->color, si.fill) : 0xFFFFFFFF;
+      if (t.cScoreInk[k] != want) {
+        t.cScoreInk[k] = want;
+        lv_obj_set_style_text_color(
+            t.score[k], want == 0xFFFFFFFF ? si.ink2 : lv_color_hex(want), 0);
+      }
 
       // Followed teams keep a ring — see buildTile().
       const bool fav = sideIsFav(g.league, side[k]->id);
@@ -856,23 +1038,33 @@ void uiBoardRefresh() {
     setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
     setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
 
+    // Compact when the right-hand column cannot hold the full vocabulary —
+    // which on Dense it cannot. Derived from the same geometry buildTile used,
+    // so the two can never disagree about how much room there is.
+    const int rightW = d.tileW - TILE_PAD_X - (TILE_PAD_X + 12 + STATUS_W + 12);
     char sit[14] = "";
-    situationText(g, sit, sizeof sit);
+    situationText(g, sit, sizeof sit, rightW < SIT_FULL_W);
     setHiddenCached(t.sit,   &t.cSitVis,   !sit[0]);
     setHiddenCached(t.bcast, &t.cBcastVis,  sit[0] != '\0');
+    setStatusWidth(t, d, sit[0] != '\0' || g.bcast[0] != '\0');
     if (sit[0]) setTextCached(t.sit, t.cSit, sizeof t.cSit, sit);
     else        t.cSit[0] = '\0';
 
-    // Edge light: only live games, on the leading side.
+    // The live accent. Only ever this, only ever live.
+    setHiddenCached(t.dot, &t.cDotVis, g.state != GS_LIVE);
+
+    // Edge light: only live games, beside the leading team's ROW.
     const bool edgeOn = (g.state == GS_LIVE);
     setHiddenCached(t.edge, &t.cEdgeVis, !edgeOn);
     if (edgeOn) {
-      // teamInk, not the raw colour: Toronto navy against the tile is 1.11:1,
-      // which made the product's signature element invisible on its own
-      // flagship example. See theme.cpp.
-      const uint32_t c = teamInk(g.leaderHome ? g.home.color : g.away.color);
+      // teamInkOn against THIS state's fill, not the raw colour: Toronto navy
+      // against the tile is 1.11:1, which made the product's signature element
+      // invisible on its own flagship example. See theme.cpp.
+      const uint32_t c = teamInkOn(g.leaderHome ? g.home.color : g.away.color, si.fill);
       if (t.cEdge != c) { t.cEdge = c; lv_obj_set_style_bg_color(t.edge, lv_color_hex(c), 0); }
-      lv_obj_set_x(t.edge, g.leaderHome ? d.tileW - EDGE_W - 1 : 0);
+      // Vertical, not horizontal: it names a row now. See buildTile().
+      const int rowH = (d.tileH - 2 * TILE_PAD_Y - STATUS_H) / 2;
+      lv_obj_set_y(t.edge, TILE_PAD_Y + (g.leaderHome ? rowH : 0) + 6);
     }
     slot++;
   }
@@ -885,7 +1077,9 @@ void uiBoardRefresh() {
   // a position write on every tile.
   const uint8_t usedRows = filled ? (filled + d.cols - 1) / d.cols : 0;
   int yOff = 0;
-  if (usedRows && usedRows < d.rows) {
+  // Never in FEATURE: the tile strip is anchored to the hero beside it, and
+  // floating it down the screen would break that alignment for no gain.
+  if (!feature && usedRows && usedRows < d.rows) {
     const int freeH = (d.rows - usedRows) * (d.tileH + d.gut);
     yOff = freeH / 2;
   }
@@ -902,7 +1096,19 @@ void uiBoardRefresh() {
     s_tile[slot].gameIdx = -1;
     setHiddenCached(s_tile[slot].root, &s_tile[slot].cUsed, true);
   }
-  layoutFiller(d, filled, per);
+
+  if (feature) {
+    // Everything not on the hero or a tile. The ledger is the whole reason the
+    // featured layout can cover 62% of the panel where the grid covers 84%.
+    lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN);
+    int8_t used[TILES_PER_PAGE + 1];
+    uint8_t nUsed = 0;
+    if (heroIdx >= 0) used[nUsed++] = heroIdx;
+    for (uint8_t i = 0; i < filled; i++) used[nUsed++] = s_tile[i].gameIdx;
+    uiLedgerRender(s_order, g_gameCount, used, nUsed, passesFilter);
+  } else {
+    layoutFiller(d, filled, per);
+  }
 
   // Dots read as "there is more" far better than "1 / 3" does.
   const uint8_t shown = pages > 1 ? (pages < 8 ? pages : 8) : 0;
@@ -1019,6 +1225,12 @@ void uiInit() {
   lv_obj_add_event_cb(s_board, onGesture, LV_EVENT_GESTURE, nullptr);
 
   buildBar();
+  // Built in every layout and shown only in FEATURE. They are ~40 objects in
+  // PSRAM, which costs nothing to hold; rebuilding them on every layout flip
+  // would cost a visible stall.
+  uiHeroInit(s_board);
+  uiLedgerInit(s_board);
+
   const uint8_t per = spec().cols * spec().rows;
   for (uint8_t i = 0; i < TILES_PER_PAGE; i++) {
     if (i < per) {

@@ -30,11 +30,11 @@ LDLIBS   = $(SDL_LIBS)
 
 # Firmware sources that are pure UI or pure logic. Anything touching the
 # network, flash or the panel is faked in fakes.cpp instead.
-FW_CXX = $(SRC)/ui/ui_board.cpp $(SRC)/ui/ui_idle.cpp $(SRC)/ui/ui_game.cpp \
-         $(SRC)/ui/ui_standings.cpp $(SRC)/ui/ui_news.cpp $(SRC)/ui/ui_lineup.cpp \
-         $(SRC)/ui/ui_alert.cpp $(SRC)/ui/ui_setup.cpp $(SRC)/ui/ui_focus.cpp $(SRC)/ui/ui_settings.cpp \
-         $(SRC)/ui/theme.cpp \
-         $(SRC)/core/state.cpp
+#
+# Globbed, not listed. This was an explicit list and every new UI file cost a
+# link error first — the Arduino build compiles everything under src/ anyway,
+# so a hand-maintained list here could only ever disagree with the firmware.
+FW_CXX = $(wildcard $(SRC)/ui/*.cpp) $(SRC)/core/state.cpp
 FW_C   = $(wildcard $(SRC)/assets/*.c)
 LV_C   = $(shell find $(LVGL)/src -name '*.c')
 OWN    = main.cpp fakes.cpp scenarios.cpp lint_fonts.cpp

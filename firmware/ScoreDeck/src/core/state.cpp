@@ -180,7 +180,19 @@ bool inQuietHours() {
  * whole job is to be recognised, not read — "BASES LOADED" and "RED ZONE" are
  * shapes you know before you have finished reading them.
  */
-void situationText(const Game& g, char* out, size_t cap) {
+/**
+ * The situation chip, in one of two vocabularies.
+ *
+ * `compact` exists because the strings below do not fit a Dense tile. Dense is
+ * 186 px wide, so after the pad and the live dot the status and the situation
+ * share about 148 px — sixteen glyphs of a 15 px mono face. "Bot 8th" plus
+ * "2 ON 2 OUT" is seventeen before any gap at all, and on the real panel they
+ * printed straight through each other: "Bot 8tl2 ON 2 OUT".
+ *
+ * The harness never caught it because its fixtures use "Bot 7" and the
+ * proxy sends "Bot 8th".
+ */
+void situationText(const Game& g, char* out, size_t cap, bool compact) {
   out[0] = '\0';
   if (!g.situation || g.state != GS_LIVE) return;
   const uint16_t s = g.situation;
@@ -188,16 +200,30 @@ void situationText(const Game& g, char* out, size_t cap) {
   if (g.model == SM_INNING) {
     const uint8_t on = (uint8_t)sitOnFirst(s) + (uint8_t)sitOnSecond(s) + (uint8_t)sitOnThird(s);
     const uint8_t outs = sitOuts(s);
-    if (on == 3)      snprintf(out, cap, "BASES LOADED");
-    else if (on)      snprintf(out, cap, "%u ON %u OUT", on, outs);
-    else if (outs)    snprintf(out, cap, "%u OUT", outs);
+    // Compact tops out at FIVE glyphs — what a Dense tile can spare after a
+    // nine-glyph status and a gutter.
+    //
+    // It reports the OUTS, not the runners, and that is a deliberate loss. The
+    // first attempt packed both as "%uON%uO", which fits and is unreadable:
+    // the mono face draws a capital O and a zero almost identically, so
+    // "2ON2O" renders as "20N20". Outs is the number a glancing viewer wants
+    // most, and bases-loaded is kept as its own word because it is the one
+    // runner state worth interrupting for.
+    if (compact) {
+      if (on == 3)   snprintf(out, cap, "LOAD");
+      else if (outs) snprintf(out, cap, "%u OUT", outs);
+      return;
+    }
+    if (on == 3)     snprintf(out, cap, "BASES LOADED");
+    else if (on)     snprintf(out, cap, "%u ON %u OUT", on, outs);
+    else if (outs)   snprintf(out, cap, "%u OUT", outs);
     return;
   }
 
   if (g.model == SM_CLOCK) {
     // Bit 2 is set only for sports where a man advantage is a real state.
-    if (s & 0x04)      snprintf(out, cap, "POWER PLAY");
-    else if (sitRedZone(s)) snprintf(out, cap, "RED ZONE");
+    if (s & 0x04)           snprintf(out, cap, compact ? "PP" : "POWER PLAY");
+    else if (sitRedZone(s)) snprintf(out, cap, compact ? "RZ" : "RED ZONE");
   }
 }
 

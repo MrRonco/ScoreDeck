@@ -51,10 +51,22 @@ struct DensitySpec {
 #define DEN_AUTO     3
 #define DEN_COUNT    4
 
-static const DensitySpec kDensity[3] = {
+// LAY_FEATURE is a RESOLVED LAYOUT, never a stored setting. g_set.density only
+// ever holds DEN_ROOMY..DEN_AUTO; effectiveDensity() may additionally return
+// this when AUTO decides there is one game worth promoting. It shares the
+// numeric value of DEN_AUTO deliberately — AUTO is the only setting that can
+// produce it — but the two are never compared to each other. Do not put it in
+// the long-press cycle or the settings segmented control.
+#define LAY_FEATURE  3
+
+// The FEATURE row is a one-column strip of two tiles down the right-hand side,
+// beside the hero. cols=1 makes the generic x formula land it at x=536, and
+// rows=2 gives the two live slots at y=60 and y=200.
+static const DensitySpec kDensity[4] = {
   { 58, 244, 186, 16, 18, 72, 3, 2, 38, 0 },
   { 48, 248, 128, 12, 16, 60, 3, 3, 30, 1 },
   { 44, 186, 131, 10, 12, 56, 4, 3, 26, 1 },
+  { 48, 248, 128, 12, 536, 60, 1, 2, 30, 1 },
 };
 
 // ── networking ──────────────────────────────────────────────────────────────

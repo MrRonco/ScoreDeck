@@ -52,6 +52,26 @@ lv_obj_t* uiGameRoot();
 /** Page the board. Returns false when there is nowhere to go. */
 bool uiBoardPage(int delta);
 
+// ── featured layout ────────────────────────────────────────────────────────
+// One promoted game at 508x268 plus two live tiles plus a bare-plate ledger.
+// Chosen by effectiveDensity() when AUTO sees between one and three live
+// games; a busier night falls back to the grid, which is the right answer when
+// there is nothing to promote. See ui_hero.cpp for why this exists at all.
+void uiHeroInit(lv_obj_t* parent);
+void uiHeroShow(int8_t gameIdx);
+void uiHeroHide();
+lv_obj_t* uiHeroRoot();
+int8_t uiHeroGameIdx();
+
+void uiLedgerInit(lv_obj_t* parent);
+/** Fill from g_board in `order`, skipping `exclude` (games already on the hero
+ *  or a tile) and anything `passes` rejects. */
+void uiLedgerRender(const uint8_t* order, uint8_t n,
+                    const int8_t* exclude, uint8_t nExclude,
+                    bool (*passes)(const Game&));
+void uiLedgerHide();
+lv_obj_t* uiLedgerRoot();
+
 /** Game index shown in tile `slot`, or -1. Lets the logo fetcher bound its
  *  working set to what is actually on screen. */
 int8_t uiBoardTileGame(uint8_t slot);

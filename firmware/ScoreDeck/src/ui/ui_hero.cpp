@@ -1,0 +1,278 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Franco Raso
+// ui_hero.cpp — the featured game cell.
+//
+// WHY THIS EXISTS. The nine-up grid gives every game the same 248x128 box, and
+// the measurement said what that costs: 84.4% of the panel covered in cards,
+// 73.7% of its pixels one mid-grey, and no focal point anywhere. Three of nine
+// tiles routinely burned 33% of the screen to say "-" and "-".
+//
+// Equal weight is not neutrality when the games are not equal. A one-score
+// third period involving a team you follow is not the same object as a fixture
+// that starts in four hours, and drawing them identically is inaccurate rather
+// than fair.
+//
+// So: one game gets a 508x268 cell, and the thing it spends that space on is
+// the LEADING TEAM'S SCORE AT 72 PX IN THAT TEAM'S OWN COLOUR — roughly 2,400
+// px of team colour at the point of the screen the eye lands on. That is what
+// the 3 px perimeter strip was reaching for and could never deliver from the
+// edge of a tile.
+#include "ui.h"
+#include "theme.h"
+#include "../config.h"
+#include "../core/state.h"
+#include "../net/logos.h"
+
+#define HERO_X   16
+#define HERO_Y   60
+#define HERO_W  508
+#define HERO_H  268
+#define HERO_ROW_H 84          // one side's band, badge included
+#define HERO_PAD   24
+
+static lv_obj_t* s_root;
+static lv_obj_t* s_league;     // "NHL  ·  SPORTSNET"
+static lv_obj_t* s_dot;
+static lv_obj_t* s_status;
+static lv_obj_t* s_edge;       // leading-row marker
+static lv_obj_t* s_badge[2];
+static lv_obj_t* s_logo[2];
+static lv_obj_t* s_name[2];
+static lv_obj_t* s_sub[2];
+static lv_obj_t* s_score[2];
+static lv_obj_t* s_footDot;
+static lv_obj_t* s_foot;
+static lv_obj_t* s_footR;
+static int8_t    s_gameIdx = -1;
+
+// Change cache. Same discipline as the grid: LVGL repaints on any write, even
+// one that changes nothing, and unchanged writes fight the panel DMA.
+static char     c_league[24], c_status[16], c_foot[16], c_footR[13];
+static char     c_name[2][24], c_sub[2][10], c_logoKey[2][10];
+static int32_t  c_score[2];
+static uint32_t c_color[2], c_scoreInk[2], c_edgeC;
+static bool     c_logoVis[2], c_badgeVis[2], c_dotVis, c_footDotVis, c_edgeVis;
+static int      c_edgeY;
+
+static const StateInk& HI() { return kStateInk[SI_HERO]; }
+
+// ── helpers ────────────────────────────────────────────────────────────────
+static lv_obj_t* lab(lv_obj_t* p, int x, int y, lv_color_t c, const lv_font_t* f,
+                     int w = 0, lv_text_align_t al = LV_TEXT_ALIGN_LEFT, int track = 0) {
+  lv_obj_t* l = lv_label_create(p);
+  lv_obj_set_pos(l, x, y);
+  lv_obj_set_style_text_color(l, c, 0);
+  lv_obj_set_style_text_font(l, f, 0);
+  if (track) lv_obj_set_style_text_letter_space(l, track, 0);
+  if (w) {
+    lv_obj_set_width(l, w);
+    lv_obj_set_style_text_align(l, al, 0);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+  }
+  lv_label_set_text(l, "");
+  return l;
+}
+
+static lv_obj_t* hairline(lv_obj_t* p, int x, int y, int w) {
+  lv_obj_t* o = lv_obj_create(p);
+  lv_obj_remove_style_all(o);
+  lv_obj_set_pos(o, x, y);
+  lv_obj_set_size(o, w, 1);
+  lv_obj_set_style_bg_color(o, C_LINE, 0);
+  lv_obj_set_style_bg_opa(o, OPA_HAIR, 0);
+  return o;
+}
+
+static lv_obj_t* dot(lv_obj_t* p, int x, int y) {
+  lv_obj_t* o = lv_obj_create(p);
+  lv_obj_remove_style_all(o);
+  lv_obj_set_pos(o, x, y);
+  lv_obj_set_size(o, 6, 6);
+  lv_obj_set_style_radius(o, 3, 0);
+  lv_obj_set_style_bg_color(o, C_LIVE, 0);
+  lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+  lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  return o;
+}
+
+/** F_DISPLAY has no lowercase — see theme.h. Team names arrive mixed-case
+ *  ("Maple Leafs"), so they are folded here rather than at a smaller face. */
+static void upper(const char* in, char* out, size_t n) {
+  size_t i = 0;
+  for (; in[i] && i < n - 1; i++) out[i] = (char)toupper((unsigned char)in[i]);
+  out[i] = '\0';
+}
+
+static void onTap(lv_event_t*) {
+  if (s_gameIdx >= 0 && s_gameIdx < g_gameCount) uiGameOpen(g_board[s_gameIdx]);
+}
+
+// ── build ──────────────────────────────────────────────────────────────────
+void uiHeroInit(lv_obj_t* parent) {
+  s_root = glassPanel(parent, HERO_X, HERO_Y, HERO_W, HERO_H, 16);
+  lv_obj_set_style_bg_color(s_root, HI().plate, 0);
+  lv_obj_set_style_border_color(s_root, HI().edge, 0);
+  lv_obj_add_flag(s_root, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(s_root, onTap, LV_EVENT_SHORT_CLICKED, nullptr);
+  // Or the hero swallows the swipe, exactly as the tiles did.
+  lv_obj_clear_flag(s_root, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
+  const int innerW = HERO_W - 2 * HERO_PAD;
+
+  s_league = lab(s_root, HERO_PAD, 18, HI().ink3, F_MICRO, 200, LV_TEXT_ALIGN_LEFT, 1);
+  s_dot    = dot(s_root, 330, 26);
+  s_status = lab(s_root, 344, 14, HI().ink, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
+  hairline(s_root, HERO_PAD - 4, 46, innerW + 8);
+
+  // The leading-row marker. Vertical, at x=0, aligned to whichever side is
+  // ahead — it names a team, not a tile perimeter.
+  s_edge = lv_obj_create(s_root);
+  lv_obj_remove_style_all(s_edge);
+  lv_obj_set_size(s_edge, 4, 52);
+  lv_obj_set_style_radius(s_edge, 2, 0);
+  lv_obj_set_style_bg_opa(s_edge, LV_OPA_COVER, 0);
+  lv_obj_add_flag(s_edge, LV_OBJ_FLAG_HIDDEN);
+
+  for (int k = 0; k < 2; k++) {
+    const int y = 66 + k * HERO_ROW_H;
+
+    s_badge[k] = teamBadge(s_root, "", 0x334455, 52);
+    lv_obj_set_pos(s_badge[k], HERO_PAD, y);
+    lv_obj_set_style_radius(s_badge[k], 12, 0);
+    lv_obj_set_style_text_font(lv_obj_get_child(s_badge[k], 0), F_ABBR, 0);
+
+    // See the grid's note: never set an explicit size on an lv_img in 8.3 —
+    // that CLIPS rather than scales. Zoom plus SIZE_MODE_REAL and a 0,0 pivot.
+    s_logo[k] = lv_img_create(s_root);
+    lv_img_set_antialias(s_logo[k], true);
+    lv_img_set_zoom(s_logo[k], (uint16_t)((256 * 52) / 48));
+    lv_img_set_pivot(s_logo[k], 0, 0);
+    lv_img_set_size_mode(s_logo[k], LV_IMG_SIZE_MODE_REAL);
+    lv_obj_set_pos(s_logo[k], HERO_PAD, y);
+    lv_obj_add_flag(s_logo[k], LV_OBJ_FLAG_HIDDEN);
+
+    s_name[k] = lab(s_root, 92, y, HI().ink, F_DISPLAY, 240);
+    s_sub[k]  = lab(s_root, 92, y + 34, HI().ink3, F_NUM, 240);
+    s_score[k] = lab(s_root, 340, y - 8, HI().ink2, F_HERO, 144, LV_TEXT_ALIGN_RIGHT);
+  }
+  hairline(s_root, HERO_PAD - 4, 148, innerW + 8);
+
+  s_footDot = dot(s_root, HERO_PAD, 238);
+  s_foot    = lab(s_root, HERO_PAD + 14, 232, HI().ink, F_NUM, 180);
+  s_footR   = lab(s_root, 344, 232, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
+
+  // Caches must match the objects' real state at build time, or the first
+  // update sees a match and skips the write it was meant to make cheap.
+  memset(c_league, 0, sizeof c_league);
+  memset(c_status, 0, sizeof c_status);
+  memset(c_foot, 0, sizeof c_foot);
+  memset(c_footR, 0, sizeof c_footR);
+  memset(c_name, 0, sizeof c_name);
+  memset(c_sub, 0, sizeof c_sub);
+  memset(c_logoKey, 0, sizeof c_logoKey);
+  c_score[0] = c_score[1] = -1;
+  c_color[0] = c_color[1] = 0xFFFFFFFF;
+  c_scoreInk[0] = c_scoreInk[1] = 0xFFFFFFFF;
+  c_edgeC = 0xFFFFFFFF;
+  c_edgeY = -1;
+  c_logoVis[0] = c_logoVis[1] = false;
+  c_badgeVis[0] = c_badgeVis[1] = true;
+  c_dotVis = c_footDotVis = c_edgeVis = false;
+
+  lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+}
+
+lv_obj_t* uiHeroRoot() { return s_root; }
+int8_t    uiHeroGameIdx() { return s_gameIdx; }
+void      uiHeroHide() { if (s_root) lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); s_gameIdx = -1; }
+
+// ── update ─────────────────────────────────────────────────────────────────
+static void setText(lv_obj_t* o, char* cache, size_t cap, const char* v) {
+  if (strncmp(cache, v, cap - 1) == 0) return;
+  strncpy(cache, v, cap - 1);
+  cache[cap - 1] = '\0';
+  lv_label_set_text(o, cache);
+}
+static void setVis(lv_obj_t* o, bool* cache, bool hide) {
+  if (!o || *cache == !hide) return;
+  *cache = !hide;
+  hide ? lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
+
+void uiHeroShow(int8_t gameIdx) {
+  if (!s_root || gameIdx < 0 || gameIdx >= g_gameCount) { uiHeroHide(); return; }
+  s_gameIdx = gameIdx;
+  const Game& g = g_board[gameIdx];
+  const StateInk& si = HI();
+
+  // League only. This carried "NHL  ·  SPORTSNET" and the footer carried the
+  // broadcast too, so the hero printed the channel twice — once in each corner.
+  char buf[40];
+  upper(g.league, buf, sizeof buf);
+  setText(s_league, c_league, sizeof c_league, buf);
+  setText(s_status, c_status, sizeof c_status, g.status);
+  setVis(s_dot, &c_dotVis, g.state != GS_LIVE);
+
+  const Side* side[2] = { &g.away, &g.home };
+  for (int k = 0; k < 2; k++) {
+    char up[24];
+    upper(side[k]->name[0] ? side[k]->name : side[k]->abbr, up, sizeof up);
+    setText(s_name[k], c_name[k], sizeof c_name[k], up);
+    setText(s_sub[k], c_sub[k], sizeof c_sub[k], side[k]->rec);
+
+    if (g.state == GS_PRE) {
+      if (c_score[k] != -2) { c_score[k] = -2; lv_label_set_text(s_score[k], "-"); }
+    } else if (c_score[k] != (int32_t)side[k]->score) {
+      c_score[k] = side[k]->score;
+      snprintf(buf, sizeof buf, "%u", side[k]->score);
+      lv_label_set_text(s_score[k], buf);
+    }
+
+    const bool leading = (g.state != GS_PRE) &&
+                         ((k == 1) == g.leaderHome) && (g.away.score != g.home.score);
+    // 0xFFFFFFFF = "not leading, use si.ink2" — see the grid for why ink2 is
+    // never round-tripped through the cache.
+    const uint32_t want = leading ? teamInkOn(side[k]->color, si.fill) : 0xFFFFFFFF;
+    if (c_scoreInk[k] != want) {
+      c_scoreInk[k] = want;
+      lv_obj_set_style_text_color(s_score[k],
+          want == 0xFFFFFFFF ? si.ink2 : lv_color_hex(want), 0);
+    }
+
+    if (c_color[k] != side[k]->color) {
+      c_color[k] = side[k]->color;
+      teamBadgeSet(s_badge[k], side[k]->color);
+      lv_label_set_text(lv_obj_get_child(s_badge[k], 0), side[k]->abbr);
+    }
+
+    // Keyed on the TEAM, not the descriptor pointer: logo slots are a static
+    // array, so evicting one and refilling it hands back the same pointer.
+    const lv_img_dsc_t* img = logoGet(g.league, side[k]->abbr);
+    char lkey[10];
+    snprintf(lkey, sizeof lkey, "%s%s", img ? "" : "-", side[k]->abbr);
+    if (strncmp(c_logoKey[k], lkey, sizeof c_logoKey[k] - 1) != 0) {
+      strncpy(c_logoKey[k], lkey, sizeof c_logoKey[k] - 1);
+      c_logoKey[k][sizeof c_logoKey[k] - 1] = '\0';
+      if (img) lv_img_set_src(s_logo[k], img);
+    }
+    setVis(s_logo[k],  &c_logoVis[k],  img == nullptr);
+    setVis(s_badge[k], &c_badgeVis[k], img != nullptr);
+  }
+
+  const bool edgeOn = (g.state == GS_LIVE) && (g.away.score != g.home.score);
+  setVis(s_edge, &c_edgeVis, !edgeOn);
+  if (edgeOn) {
+    const uint32_t c = teamInkOn(g.leaderHome ? g.home.color : g.away.color, si.fill);
+    if (c_edgeC != c) { c_edgeC = c; lv_obj_set_style_bg_color(s_edge, lv_color_hex(c), 0); }
+    const int y = 66 + (g.leaderHome ? HERO_ROW_H : 0);
+    if (c_edgeY != y) { c_edgeY = y; lv_obj_set_pos(s_edge, 0, y); }
+  }
+
+  char sit[14] = "";
+  situationText(g, sit, sizeof sit);
+  setVis(s_footDot, &c_footDotVis, !sit[0]);
+  setText(s_foot, c_foot, sizeof c_foot, sit);
+  setText(s_footR, c_footR, sizeof c_footR, g.bcast);
+
+  lv_obj_clear_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+}

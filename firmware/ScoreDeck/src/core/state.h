@@ -133,7 +133,10 @@ const char* tzForProxy();
  * that turns it into words, so the board and the game screen cannot disagree.
  * Output is CAPS + digits so it is safe in any face.
  */
-void situationText(const Game& g, char* out, size_t cap);
+/** Power play, red zone, bases loaded. `compact` picks a shortened vocabulary
+ *  for tiles too narrow to carry the status and the chip side by side — see
+ *  the note on the definition. */
+void situationText(const Game& g, char* out, size_t cap, bool compact = false);
 
 // ── status, for the top bar ─────────────────────────────────────────────────
 enum NetStatus : uint8_t { NET_BOOT = 0, NET_NOWIFI, NET_NOPROXY, NET_ERR, NET_OK, NET_STALE };
