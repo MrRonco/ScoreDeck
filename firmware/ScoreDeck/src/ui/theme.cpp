@@ -22,9 +22,16 @@ LV_FONT_DECLARE(font_body15)
 LV_FONT_DECLARE(font_micro11)
 LV_FONT_DECLARE(font_micro13)
 LV_FONT_DECLARE(font_num15)
+// The two focal faces. Both are 2 bpp rather than 4 — at 72 px and 96 px the
+// edge is many pixels long, so the extra two bits of coverage buy nothing a
+// desk viewer can see, and they halve the cost of the largest tables we ship.
+LV_FONT_DECLARE(font_hero72)    // digits + '-' ':' 'H' 'M'  — 36 KB
+LV_FONT_DECLARE(font_clock96)   // digits + ':'              — 47 KB
 
 const lv_font_t* F_SCORE = &font_score38;
 const lv_font_t* F_SCORE_BIG = &font_score46;
+const lv_font_t* F_HERO  = &font_hero72;
+const lv_font_t* F_CLOCK = &font_clock96;
 const lv_font_t* F_DISPLAY = &font_display30;
 const lv_font_t* F_ABBR  = &font_abbr17;
 const lv_font_t* F_BODY  = &font_body15;
@@ -103,32 +110,44 @@ static uint32_t lift(uint32_t c, uint32_t against, float minRatio) {
   return 0xFFFFFF;
 }
 
+uint32_t teamInkOn(uint32_t color, uint32_t surface, float minRatio) {
+  return lift(color, surface, minRatio);
+}
+
 uint32_t teamInk(uint32_t color) {
-  return lift(color, 0x101C29, 3.5f);      // against the tile fill
+  return lift(color, 0x1B2636, 3.5f);      // against the live tile fill
 }
 
 uint32_t teamFill(uint32_t color) {
   // A badge only has to separate from the plate; its own label carries the
   // legibility. Pittsburgh's #000000 would otherwise be a hole in the tile.
-  return lift(color, 0x0A0F18, 1.6f);
+  return lift(color, 0x04070E, 1.6f);
 }
 
 lv_color_t badgeInk(uint32_t fill) {
-  return contrast(0xFFFFFF, fill) >= contrast(0x0A0F18, fill) ? lv_color_white()
+  return contrast(0xFFFFFF, fill) >= contrast(0x04070E, fill) ? lv_color_white()
                                                               : C_PLATE;
 }
 
-// Order matches GameState: GS_PRE, GS_LIVE, GS_FINAL.
-const StateInk kStateInk[3] = {
+// Indices 0..2 match GameState: GS_PRE, GS_LIVE, GS_FINAL. Index 3 is SI_HERO.
+//
+// Every ink here was SOLVED against its own surface rather than picked, which
+// is why the values look arbitrary: each is the first step on a cool-neutral
+// ramp that clears its target ratio on that specific fill. ink >= 10:1,
+// ink2 >= 7:1, ink3 >= 4.5:1. Re-solve rather than eyeball if a surface moves.
+const StateInk kStateInk[4] = {
   // pre — present but recessive
-  { lv_color_hex(0x151D29), lv_color_hex(0x263243),
-    lv_color_hex(0xC9D6E2), lv_color_hex(0x8494A6), lv_color_hex(0x6C7C8D) },
+  { lv_color_hex(0x16202E), lv_color_hex(0x2E3A4C),
+    lv_color_hex(0xD2DEEA), lv_color_hex(0x9CACBE), lv_color_hex(0x78889A), 0x16202E },
   // live — full strength
-  { lv_color_hex(0x101C29), lv_color_hex(0x2A3646),
-    lv_color_hex(0xF3F7FB), lv_color_hex(0x93A5B8), lv_color_hex(0x7A8899) },
+  { lv_color_hex(0x1B2636), lv_color_hex(0x3A4759),
+    lv_color_hex(0xF3F7FB), lv_color_hex(0xA2B2C4), lv_color_hex(0x7E8EA0), 0x1B2636 },
   // final — quieter, but every tier still reads
-  { lv_color_hex(0x0E141D), lv_color_hex(0x1F2937),
-    lv_color_hex(0xA8B6C4), lv_color_hex(0x7C8B9C), lv_color_hex(0x667484) },
+  { lv_color_hex(0x101825), lv_color_hex(0x232E3E),
+    lv_color_hex(0xB6C4D2), lv_color_hex(0x95A5B7), lv_color_hex(0x728294), 0x101825 },
+  // hero — the lightest surface on the panel, so the brightest inks
+  { lv_color_hex(0x222E40), lv_color_hex(0x44526A),
+    lv_color_hex(0xF3F7FB), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8), 0x222E40 },
 };
 
 void themeInit() {
@@ -176,6 +195,44 @@ void themeInit() {
   lv_style_set_pad_all(&s_badge, 0);
 }
 
+/**
+ * Re-lay the specular pair from the panel's CURRENT size.
+ *
+ * The geometry used to be baked at construction, which is correct for every
+ * panel built at its final size and wrong for the one that is not. The board's
+ * filler is created as a 10x10 placeholder with radius 12 and resized to ~768
+ * once its content is known — so its highlight and shade were laid out as
+ * `10 - 2*12` = MINUS FOURTEEN pixels wide, clamped to nothing, and never
+ * revisited. The filler is on screen most nights, and it was the only card on
+ * the board that did not read as glass.
+ *
+ * Driven by LV_EVENT_SIZE_CHANGED, so it costs nothing until a panel resizes.
+ */
+static void glassRelayout(lv_event_t* e) {
+  lv_obj_t* o = lv_event_get_target(e);
+  lv_obj_t* hi = lv_obj_get_child(o, 0);
+  lv_obj_t* lo = lv_obj_get_child(o, 1);
+  if (!hi || !lo) return;
+
+  const int w = lv_obj_get_width(o), h = lv_obj_get_height(o);
+  // Clamp: a radius wider than the panel is half is not a rounded rect, and
+  // the inset must never go negative however the panel is sized.
+  int r = lv_obj_get_style_radius(o, LV_PART_MAIN);
+  if (r > w / 2) r = w / 2;
+  const int sw = w - 2 * r;
+  if (sw <= 0 || h <= 6) {
+    lv_obj_add_flag(hi, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lo, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_clear_flag(hi, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(lo, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_size(hi, sw, 1);
+  lv_obj_set_pos(hi, r, 0);
+  lv_obj_set_size(lo, sw, 2);
+  lv_obj_set_pos(lo, r, h - 3);
+}
+
 lv_obj_t* glassPanel(lv_obj_t* parent, int x, int y, int w, int h, int radius) {
   lv_obj_t* o = lv_obj_create(parent);
   lv_obj_remove_style_all(o);
@@ -183,28 +240,27 @@ lv_obj_t* glassPanel(lv_obj_t* parent, int x, int y, int w, int h, int radius) {
   lv_obj_add_style(o, &s_glassPressed, LV_STATE_PRESSED);
   lv_obj_set_style_radius(o, radius, 0);
   lv_obj_set_pos(o, x, y);
-  lv_obj_set_size(o, w, h);
   lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_border_side(o, LV_BORDER_SIDE_FULL, 0);
 
   // The specular pair — a bright catch along the top and a shade along the
-  // bottom. Two static children, drawn once, no per-frame cost. This asymmetry
-  // is what actually reads as glass; the file used to claim it and not do it.
-  if (h > 6) {
-    lv_obj_t* hi = lv_obj_create(o);
-    lv_obj_remove_style_all(hi);
-    lv_obj_set_size(hi, w - 2 * radius, 1);
-    lv_obj_set_pos(hi, radius, 0);
-    lv_obj_set_style_bg_color(hi, C_EDGE_HI, 0);
-    lv_obj_set_style_bg_opa(hi, 210, 0);
+  // bottom. Two children, laid out by glassRelayout(). This asymmetry is what
+  // actually reads as glass; a gradient would only band (see the note above).
+  //
+  // They are children 0 and 1 and glassRelayout() indexes them positionally,
+  // so nothing may be inserted ahead of them.
+  lv_obj_t* hi = lv_obj_create(o);
+  lv_obj_remove_style_all(hi);
+  lv_obj_set_style_bg_color(hi, C_LINE, 0);
+  lv_obj_set_style_bg_opa(hi, OPA_SPEC, 0);
 
-    lv_obj_t* lo = lv_obj_create(o);
-    lv_obj_remove_style_all(lo);
-    lv_obj_set_size(lo, w - 2 * radius, 2);
-    lv_obj_set_pos(lo, radius, h - 3);
-    lv_obj_set_style_bg_color(lo, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(lo, 90, 0);
-  }
+  lv_obj_t* lo = lv_obj_create(o);
+  lv_obj_remove_style_all(lo);
+  lv_obj_set_style_bg_color(lo, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(lo, 90, 0);
+
+  lv_obj_add_event_cb(o, glassRelayout, LV_EVENT_SIZE_CHANGED, nullptr);
+  lv_obj_set_size(o, w, h);      // fires the callback; must come AFTER the pair
   return o;
 }
 
