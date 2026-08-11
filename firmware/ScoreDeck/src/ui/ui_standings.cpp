@@ -119,7 +119,23 @@ void uiStandingsInit(lv_obj_t* parent) {
     lv_obj_set_style_bg_color(s_cutRule[r], C_EDGE_HI, 0);
     lv_obj_set_style_bg_opa(s_cutRule[r], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_cutRule[r], LV_OBJ_FLAG_HIDDEN);
-    s_cutLbl[r] = lb(card, 594, y + 21, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 160);
+    // Placed in the one band of the table that is empty on every row: team
+    // names end near x=200 and the first stat column starts near x=490.
+    //
+    // Two earlier positions were both wrong for the same reason — they sat in
+    // space that belongs to something else. Right-aligned at x=594 it landed
+    // directly under the PTS value and read as a caption for that number
+    // ("86 — PLAYOFF LINE"). Moved to x=14 it collided with the NEXT row's
+    // rank and badge, because the 36 px pitch leaves only 7 px of true gap and
+    // a 13 px label cannot be centred in it.
+    //
+    // It carries the card's own fill so it masks the rule it sits on, rather
+    // than needing the rule split into two objects around it.
+    s_cutLbl[r] = lb(card, 290, y + 26, C_INK3, F_MICRO, LV_TEXT_ALIGN_LEFT, 200);
+    lv_obj_set_style_text_letter_space(s_cutLbl[r], 1, 0);
+    lv_obj_set_style_bg_color(s_cutLbl[r], C_FROST, 0);
+    lv_obj_set_style_bg_opa(s_cutLbl[r], LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_hor(s_cutLbl[r], 8, 0);
     lv_obj_add_flag(s_cutLbl[r], LV_OBJ_FLAG_HIDDEN);
   }
 }

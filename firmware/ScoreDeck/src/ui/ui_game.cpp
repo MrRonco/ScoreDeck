@@ -122,9 +122,19 @@ void uiGameInit(lv_obj_t* parent) {
     lv_obj_set_pos(s_playBar[i], 14, y);
     lv_obj_set_style_bg_opa(s_playBar[i], LV_OPA_COVER, 0);
     lv_obj_set_style_radius(s_playBar[i], 2, 0);
-    s_playT[i] = lb(pc, 26, y, C_INK3, F_MICRO);
-    s_playX[i] = lb(pc, 92, y, C_INK2, F_BODY);   // play text names players
-    lv_obj_set_width(s_playX[i], 300);
+    // The clock column had no width and the play text began at x=92, so a full
+    // "3rd 04:21" ran four pixels UNDER the first letter of the play.
+    //
+    // The width is derived, not guessed: F_MICRO is monospaced at an advance
+    // of 125/16 = 7.8125 px, and GameDetail::playT is char[11], so the widest
+    // string the type permits is 10 glyphs = 78.1 px. 82 clears it. A first
+    // pass at 70 fitted the SAMPLE ("3rd 04:21", 9 glyphs = 70.3 px) and
+    // ellipsised it by a third of a pixel — size from the bound, not the case
+    // in front of you.
+    s_playT[i] = lb(pc, 26, y, C_INK3, F_MICRO, LV_TEXT_ALIGN_LEFT, 82);
+    lv_label_set_long_mode(s_playT[i], LV_LABEL_LONG_DOT);
+    s_playX[i] = lb(pc, 114, y, C_INK2, F_BODY);   // play text names players
+    lv_obj_set_width(s_playX[i], 278);
     lv_label_set_long_mode(s_playX[i], LV_LABEL_LONG_DOT);
     s_playS[i] = lb(pc, 396, y, C_INK, F_MICRO, LV_TEXT_ALIGN_RIGHT, 56);
   }
@@ -179,6 +189,17 @@ void uiGameInit(lv_obj_t* parent) {
   lv_label_set_text(s_loading, "Loading...");
 }
 
+/** Leading side gets its own colour lifted against the header's fill; the
+ *  trailing side drops to ink-2. The header panel is the default glass, so the
+ *  live surface is the right thing to solve against. */
+static void setLeadInk(lv_obj_t* score, uint32_t colour, bool leading) {
+  lv_obj_set_style_text_color(
+      score,
+      leading ? lv_color_hex(teamInkOn(colour, kStateInk[GS_LIVE].fill))
+              : kStateInk[GS_LIVE].ink2,
+      0);
+}
+
 void uiGameOpen(const Game& g) {
   strncpy(s_openId, g.id, sizeof s_openId - 1);
   s_openId[sizeof s_openId - 1] = '\0';
@@ -195,6 +216,8 @@ void uiGameOpen(const Game& g) {
   char b[8];
   snprintf(b, sizeof b, "%u", g.away.score); lv_label_set_text(s_scoreA, b);
   snprintf(b, sizeof b, "%u", g.home.score); lv_label_set_text(s_scoreH, b);
+  setLeadInk(s_scoreA, g.away.color, g.state != GS_PRE && g.away.score > g.home.score);
+  setLeadInk(s_scoreH, g.home.color, g.state != GS_PRE && g.home.score > g.away.score);
   lv_label_set_text(s_status, g.status);
   lv_label_set_text(s_venue, g.bcast);
   lv_obj_set_style_bg_color(s_edge,
@@ -221,8 +244,12 @@ void uiGameApply(const GameDetail& d) {
   char b[8];
   snprintf(b, sizeof b, "%u", d.awayScore); lv_label_set_text(s_scoreA, b);
   snprintf(b, sizeof b, "%u", d.homeScore); lv_label_set_text(s_scoreH, b);
-  lv_obj_set_style_text_color(s_scoreA, d.homeScore > d.awayScore ? C_INK2 : C_INK, 0);
-  lv_obj_set_style_text_color(s_scoreH, d.awayScore > d.homeScore ? C_INK2 : C_INK, 0);
+  // Leading score in the leading team's own colour, same as the board's tiles
+  // and hero. The header reuses the tile's anatomy, so it reuses its rules —
+  // the alternative is a game screen where the winner is grey and the tile you
+  // tapped to reach it was not.
+  setLeadInk(s_scoreA, d.awayColor, d.awayScore > d.homeScore);
+  setLeadInk(s_scoreH, d.homeColor, d.homeScore > d.awayScore);
 
   lv_label_set_text(s_lsTeamA, d.awayAbbr);
   lv_label_set_text(s_lsTeamH, d.homeAbbr);
