@@ -14,6 +14,29 @@
 #include "../firmware/ScoreDeck/src/core/state.h"
 #include "../firmware/ScoreDeck/src/ui/ui.h"
 
+/**
+ * Real club names for the abbreviations these scenarios use.
+ *
+ * The harness used to set `name` to the abbreviation, which was harmless while
+ * nothing rendered it — and stopped being harmless the moment the hero cell
+ * did. "TOR" at 30 px proves nothing about "MAPLE LEAFS", and the widest real
+ * name is what the layout has to survive. Anything not listed falls back to
+ * the abbreviation, so adding a club here is optional, not required.
+ */
+static const char* clubName(const char* abbr) {
+  struct { const char* a; const char* n; } kNames[] = {
+    { "MTL", "Canadiens" },  { "TOR", "Maple Leafs" },  { "BUF", "Sabres" },
+    { "KC",  "Chiefs" },     { "EDM", "Oilers" },       { "CGY", "Flames" },
+    { "BOS", "Bruins" },     { "NYR", "Rangers" },      { "LAD", "Dodgers" },
+    { "SF",  "Giants" },     { "DAL", "Cowboys" },      { "PHI", "Eagles" },
+    { "VAN", "Canucks" },    { "SEA", "Kraken" },       { "NYY", "Yankees" },
+    { "CIN", "Reds" },       { "WSH", "Nationals" },    { "VGK", "Golden Knights" },
+    { "COL", "Avalanche" },  { "NJD", "Devils" },       { "PIT", "Penguins" },
+  };
+  for (auto& k : kNames) if (strcmp(k.a, abbr) == 0) return k.n;
+  return abbr;
+}
+
 static void setSide(Side& s, const char* abbr, const char* name, const char* rec,
                     uint16_t score, uint32_t colour, const char* id) {
   memset(&s, 0, sizeof s);
@@ -44,8 +67,8 @@ static Game& push(const char* league, GameState st, const char* status,
   char aid[8], hid[8];
   snprintf(aid, sizeof aid, "%u", 100u + g_gameCount * 2);
   snprintf(hid, sizeof hid, "%u", 101u + g_gameCount * 2);
-  setSide(g.away, aAbbr, aAbbr, "12-4-2", aScore, aCol, aid);
-  setSide(g.home, hAbbr, hAbbr, "21-6-4", hScore, hCol, hid);
+  setSide(g.away, aAbbr, clubName(aAbbr), "12-4-2", aScore, aCol, aid);
+  setSide(g.home, hAbbr, clubName(hAbbr), "21-6-4", hScore, hCol, hid);
   g.leaderHome = hScore > aScore;
   g_gameCount++;
   return g;
@@ -340,7 +363,7 @@ void scenarioApply(int n) {
       push("nfl", GS_LIVE,  "Q2 11:03",  "BUF", 14, 0x00338D, "KC", 21, 0xE31837, "CBS")
         .situation = 0x02;                       // red zone
       push("nhl", GS_LIVE,  "1st 18:44", "EDM", 1, 0xFF4C00, "CGY", 0, 0xC8102E, "SN");
-      Game& mlb = push("mlb", GS_LIVE, "Bot 7", "CIN", 1, 0xC6011F, "WSH", 3, 0xAB0003, "MLB.TV");
+      Game& mlb = push("mlb", GS_LIVE, "Bot 8th", "CIN", 1, 0xC6011F, "WSH", 3, 0xAB0003, "MLB.TV");
       mlb.model = SM_INNING;
       mlb.situation = 0x01 | 0x04 | (1 << 3);    // 1st and 3rd, one out
       push("nhl", GS_PRE,   "7:00 PM",   "BOS", 0, 0xFFB81C, "NYR", 0, 0x0038A8, "ESPN");
@@ -348,6 +371,30 @@ void scenarioApply(int n) {
       push("nfl", GS_FINAL, "Final",     "DAL", 17, 0x041E42, "PHI", 27, 0x004C54);
       push("nhl", GS_FINAL, "Final/OT",  "VAN", 4, 0x00205B, "SEA", 5, 0x99D9D9);
       push("mlb", GS_FINAL, "Final",     "NYY", 6, 0x132448, "BOS", 2, 0xBD3039);
+      break;
+    }
+
+    case SCN_FEATURE: {
+      // Three live games — the shape AUTO resolves to the FEATURE layout, and
+      // the single most common real evening. This is the case the nine-up grid
+      // served worst: three tiles of content and six of "-", which is how the
+      // board came to be 84.4% cards and 16.4% ground.
+      //
+      // Toronto is followed and one goal ahead, so it takes the hero, and the
+      // ledger carries the four games that are not worth a tile.
+      league("nhl", 2); league("nfl", 1); league("mlb", 0);
+      g_set.favs = "nhl:101";
+      push("nhl", GS_LIVE,  "3rd 04:21", "MTL", 2, 0xAF1E2D, "TOR", 3, 0x00205B, "Sportsnet", true)
+        .situation = 0x04;                       // power play
+      push("nfl", GS_LIVE,  "Q2 11:03",  "BUF", 14, 0x00338D, "KC", 21, 0xE31837, "CBS")
+        .situation = 0x02;                       // red zone
+      push("nhl", GS_LIVE,  "1st 18:44", "EDM", 1, 0xFF4C00, "CGY", 0, 0xC8102E, "SN");
+      push("nhl", GS_PRE,   "7:00 PM",   "BOS", 0, 0xFFB81C, "NYR", 0, 0x0038A8, "ESPN");
+      push("mlb", GS_PRE,   "8:10 PM",   "LAD", 0, 0x005A9C, "SF", 0, 0xFD5A1E, "MLB.TV");
+      push("nhl", GS_PRE,   "9:30 PM",   "VGK", 0, 0xB4975A, "COL", 0, 0x6F263D, "TNT");
+      push("nhl", GS_FINAL, "Final/OT",  "VAN", 4, 0x00205B, "SEA", 5, 0x99D9D9);
+      push("mlb", GS_FINAL, "Final",     "NYY", 6, 0x132448, "BOS", 2, 0xBD3039);
+      push("nfl", GS_FINAL, "Final",     "DAL", 17, 0x041E42, "PHI", 27, 0x004C54);
       break;
     }
 
@@ -458,9 +505,19 @@ void scenarioApply(int n) {
       t2.setsAway[1] = 4; t2.setsHome[1] = 6;
       t2.setsAway[2] = 6; t2.setsHome[2] = 2;
 
+      // A scheduled F1 session, whose status is the LONGEST the wire permits:
+      // "8/21 - 6:30 AM" is fourteen glyphs against a nine-glyph reserve, and
+      // it printed as "8/21 -..." until the status learned to take the whole
+      // row when nothing is sharing it.
+      Game& sched = push("f1", GS_PRE, "8/21 - 6:30 AM", "", 0, 0x5D6D7E, "", 0, 0x5D6D7E);
+      sched.model = SM_GRID;
+      strncpy(sched.away.name, "Heineken Dutch GP", sizeof sched.away.name - 1);
+
       Game& gf = push("pga", GS_LIVE, "R4 thru 16", "", 0, 0x5D6D7E, "", 0, 0x5D6D7E, "CBS");
       gf.model = SM_LEADERBOARD;
-      strncpy(gf.away.name, "Wyndham Champ", sizeof gf.away.name - 1);
+      // The full upstream name. "Wyndham Champ" fitted, which is why the
+      // title wrapping onto the leaderboard rows was invisible here.
+      strncpy(gf.away.name, "Wyndham Championship", sizeof gf.away.name - 1);
       gf.fieldIdx = 0;
       g_fields[0].count = 3;
       static const char* kGolf[3][3] = {
@@ -485,7 +542,25 @@ void scenarioApply(int n) {
         strncpy(g_fields[1].rows[i].name, kF1[i][1], 20);
         strncpy(g_fields[1].rows[i].val,  kF1[i][2], 10);
       }
-      break;
+
+      // TILE REUSE. Draw the board once with tennis in slot 0, then turn that
+      // match into a leaderboard and draw again — which is what a real board
+      // does every time the ordering shifts.
+      //
+      // The tennis per-set boxes were hidden only on the two-sided path, and
+      // the field path returns before reaching it, so they survived onto the
+      // golf tile and printed through the players' names. Nothing static could
+      // catch this: the tile has to have been something else FIRST.
+      //
+      // Returns early, like the density-jump case, so the trailing uiInit()
+      // does not rebuild the tiles and hide the bug.
+      uiBoardRefresh();
+      g_board[0].model = SM_LEADERBOARD;
+      g_board[0].fieldIdx = 0;
+      strncpy(g_board[0].away.name, "Wyndham Championship", sizeof g_board[0].away.name - 1);
+      uiBoardRefresh();
+      uiShow(SCR_BOARD);
+      return;
     }
     case SCN_DENSITY_JUMP: {
       // The panel booted with an empty board, so auto density built a SIX-tile
@@ -502,9 +577,17 @@ void scenarioApply(int n) {
       // relies on — with it, the tiles are rebuilt for the final density and
       // the bug cannot happen.
       uiInit();
-      for (int i = 0; i < 12; i++)
-        push("mlb", GS_LIVE, "Bot 7", "AAA", (uint16_t)i, 0xC6011F,
-             "BBB", (uint16_t)(11 - i), 0xAB0003, "MLB.TV");
+      // "Bot 8th", NOT "Bot 7". The proxy sends the ordinal, and the shorter
+      // fixture is exactly why the harness never caught the status running
+      // through the situation chip on a 186 px Dense tile. Every tile also
+      // carries a situation, because that collision needs both labels present.
+      for (int i = 0; i < 12; i++) {
+        Game& g = push("mlb", GS_LIVE, i % 2 ? "Bot 8th" : "Top 9th",
+                       "AAA", (uint16_t)i, 0xC6011F,
+                       "BBB", (uint16_t)(11 - i), 0xAB0003, "MLB.TV");
+        g.model = SM_INNING;
+        g.situation = 0x01 | 0x04 | (2 << 3);      // 1st and 3rd, two out
+      }
       uiBoardRefresh();
       uiIdleRefresh();
       uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
@@ -520,6 +603,7 @@ void scenarioApply(int n) {
 const char* scenarioName(int n) {
   switch (n) {
     case SCN_TYPICAL:  return "typical mixed board";
+    case SCN_FEATURE:  return "three live — the FEATURE layout";
     case SCN_EMPTY:    return "empty — idle screen";
     case SCN_ALL_LIVE: return "nine live games";
     case SCN_EXTREMES: return "long names, three-digit scores";

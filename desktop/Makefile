@@ -37,7 +37,7 @@ LDLIBS   = $(SDL_LIBS)
 FW_CXX = $(wildcard $(SRC)/ui/*.cpp) $(SRC)/core/state.cpp
 FW_C   = $(wildcard $(SRC)/assets/*.c)
 LV_C   = $(shell find $(LVGL)/src -name '*.c')
-OWN    = main.cpp fakes.cpp scenarios.cpp lint_fonts.cpp
+OWN    = main.cpp fakes.cpp scenarios.cpp lint_fonts.cpp mockup.cpp
 
 OBJ = $(patsubst %,$(BUILD)/%.o,$(notdir $(OWN)) $(notdir $(FW_CXX)) $(notdir $(FW_C))) \
       $(patsubst $(LVGL)/%,$(BUILD)/lv/%.o,$(LV_C))
@@ -67,7 +67,7 @@ $(BUILD)/lv/%.c.o: $(LVGL)/%.c
 # Render every scenario to a BMP without a display attached.
 shots: $(BIN)
 	@mkdir -p shots
-	@i=0; while [ $$i -lt 10 ]; do ./$(BIN) --shot shots/scn$$i.bmp --scenario $$i; i=$$((i+1)); done
+	@i=0; while [ $$i -lt 11 ]; do ./$(BIN) --shot shots/scn$$i.bmp --scenario $$i; i=$$((i+1)); done
 
 # Every secondary screen, on the typical board. These are unreachable from a
 # scenario alone: each one clears its state in Open() and waits on a fetch.
@@ -75,6 +75,11 @@ SCREENS = board idle game standings news lineup player alert banner setup settin
 screens: $(BIN)
 	@mkdir -p shots
 	@for s in $(SCREENS); do ./$(BIN) --shot shots/scr-$$s.bmp --screen $$s; done
+
+# Render the proposed redesign for review, before any of it is committed.
+mocks: $(BIN)
+	@mkdir -p shots
+	@i=0; while [ $$i -lt 5 ]; do ./$(BIN) --shot shots/mock$$i.bmp --mock $$i; i=$$((i+1)); done
 
 lint: $(BIN)
 	@./$(BIN) --lint
@@ -84,4 +89,4 @@ clean:
 
 -include $(OBJ:.o=.d)
 
-.PHONY: all clean shots screens lint
+.PHONY: all clean shots screens lint mocks
