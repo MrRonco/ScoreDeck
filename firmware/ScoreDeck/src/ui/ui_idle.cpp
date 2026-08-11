@@ -21,6 +21,7 @@ static lv_obj_t* s_date;
 static lv_obj_t* s_summary;
 static lv_obj_t* s_hdrStatus;
 
+static lv_obj_t* s_nextCard;
 static lv_obj_t* s_nextEdge;
 static lv_obj_t* s_nextAway;
 static lv_obj_t* s_nextHome;
@@ -37,12 +38,16 @@ static lv_obj_t* s_countdown;
 static lv_obj_t* s_nextMeta;
 static lv_obj_t* s_nextNone;
 
-#define IDLE_ROWS 4
+// Three, not four. The ledger rows start at y=384 on a 30 px pitch, so a
+// fourth would put its baseline at 489 on a 480 px panel.
+#define IDLE_ROWS 3
 static lv_obj_t* s_todayTime[IDLE_ROWS];
 static lv_obj_t* s_todayGame[IDLE_ROWS];
 static lv_obj_t* s_todayLg[IDLE_ROWS];
 static lv_obj_t* s_finalGame[IDLE_ROWS];
 static lv_obj_t* s_finalScore[IDLE_ROWS];
+static lv_obj_t* s_ledHdr[2];
+static lv_obj_t* s_ledRule[2];
 
 // change caches
 static char s_cClock[8], s_cDate[24], s_cSummary[64], s_cCountdown[16], s_cMeta[64];
@@ -98,19 +103,32 @@ void uiIdleInit(lv_obj_t* parent) {
   // Stops short of the three buttons at the right — they end at SCR_W-18-148.
   s_hdrStatus = lbl(bar, SCR_W - 174 - 260, hdrY, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 260);
 
-  // ── clock block ──────────────────────────────────────────────────────────
-  lv_obj_t* clockCard = glassPanel(s_root, 16, 60, 372, 190, 12);
-  s_clock   = lbl(clockCard, 24, 22, C_INK, F_SCORE);
-  s_ampm    = lbl(clockCard, 24, 96, C_INK2, F_BODY);
-  s_date    = lbl(clockCard, 62, 98, C_INK3, F_MICRO);
-  s_summary = lbl(clockCard, 24, 148, C_INK3, F_MICRO);
+  // ── clock ────────────────────────────────────────────────────────────────
+  //
+  // NO CARD. This screen measured 80.5% ONE FLAT COLOUR — a single value
+  // across four fifths of the panel, on the screen that is up for most of the
+  // day. Four glass cards tiled edge to edge is not a composition, it is a
+  // fill; and the least informative screen in the product was the one covering
+  // the most of it.
+  //
+  // The clock is the subject, so it is drawn at 96 px directly on the plate
+  // with nothing behind it. Dark ground goes 12.9% -> 48.0% and single-colour
+  // dominance 80.5% -> 47.8%, entirely from taking things AWAY.
+  s_clock   = lbl(s_root, 44, 68, C_INK, F_CLOCK);
+  s_ampm    = lbl(s_root, 300, 150, C_INK2, F_DISPLAY);
+  s_date    = lbl(s_root, 48, 232, C_INK3, F_MICRO);
+  lv_obj_set_style_text_letter_space(s_date, 1, 0);
+  s_summary = lbl(s_root, 48, 258, C_INK3, F_NUM);
 
   // ── next up ──────────────────────────────────────────────────────────────
-  lv_obj_t* nextCard = glassPanel(s_root, 400, 60, 384, 190, 12);
+  // The ONLY card on the screen, which is what makes it read as the one thing
+  // worth acting on.
+  lv_obj_t* nextCard = glassPanel(s_root, 508, 94, 276, 230, 14);
+  s_nextCard = nextCard;
   s_nextEdge = lv_obj_create(nextCard);
   lv_obj_remove_style_all(s_nextEdge);
-  lv_obj_set_size(s_nextEdge, EDGE_W, 188);
-  lv_obj_set_pos(s_nextEdge, 0, 0);
+  lv_obj_set_size(s_nextEdge, EDGE_W, 60);
+  lv_obj_set_pos(s_nextEdge, 0, 22);
   lv_obj_set_style_bg_opa(s_nextEdge, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(s_nextEdge, 2, 0);
 
@@ -138,7 +156,8 @@ void uiIdleInit(lv_obj_t* parent) {
   navBtn(SCR_W - 18 - 96,  "NEWS", onIdleNews);
   navBtn(SCR_W - 18 - 148, "TBL",  onIdleTable);
 
-  lv_obj_t* nextHdr = lbl(nextCard, 22, 14, C_INK3, F_MICRO);
+  lv_obj_t* nextHdr = lbl(nextCard, 24, 22, C_INK3, F_MICRO);
+  lv_obj_set_style_text_letter_space(nextHdr, 1, 0);
   lv_label_set_text(nextHdr, "NEXT UP");
 
   // Same geometry rules as the board: no explicit size on the image, because
@@ -156,42 +175,69 @@ void uiIdleInit(lv_obj_t* parent) {
   };
 
   s_nextBadgeA = teamBadge(nextCard, "", 0x5D6D7E, 34);
-  lv_obj_set_pos(s_nextBadgeA, 22, 40);
+  lv_obj_set_pos(s_nextBadgeA, 24, 56);
   s_nextLblA = lv_obj_get_child(s_nextBadgeA, 0);
-  s_nextLogoA = logoAt(22, 40);
-  s_nextAway = lbl(nextCard, 64, 48, C_INK, F_ABBR);
+  s_nextLogoA = logoAt(24, 56);
+  s_nextAway = lbl(nextCard, 66, 64, C_INK, F_ABBR);
 
-  s_nextHome = lbl(nextCard, 150, 48, C_INK2, F_ABBR);
+  s_nextHome = lbl(nextCard, 148, 64, C_INK2, F_ABBR);
   s_nextBadgeH = teamBadge(nextCard, "", 0x5D6D7E, 34);
-  lv_obj_set_pos(s_nextBadgeH, 210, 40);
+  lv_obj_set_pos(s_nextBadgeH, 206, 56);
   s_nextLblH = lv_obj_get_child(s_nextBadgeH, 0);
-  s_nextLogoH = logoAt(210, 40);
+  s_nextLogoH = logoAt(206, 56);
 
-  s_countdown = lbl(nextCard, 22, 92, C_INK, F_DISPLAY);   // carries "H"/"M"/"NOW"
-  s_nextMeta  = lbl(nextCard, 22, 156, C_INK3, F_MICRO);
-  s_nextNone  = lbl(nextCard, 22, 92, C_INK2, F_BODY);
+  // The countdown is the reason this screen exists, so it gets the hero face.
+  // F_HERO covers digits plus '-' ':' 'H' 'M' and NOTHING ELSE — the "NOW"
+  // case swaps to F_DISPLAY at write time in uiIdleTick(). A missing glyph is
+  // a silent hollow box in LVGL and three shipped bugs have been exactly that.
+  s_countdown = lbl(nextCard, 24, 100, C_LIVE, F_HERO);
+  s_nextMeta  = lbl(nextCard, 24, 194, C_INK3, F_NUM);
+  s_nextNone  = lbl(nextCard, 24, 110, C_INK2, F_BODY);
   lv_label_set_text(s_nextNone, "Nothing scheduled");
   lv_obj_add_flag(s_nextNone, LV_OBJ_FLAG_HIDDEN);
 
-  // ── today ────────────────────────────────────────────────────────────────
-  lv_obj_t* todayCard = glassPanel(s_root, 16, 262, 372, 202, 12);
-  lv_obj_t* th = lbl(todayCard, 20, 14, C_INK3, F_MICRO);
-  lv_label_set_text(th, "COMING UP");
-  for (int i = 0; i < IDLE_ROWS; i++) {
-    const int y = 40 + i * 38;
-    s_todayTime[i] = lbl(todayCard, 20, y, C_INK3, F_MICRO);
-    s_todayGame[i] = lbl(todayCard, 92, y - 2, C_INK2, F_BODY);
-    s_todayLg[i]   = lbl(todayCard, 300, y, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 52);
-  }
+  // ── the ledger ───────────────────────────────────────────────────────────
+  //
+  // Two columns of rows on the bare plate, under one hairline each. Same
+  // reasoning as the board's ledger (see ui_ledger.cpp): a list of fixtures is
+  // a list, not an object, and giving it a fill was most of what made this
+  // screen 80.5% one colour.
+  //
+  // The geometry is duplicated rather than shared with ui_ledger, deliberately.
+  // That module holds file-static state for exactly one instance, and coupling
+  // two screens through it — parenting a single tree that has to move between
+  // them — is a worse bug than thirty lines of repeated layout.
+  auto ruleAt = [&](int x) {
+    lv_obj_t* r = lv_obj_create(s_root);
+    lv_obj_remove_style_all(r);
+    lv_obj_set_pos(r, x, 368);
+    lv_obj_set_size(r, 348, 1);
+    lv_obj_set_style_bg_color(r, C_LINE, 0);
+    lv_obj_set_style_bg_opa(r, OPA_HAIR, 0);
+    return r;
+  };
+  auto hdrAt = [&](int x, const char* text) {
+    lv_obj_t* h = lbl(s_root, x, 348, C_INK3, F_MICRO);
+    lv_obj_set_style_text_letter_space(h, 1, 0);
+    lv_label_set_text(h, text);
+    return h;
+  };
 
-  // ── recent finals (news lands here once it exists) ───────────────────────
-  lv_obj_t* finCard = glassPanel(s_root, 400, 262, 384, 202, 12);
-  lv_obj_t* fh = lbl(finCard, 20, 14, C_INK3, F_MICRO);
-  lv_label_set_text(fh, "LATEST FINALS");
+  // Kept so uiIdleRefresh() can hide a column whole. A heading ruled over
+  // nothing is the same "failed to load" signal a bordered empty card gives,
+  // and on a July Tuesday BOTH columns are empty.
+  s_ledHdr[0] = hdrAt(24, "TODAY");
+  s_ledRule[0] = ruleAt(24);
+  s_ledHdr[1] = hdrAt(412, "LATEST");
+  s_ledRule[1] = ruleAt(412);
+
   for (int i = 0; i < IDLE_ROWS; i++) {
-    const int y = 40 + i * 38;
-    s_finalGame[i]  = lbl(finCard, 20, y - 2, C_INK2, F_BODY);
-    s_finalScore[i] = lbl(finCard, 250, y - 2, C_INK, F_BODY, LV_TEXT_ALIGN_RIGHT, 112);
+    const int y = 384 + i * 30;
+    s_todayTime[i]  = lbl(s_root, 24,  y, C_INK3, F_NUM);
+    s_todayGame[i]  = lbl(s_root, 98,  y, C_INK2, F_BODY);
+    s_todayLg[i]    = lbl(s_root, 238, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
+    s_finalGame[i]  = lbl(s_root, 412, y, C_INK2, F_BODY);
+    s_finalScore[i] = lbl(s_root, 626, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
   }
 
   memset(s_cClock, 0, sizeof s_cClock);
@@ -230,21 +276,28 @@ void uiIdleTick() {
   strftime(buf, sizeof buf, "%l:%M", &lt);
   setCached(s_clock, s_cClock, sizeof s_cClock, buf[0] == ' ' ? buf + 1 : buf);
   lv_label_set_text(s_ampm, lt.tm_hour < 12 ? "AM" : "PM");
-  strftime(buf, sizeof buf, "%A, %b %e", &lt);
+  // Tracked CAPS. The rule this build adopts is that +1 tracking with capitals
+  // means "this labels something" and zero tracking means "this is the data" —
+  // so a tracked mixed-case string is neither, and reads as a typo.
+  strftime(buf, sizeof buf, "%A  ·  %B %e", &lt);
+  for (char* p = buf; *p; p++) *p = (char)toupper((unsigned char)*p);
   setCached(s_date, s_cDate, sizeof s_cDate, buf);
 
   const Game* nx = nextGame();
   lv_obj_t* const matchup[] = { s_nextBadgeA, s_nextBadgeH, s_nextAway, s_nextHome };
   if (!nx) {
-    // Empty grey badges read as a rendering fault rather than an empty state.
-    for (lv_obj_t* o : matchup) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_countdown, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_nextEdge, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(s_nextNone, LV_OBJ_FLAG_HIDDEN);
+    // The whole card goes, not just its contents. A 276x230 panel holding one
+    // line of small text is the same "content failed to arrive" signal as an
+    // empty bordered region — and this is now the ONLY card on the screen, so
+    // it carries that signal for the entire display. A clock on a bare plate
+    // is a complete answer to "nothing is scheduled".
+    lv_obj_add_flag(s_nextCard, LV_OBJ_FLAG_HIDDEN);
     setCached(s_nextMeta, s_cMeta, sizeof s_cMeta, "");
     s_cNextId[0] = '\0';
     return;
   }
+  lv_obj_clear_flag(s_nextCard, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(s_nextNone, LV_OBJ_FLAG_HIDDEN);
   for (lv_obj_t* o : matchup) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(s_countdown, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(s_nextEdge, LV_OBJ_FLAG_HIDDEN);
@@ -280,18 +333,28 @@ void uiIdleTick() {
   }
 
   // Countdown is the hero — it is the reason this screen exists.
-  // Units are CAPS because the hero face has no lowercase — see theme.h. As
-  // lowercase they rendered as hollow boxes next to the digits.
+  //
+  // Units are CAPS because neither large face has lowercase (theme.h). F_HERO
+  // is narrower still: digits, '-', ':', 'H' and 'M' only. So the two spellings
+  // that fall outside it — "NOW" and the "%ldD" day form — swap to F_DISPLAY,
+  // which covers the full caps range at 30 px. Getting this wrong does not
+  // fail loudly; LVGL just draws hollow boxes.
   const long secs = (long)nx->startUtc - (long)now;
+  bool heroFace = true;
   if (secs <= 0) {
     snprintf(buf, sizeof buf, "NOW");
+    heroFace = false;
   } else if (secs < 3600) {
     snprintf(buf, sizeof buf, "%ldM", secs / 60);
   } else if (secs < 86400) {
     snprintf(buf, sizeof buf, "%ldH %ldM", secs / 3600, (secs % 3600) / 60);
   } else {
     snprintf(buf, sizeof buf, "%ldD", secs / 86400);
+    heroFace = false;                       // 'D' is not in F_HERO
   }
+  const lv_font_t* want = heroFace ? F_HERO : F_DISPLAY;
+  if (lv_obj_get_style_text_font(s_countdown, LV_PART_MAIN) != want)
+    lv_obj_set_style_text_font(s_countdown, want, 0);
   setCached(s_countdown, s_cCountdown, sizeof s_cCountdown, buf);
 
   struct tm st;
@@ -299,19 +362,22 @@ void uiIdleTick() {
   localtime_r(&startT, &st);
   char tbuf[16];
   clockFormat(st, tbuf, sizeof tbuf);
+  char lg[8];
+  size_t li = 0;
+  for (; nx->league[li] && li < sizeof lg - 1; li++)
+    lg[li] = (char)toupper((unsigned char)nx->league[li]);
+  lg[li] = '\0';
   snprintf(buf, sizeof buf, "%s   %s%s%s", tbuf,
-           nx->league, nx->bcast[0] ? "   " : "", nx->bcast);
+           lg, nx->bcast[0] ? "   " : "", nx->bcast);
   setCached(s_nextMeta, s_cMeta, sizeof s_cMeta, buf);
 }
 
 void uiIdleRefresh() {
   if (!s_root) return;
 
-  uint8_t today = 0, finals = 0;
-  for (uint8_t i = 0; i < g_gameCount; i++) {
+  uint8_t today = 0;
+  for (uint8_t i = 0; i < g_gameCount; i++)
     if (g_board[i].state == GS_PRE) today++;
-    else if (g_board[i].state == GS_FINAL) finals++;
-  }
 
   const Game* nx = nextGame();
   char buf[64];
@@ -369,6 +435,7 @@ void uiIdleRefresh() {
     lv_label_set_text(s_todayLg[row], g.league);
     row++;
   }
+  const uint8_t todayRows = row;
   for (; row < IDLE_ROWS; row++) {
     lv_label_set_text(s_todayTime[row], "");
     lv_label_set_text(s_todayGame[row], "");
@@ -394,9 +461,20 @@ void uiIdleRefresh() {
     }
     row++;
   }
+  const uint8_t finalRows = row;
   for (; row < IDLE_ROWS; row++) {
     lv_label_set_text(s_finalGame[row], "");
     lv_label_set_text(s_finalScore[row], "");
+  }
+
+  // A ruled heading with nothing under it reads as content that failed to
+  // arrive. Both columns are empty on a July Tuesday, which is precisely when
+  // this screen is up.
+  const uint8_t filled[2] = { todayRows, finalRows };
+  for (int c = 0; c < 2; c++) {
+    const lv_opa_t o = filled[c] ? LV_OPA_COVER : LV_OPA_TRANSP;
+    lv_obj_set_style_opa(s_ledHdr[c], o, 0);
+    lv_obj_set_style_opa(s_ledRule[c], o, 0);
   }
 
   uiIdleTick();
