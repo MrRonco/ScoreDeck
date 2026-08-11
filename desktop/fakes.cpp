@@ -24,6 +24,8 @@
 #include "../firmware/ScoreDeck/src/core/state.h"
 #include "../firmware/ScoreDeck/src/net/api.h"
 #include "../firmware/ScoreDeck/src/net/logos.h"
+#include "../firmware/ScoreDeck/src/ui/theme.h"
+#include "../firmware/ScoreDeck/src/core/types.h"
 #include "../firmware/ScoreDeck/src/svc/web.h"
 #include "../firmware/ScoreDeck/src/ui/ui.h"
 
@@ -86,10 +88,63 @@ volatile bool g_headshotArrived = false;
 static uint8_t*     s_fakeData[FAKE_N];
 static lv_img_dsc_t s_fakeDsc[FAKE_N];
 
-const lv_img_dsc_t* logoGet(const char*, const char* abbr) {
+// Real blobs, when the user has built them. assets/logos/<league>/<ABBR>@48.bin
+// is exactly the payload the proxy serves, header and all, so this exercises
+// the same decode path the device runs.
+//
+// This matters more than it looks. Every design judgement about logo size,
+// contrast and containment made in this harness before now was made against
+// the synthetic wedges below — the FEATURE hero had literally never rendered a
+// real mark. The chip solve cannot be evaluated against a fake.
+#define REAL_N 64
+static uint8_t*     s_realData[REAL_N];
+static lv_img_dsc_t s_realDsc[REAL_N];
+static LogoChip     s_realChip[REAL_N];
+static char         s_realKey[REAL_N][16];
+static uint8_t      s_realState[REAL_N];      // 0 unknown, 1 loaded, 2 absent
+
+static int realSlot(const char* league, const char* abbr) {
+  char key[16];
+  snprintf(key, sizeof key, "%s:%s", league ? league : "", abbr);
+  uint32_t h = 2166136261u;
+  for (const char* p = key; *p; p++) { h ^= (uint8_t)*p; h *= 16777619u; }
+  for (int probe = 0; probe < REAL_N; probe++) {
+    const int i = (int)((h + probe) % REAL_N);
+    if (s_realState[i] && strcmp(s_realKey[i], key) == 0) return i;
+    if (!s_realState[i]) {
+      strncpy(s_realKey[i], key, sizeof s_realKey[i] - 1);
+      char path[256];
+      snprintf(path, sizeof path, "%s/assets/logos/%s/%s@48.bin",
+               getenv("SDROOT") ? getenv("SDROOT") : "..", league ? league : "", abbr);
+      FILE* f = fopen(path, "rb");
+      if (!f) { s_realState[i] = 2; return i; }
+      const size_t want = 4 + 48 * 48 * 3;
+      uint8_t* buf = (uint8_t*)malloc(want);
+      const size_t got = fread(buf, 1, want, f);
+      fclose(f);
+      if (got != want) { free(buf); s_realState[i] = 2; return i; }
+      s_realData[i] = buf;
+      s_realDsc[i].header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+      s_realDsc[i].header.always_zero = 0;
+      s_realDsc[i].header.w = 48;
+      s_realDsc[i].header.h = 48;
+      s_realDsc[i].data_size = 48 * 48 * 3;
+      s_realDsc[i].data = buf + 4;              // past LVGL's own header
+      s_realChip[i] = chipSolve(buf + 4, 48, 48, kStateInk[GS_LIVE].fill);
+      s_realState[i] = 1;
+      return i;
+    }
+  }
+  return -1;
+}
+
+const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
   if (!abbr || !*abbr) return nullptr;
   const char* env = getenv("SDLOGO");
   if (env && env[0] == '0') return nullptr;
+
+  const int r = realSlot(league, abbr);
+  if (r >= 0 && s_realState[r] == 1) return &s_realDsc[r];
 
   uint32_t h = 2166136261u;                       // FNV-1a over the abbr
   for (const char* p = abbr; *p; p++) { h ^= (uint8_t)*p; h *= 16777619u; }
@@ -122,6 +177,13 @@ const lv_img_dsc_t* logoGet(const char*, const char* abbr) {
     s_fakeDsc[idx].data = s_fakeData[idx];
   }
   return &s_fakeDsc[idx];
+}
+
+LogoChip logoChip(const char* league, const char* abbr) {
+  LogoChip none = { 0, 0 };
+  if (!abbr || !*abbr) return none;
+  const int r = realSlot(league, abbr);
+  return (r >= 0 && s_realState[r] == 1) ? s_realChip[r] : none;
 }
 bool logoKnown(const char*, const char*)                  { return true; }
 bool logoRequest(const char*, const char*)                { return false; }

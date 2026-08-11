@@ -129,6 +129,110 @@ lv_color_t badgeInk(uint32_t fill) {
                                                               : C_PLATE;
 }
 
+// ── logo chip solve ────────────────────────────────────────────────────────
+//
+// See theme.h for why this is a search over grounds rather than a test of the
+// mark's brightness. The short version: ink loss does not correlate with mean
+// luminance, because it lives in interior keylines an average cannot see.
+
+#define CHIP_BINS 64
+#define CHIP_LOST 1.5f      // a pixel below this ratio has effectively vanished
+
+/** Fraction of the histogram's mass that falls below CHIP_LOST on `ground`. */
+static float inkLost(const uint32_t* binColor, const uint16_t* binCount,
+                     uint32_t total, uint32_t ground) {
+  if (!total) return 0.0f;
+  uint32_t lost = 0;
+  for (int i = 0; i < CHIP_BINS; i++) {
+    if (!binCount[i]) continue;
+    if (contrast(binColor[i], ground) < CHIP_LOST) lost += binCount[i];
+  }
+  return (float)lost / (float)total;
+}
+
+LogoChip chipSolve(const uint8_t* px, int w, int h, uint32_t against) {
+  // Bin by luminance, keeping a representative colour per bin. Evaluating 33
+  // candidates against 64 bins is 2,112 comparisons; against every pixel it
+  // would be 76,032.
+  uint32_t binColor[CHIP_BINS] = { 0 };
+  uint16_t binCount[CHIP_BINS] = { 0 };
+  uint32_t total = 0;
+  uint32_t sumR = 0, sumG = 0, sumB = 0;
+
+  for (int i = 0, n = w * h; i < n; i++) {
+    const uint8_t a = px[i * 3 + 2];
+    if (a < 128) continue;                       // not ink
+    const uint16_t v = (uint16_t)px[i * 3] | ((uint16_t)px[i * 3 + 1] << 8);
+    const uint32_t r = (uint32_t)(((v >> 11) & 0x1F) * 255 / 31);
+    const uint32_t g = (uint32_t)(((v >> 5) & 0x3F) * 255 / 63);
+    const uint32_t b = (uint32_t)((v & 0x1F) * 255 / 31);
+    const uint32_t c = (r << 16) | (g << 8) | b;
+
+    const int bin = (int)(relLum(c) * (CHIP_BINS - 1) + 0.5f);
+    binColor[bin] = c;                           // last writer wins; representative
+    if (binCount[bin] < 0xFFFF) binCount[bin]++;
+    total++;
+    sumR += r; sumG += g; sumB += b;
+  }
+  LogoChip out = { 0, 0 };
+  if (!total) return out;
+
+  // Baseline: what the mark loses drawn straight on the tile, as today.
+  const float base = inkLost(binColor, binCount, total, against);
+
+  (void)sumR; (void)sumG; (void)sumB;
+
+  // ── the objective ────────────────────────────────────────────────────────
+  //
+  // NOT "minimise ink loss". That objective drives every chip toward white,
+  // and a board of white pucks reads as stickers pasted onto the panel.
+  //
+  // Instead: the DIMMEST ground that gets loss under the threshold. Same rule
+  // teamInk() already follows — lift only as far as the requirement, then
+  // stop. Most marks need far less than white, so most chips come out dark
+  // enough to sit inside the surface family rather than punch out of it.
+  //
+  // The candidate ramp is neutral only. An earlier version also tried the
+  // mark's own averaged colour lifted toward white; it scored the same on ink
+  // loss (which is why it looked worth having) and rendered Boston's red on a
+  // PINK chip. Averaging a two-tone mark invents a colour the team does not
+  // own, and a chip is chrome — it is the one place team colour does not
+  // belong.
+  // Ink loss is NOT monotonic in ground brightness. A two-tone mark — a dark
+  // outline around a light field, which is most crests — is worst against a
+  // mid grey and better at both ends, so the ramp has an interior maximum.
+  // Scan all of it: 33 candidates against 64 bins is 2,112 comparisons.
+  const float kAccept = 0.05f;                 // ink we tolerate losing
+  float bestLoss = base;                       // fallback: min loss anywhere
+  uint32_t bestColor = 0;
+  float dimLoss = 0.0f;                        // first ground clearing kAccept
+  uint32_t dimColor = 0;
+
+  for (int step = 0; step <= 32; step++) {
+    const uint32_t k = (uint32_t)(step * 255 / 32);
+    // Cool-biased neutral, so the chip belongs to the same family as the
+    // surfaces around it rather than reading as a foreign grey.
+    const uint32_t r = k;
+    const uint32_t g = k + (k < 240 ? 6 : 0);
+    const uint32_t b = k + (k < 226 ? 14 : 0);
+    const uint32_t c = (r << 16) | (g << 8) | b;
+    const float l = inkLost(binColor, binCount, total, c);
+
+    if (!dimColor && l <= kAccept) { dimColor = c; dimLoss = l; }
+    if (l < bestLoss) { bestLoss = l; bestColor = c; }
+  }
+  // Prefer the DIMMEST acceptable ground over the outright best one — the
+  // difference between a chip that sits in the surface family and a white
+  // puck. Fall back to min-loss only when nothing clears the threshold.
+  if (dimColor) { bestColor = dimColor; bestLoss = dimLoss; }
+
+  // Only spend an object if it actually buys something. Without this a third
+  // of the set gains a chip to recover ~1% of ink, which is visual noise
+  // bought with nothing.
+  if (bestColor && base - bestLoss > 0.02f) { out.color = bestColor; out.opa = LV_OPA_COVER; }
+  return out;
+}
+
 // Indices 0..2 match GameState: GS_PRE, GS_LIVE, GS_FINAL. Index 3 is SI_HERO.
 //
 // Every ink here was SOLVED against its own surface rather than picked, which

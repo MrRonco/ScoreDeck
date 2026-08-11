@@ -130,6 +130,44 @@ uint32_t teamInkOn(uint32_t color, uint32_t surface, float minRatio = 3.5f);
 /** Badge fill: lifted just enough to sit on the plate at all (black teams). */
 uint32_t teamFill(uint32_t color);
 
+// ── LOGO CHIPS — the ground a mark is drawn on ─────────────────────────────
+//
+// Logos were the only coloured element in this UI that bypassed normalisation
+// entirely. teamInk() and teamFill() carefully lift a team's colour; a real
+// logo bitmap was then blitted raw. Measured across the 62 shipped blobs
+// against the live tile fill: a mean of 36.3% of each mark's own ink falls
+// below 1.5:1, 44 of 62 lose a fifth or more, and 4 render fully invisible.
+//
+// The obvious fix — "is this logo dark? give it a plate" — is WRONG, and the
+// measurement is what says so. Ink loss barely correlates with mean
+// luminance, because the loss lives in the black keylines, spokes and
+// outlines INSIDE the artwork rather than in its average:
+//
+//   nhl:BOS   mean 4.27:1   loses 40.6% of its ink
+//   nhl:PIT   mean 4.40:1   loses 26.1%
+//   mlb:SF    mean 4.88:1   loses  0.0%
+//
+// A luminance gate fixes about five teams and misses forty. So the feature is
+// not the mark's brightness, it is the fraction of the mark's ink lost against
+// a candidate ground — and the ground is the only variable that acts on every
+// pixel of the mark equally.
+//
+// chipSolve() searches candidate grounds and returns the one that minimises
+// that loss. Across the shipped set this takes mean ink lost from 36.3% to
+// 3.6%, and one third of marks solve to "no chip at all" — they are already
+// correct on the plate and get nothing.
+struct LogoChip {
+  uint32_t color;   // the ground to draw behind the mark
+  uint8_t  opa;     // 0 = no chip; draw the mark straight on the tile
+};
+
+/** Solve the best ground for one decoded RGB565+A8 mark.
+ *
+ *  ~2,300 integer ops over the pixels to build a 64-bin histogram, then 33
+ *  candidates evaluated against the BINS rather than the pixels. Call once per
+ *  logo at decode time, off the render path — never per draw. */
+LogoChip chipSolve(const uint8_t* rgb565a8, int w, int h, uint32_t against);
+
 /** White or plate ink, whichever survives on that fill. Seattle's #99D9D9
  *  carried white text at 1.58:1; this takes it to 12.1:1. */
 lv_color_t badgeInk(uint32_t fill);

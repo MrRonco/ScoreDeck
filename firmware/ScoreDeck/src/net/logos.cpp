@@ -42,6 +42,10 @@ struct Slot {
   lv_img_dsc_t dsc;
   uint32_t    lastUse;
   bool        miss;           // 404 — do not ask again this boot
+  // Solved once, here, because this runs on the core-0 fetch task where a
+  // 2,300-op scan is free against the HTTP round trip that precedes it. Doing
+  // it at draw time would repeat it on every repaint of every tile.
+  LogoChip    chip;
 };
 
 static Slot s_slot[LOGO_SLOTS];
@@ -78,6 +82,20 @@ const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
   const bool got = !(s->miss || !s->data);
   got ? (void)s_hits++ : (void)s_misses++;
   return got ? &s->dsc : nullptr;
+}
+
+LogoChip logoChip(const char* league, const char* abbr) {
+  LogoChip none = { 0, 0 };
+  if (!abbr || !*abbr) return none;
+  char key[16];
+  snprintf(key, sizeof key, "%s:%s", league, abbr);
+  Slot* s = find(key);
+  // Deliberately does NOT touch lastUse or the hit/miss counters — this is
+  // asked alongside logoGet() for the same team on the same refresh, and
+  // double-counting would make the cache-effectiveness figure on the
+  // diagnostics page read half what it is.
+  if (!s || s->miss || !s->data) return none;
+  return s->chip;
 }
 
 bool logoKnown(const char* league, const char* abbr) {
@@ -147,6 +165,11 @@ static void logoTask(void*) {
     s->dsc.header.h = LOGO_SIZE;
     s->dsc.data_size = LOGO_SIZE * LOGO_SIZE * 3;
     s->dsc.data = s->data + 4;
+    // Solve the ground BEFORE g_logoArrived is published, or the board can
+    // draw the mark for one frame with a stale chip from the evicted team.
+    s->chip = chipSolve(s->data + 4, LOGO_SIZE, LOGO_SIZE, kStateInk[GS_LIVE].fill);
+  } else {
+    s->chip.opa = 0;
   }
   if (ok) g_logoArrived = true;
   Serial.printf("[logo] %s %s (http %d)\n", s_want, ok ? "ok" : "miss", status);

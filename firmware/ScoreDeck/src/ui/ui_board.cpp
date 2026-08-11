@@ -103,6 +103,7 @@ struct TileUI {
   bool     cBcastVis;
   bool     cDotVis;
   uint32_t cScoreInk[2];
+  uint32_t cChip[2];    // packed: 0 none, 1 logo+no chip, else colour|0x1000000
   int16_t  cStatusW;
   bool     cUsed;
   int8_t   gameIdx;   // index into g_board, -1 when the slot is empty
@@ -433,6 +434,7 @@ static void buildTile(TileUI& t, int idx) {
   t.cBcastVis = true;
   t.cDotVis = false;
   t.cScoreInk[0] = t.cScoreInk[1] = 0xFFFFFFFF;
+  t.cChip[0] = t.cChip[1] = 0xFFFFFFFFu;
   t.cStatusW = (int16_t)STATUS_W;      // matches the width set above
   t.cUsed = true;
 }
@@ -997,11 +999,16 @@ void uiBoardRefresh() {
       const bool fav = sideIsFav(g.league, side[k]->id);
       setHiddenCached(t.favRing[k], &t.cFav[k], !fav);
 
+      // Only tracks the colour now. The badge's FILL and LABEL are owned by
+      // the chip block below, which is the single place that knows whether
+      // this object is currently a fallback badge or a logo's ground —
+      // writing the team colour here unconditionally would repaint over the
+      // chip on every refresh, which is the same two-owners bug that made the
+      // abbreviation show through the logo.
       if (t.cColor[k] != side[k]->color) {
         t.cColor[k] = side[k]->color;
-        teamBadgeSet(t.badge[k], side[k]->color);
+        t.cChip[k] = 0xFFFFFFFFu;               // force the chip block to reapply
       }
-      lv_label_set_text(t.badgeLbl[k], side[k]->abbr);
 
       // Logo when we have one, colour badge otherwise. Change-cached: setting
       // the same source still repaints, and that is what fights the panel DMA.
@@ -1017,8 +1024,30 @@ void uiBoardRefresh() {
         t.cLogoKey[k][sizeof t.cLogoKey[k] - 1] = '\0';
         if (img) lv_img_set_src(t.logo[k], img);
       }
-      setHiddenCached(t.logo[k],  &t.cLogoVis[k],  img == nullptr);
-      setHiddenCached(t.badge[k], &t.cBadgeVis[k], img != nullptr);
+      setHiddenCached(t.logo[k], &t.cLogoVis[k], img == nullptr);
+
+      // The badge does double duty. Without a logo it IS the fallback badge.
+      // With one, it becomes the CHIP the mark sits on — same rect, same
+      // radius, label cleared, logo drawn over it. Reusing it rather than
+      // adding a third object is a net reduction, and it retires the
+      // badge/logo visibility dance that has already caused one shipped bug.
+      //
+      // A third of marks solve to no chip and keep the badge hidden, exactly
+      // as before. See chipSolve() in theme.h for why this is a solve and not
+      // a brightness test.
+      const LogoChip chip = img ? logoChip(g.league, side[k]->abbr) : LogoChip{ 0, 0 };
+      const uint32_t chipKey = img ? (chip.opa ? chip.color | 0x1000000u : 1u) : 0u;
+      if (t.cChip[k] != chipKey) {
+        t.cChip[k] = chipKey;
+        if (img && chip.opa) {
+          lv_obj_set_style_bg_color(t.badge[k], lv_color_hex(chip.color), 0);
+          lv_label_set_text(t.badgeLbl[k], "");
+        } else if (!img) {
+          teamBadgeSet(t.badge[k], side[k]->color);   // restores fill AND ink
+          lv_label_set_text(t.badgeLbl[k], side[k]->abbr);
+        }
+      }
+      setHiddenCached(t.badge[k], &t.cBadgeVis[k], img && !chip.opa);
     }
 
     // Tennis: the per-set scores go where the record line sits, so they never
