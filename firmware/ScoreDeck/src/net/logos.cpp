@@ -172,7 +172,8 @@ static void logoTask(void*) {
     s->chip.opa = 0;
   }
   if (ok) g_logoArrived = true;
-  Serial.printf("[logo] %s %s (http %d)\n", s_want, ok ? "ok" : "miss", status);
+  Serial.printf("[logo] %s %s (http %d) chip=%06X opa=%u\n", s_want,
+                ok ? "ok" : "miss", status, (unsigned)s->chip.color, (unsigned)s->chip.opa);
   s_inFlight = false;
   vTaskDelete(nullptr);
 }
