@@ -525,12 +525,7 @@ static lv_obj_t* barButton(lv_obj_t* bar, int x, const char* text, lv_event_cb_t
 }
 
 static void onTableBtn(lv_event_t*) {
-  // The filtered league if one is chosen, else whichever league has the most
-  // going on — which is nearly always the one you meant.
-  const char* lg = (g_leagueFilter >= 0 && g_leagueFilter < g_leagueCount)
-                   ? g_leagues[g_leagueFilter].slug
-                   : (g_leagueCount ? g_leagues[0].slug : "nhl");
-  uiStandingsOpen(lg);
+  uiStandingsOpen(standingsLeague());
 }
 static void onNewsBtn(lv_event_t*) { uiNewsOpen(); }
 static void onSettingsBtn(lv_event_t*) { uiSettingsOpen(); }

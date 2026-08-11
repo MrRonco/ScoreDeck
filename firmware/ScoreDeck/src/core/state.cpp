@@ -228,6 +228,54 @@ void situationText(const Game& g, char* out, size_t cap, bool compact) {
 }
 
 /**
+ * Which league the TBL button should open.
+ *
+ * It used to be `g_leagues[0]`, which is proxy order — so on a board carrying
+ * golf it opened the PGA leaderboard every single time, from every screen,
+ * regardless of what the user follows or what is actually live.
+ *
+ * A field event has no standings TABLE. Golf and F1 arrive as LEADERBOARD and
+ * GRID models, and a leaderboard is a live scoreboard rather than a season
+ * table; putting one behind a button labelled TBL is answering a different
+ * question from the one asked. So field-only leagues are skipped entirely.
+ *
+ * Order of preference: the league you have filtered to, then a league you
+ * follow a team in, then whichever has the most live games.
+ */
+const char* standingsLeague() {
+  auto twoSided = [](const char* slug) {
+    for (uint8_t i = 0; i < g_gameCount; i++) {
+      const Game& g = g_board[i];
+      if (strcmp(g.league, slug) != 0) continue;
+      if (g.model != SM_LEADERBOARD && g.model != SM_GRID) return true;
+    }
+    return false;
+  };
+
+  if (g_leagueFilter >= 0 && g_leagueFilter < g_leagueCount &&
+      twoSided(g_leagues[g_leagueFilter].slug))
+    return g_leagues[g_leagueFilter].slug;
+
+  // A league you follow a team in beats a busier one you do not.
+  for (uint8_t i = 0; i < g_gameCount; i++) {
+    const Game& g = g_board[i];
+    if (!g.isFav) continue;
+    if (g.model == SM_LEADERBOARD || g.model == SM_GRID) continue;
+    return g.league;
+  }
+
+  const char* best = nullptr;
+  uint8_t bestLive = 0;
+  for (uint8_t i = 0; i < g_leagueCount; i++) {
+    const LeagueCount& lc = g_leagues[i];
+    if (!twoSided(lc.slug)) continue;
+    if (!best || lc.live > bestLive) { best = lc.slug; bestLive = lc.live; }
+  }
+  return best ? best : "nhl";
+}
+
+
+/**
  * Is this specific SIDE one of the user's teams?
  *
  * boardFollows() answers a different question — "does this league have a

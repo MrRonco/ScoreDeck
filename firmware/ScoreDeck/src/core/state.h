@@ -138,6 +138,10 @@ const char* tzForProxy();
  *  the note on the definition. */
 void situationText(const Game& g, char* out, size_t cap, bool compact = false);
 
+/** Which league the TBL button opens. Never a field event — golf and F1 have
+ *  a leaderboard, not a season table. See the definition. */
+const char* standingsLeague();
+
 // ── status, for the top bar ─────────────────────────────────────────────────
 enum NetStatus : uint8_t { NET_BOOT = 0, NET_NOWIFI, NET_NOPROXY, NET_ERR, NET_OK, NET_STALE };
 extern NetStatus g_net;

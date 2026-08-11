@@ -53,14 +53,40 @@ static lv_obj_t* s_ledRule[2];
 static char s_cClock[8], s_cDate[24], s_cSummary[64], s_cCountdown[16], s_cMeta[64];
 static char s_cNextId[12];
 
+// Which game each tappable row is currently showing. The idle screen holds no
+// board of its own, so a tap has to resolve back into g_board by index — and
+// that index changes on every poll, so it is rewritten in uiIdleRefresh()
+// rather than captured once at build time.
+static int8_t s_nextIdx = -1;
+static int8_t s_rowIdx[IDLE_ROWS];
+static int8_t s_finIdx[IDLE_ROWS];
+
 lv_obj_t* uiIdleRoot() { return s_root; }
+
+/** Open a game's detail screen from anywhere on the idle screen.
+ *
+ *  This is what the NEXT UP card and every ledger row were missing: they were
+ *  built as inert text, so the screen the panel spends most of its day showing
+ *  was the only one you could not act on. The detail screen already carries
+ *  the linescore, scoring plays, team stats and the LINEUP button — a fixture
+ *  that has not started yet shows its header and its lineups, which is exactly
+ *  the "game day" view that was being asked for.
+ */
+static void openIdx(int8_t idx) {
+  if (idx >= 0 && idx < (int8_t)g_gameCount) uiGameOpen(g_board[idx]);
+}
+static void onNextCard(lv_event_t*) { openIdx(s_nextIdx); }
+static void onTodayRow(lv_event_t* e) {
+  openIdx(s_rowIdx[(int)(intptr_t)lv_event_get_user_data(e)]);
+}
+static void onFinalRow(lv_event_t* e) {
+  openIdx(s_finIdx[(int)(intptr_t)lv_event_get_user_data(e)]);
+}
 
 static void onIdleSettings(lv_event_t*) { uiSettingsOpen(); }
 static void onIdleNews(lv_event_t*)     { uiNewsOpen(); }
 static void onIdleTable(lv_event_t*) {
-  // Whichever league has the most going on — nearly always the one you meant.
-  const char* lg = g_leagueCount ? g_leagues[0].slug : "nhl";
-  uiStandingsOpen(lg);
+  uiStandingsOpen(standingsLeague());
 }
 
 static lv_obj_t* lbl(lv_obj_t* p, int x, int y, lv_color_t c, const lv_font_t* f,
@@ -119,7 +145,12 @@ void uiIdleInit(lv_obj_t* parent) {
   // with nothing behind it. Dark ground goes 12.9% -> 48.0% and single-colour
   // dominance 80.5% -> 47.8%, entirely from taking things AWAY.
   s_clock   = lbl(s_root, 44, 68, C_INK, F_CLOCK);
-  s_ampm    = lbl(s_root, 300, 150, C_INK2, F_DISPLAY);
+  // Sat at (300,150) — below the digits' baseline and adrift to their right,
+  // with the gap between reading as a hole rather than as spacing. A meridiem
+  // is a suffix: it belongs on the same baseline, one space away. Measured
+  // from the rendered glyphs rather than derived, because F_CLOCK's 96 px
+  // digits do not fill their line box.
+  s_ampm    = lbl(s_root, 0, 0, C_INK3, F_DISPLAY);
   s_date    = lbl(s_root, 48, 232, C_INK3, F_MICRO);
   lv_obj_set_style_text_letter_space(s_date, 1, 0);
   s_summary = lbl(s_root, 48, 258, C_INK3, F_NUM);
@@ -129,6 +160,8 @@ void uiIdleInit(lv_obj_t* parent) {
   // worth acting on.
   lv_obj_t* nextCard = glassPanel(s_root, 508, 94, 276, 230, 14);
   s_nextCard = nextCard;
+  lv_obj_add_flag(nextCard, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(nextCard, onNextCard, LV_EVENT_SHORT_CLICKED, nullptr);
   s_nextEdge = lv_obj_create(nextCard);
   lv_obj_remove_style_all(s_nextEdge);
   lv_obj_set_size(s_nextEdge, EDGE_W, 60);
@@ -235,8 +268,32 @@ void uiIdleInit(lv_obj_t* parent) {
   s_ledHdr[1] = hdrAt(412, "LATEST");
   s_ledRule[1] = ruleAt(412);
 
+  // Transparent hit targets over each ledger row. The rows are bare labels on
+  // the plate, and a label is not clickable and is only as wide as its text —
+  // so there was nothing to press even where the data was worth opening.
+  // 28 px tall on a 30 px pitch, which clears the 9 mm ISO 9241-411 floor in
+  // the axis that matters here.
+  auto hit = [&](int x, int y, int i, lv_event_cb_t cb) {
+    lv_obj_t* h = lv_obj_create(s_root);
+    lv_obj_remove_style_all(h);
+    lv_obj_set_pos(h, x, y - 4);
+    lv_obj_set_size(h, 348, 28);
+    lv_obj_set_style_bg_opa(h, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_radius(h, 6, 0);
+    // Visible only while held. The rows must not look like buttons at rest —
+    // the ledger is a list, and 27 panels that light up on touch was already
+    // flagged once as making inert things look interactive.
+    lv_obj_set_style_bg_color(h, C_LINE, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(h, 24, LV_STATE_PRESSED);
+    lv_obj_clear_flag(h, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(h, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(h, cb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
+  };
+
   for (int i = 0; i < IDLE_ROWS; i++) {
     const int y = 384 + i * 30;
+    hit(24,  y, i, onTodayRow);
+    hit(412, y, i, onFinalRow);
     s_todayTime[i]  = lbl(s_root, 24,  y, C_INK3, F_NUM);
     s_todayGame[i]  = lbl(s_root, 98,  y, C_INK2, F_BODY);
     s_todayLg[i]    = lbl(s_root, 238, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
@@ -279,7 +336,27 @@ void uiIdleTick() {
   char buf[64];
   strftime(buf, sizeof buf, "%l:%M", &lt);
   setCached(s_clock, s_cClock, sizeof s_cClock, buf[0] == ' ' ? buf + 1 : buf);
+  // Placed from the CLOCK's rendered width, every time it changes — "9:14" and
+  // "11:37" are not the same width, so a fixed x is wrong for half the day.
+  // Baselines are aligned through each face's own metrics rather than by eye:
+  // a 96 px face and a 30 px face share no other reference point.
   lv_label_set_text(s_ampm, lt.tm_hour < 12 ? "AM" : "PM");
+  {
+    // Measured from the TEXT, not from the object. lv_obj_get_width() is not
+    // valid until layout has run, and on the first tick it returns 0 — which a
+    // width cache then locks in, stamping "AM" straight through the digits.
+    static int lastW = -1;
+    const int w = (int)lv_txt_get_width(s_cClock, (uint32_t)strlen(s_cClock),
+                                        F_CLOCK, 0, LV_TEXT_FLAG_NONE);
+    if (w != lastW) {
+      lastW = w;
+      const int blClock = 68 + (int)lv_font_get_line_height(F_CLOCK)
+                             - (int)F_CLOCK->base_line;
+      const int topAmpm = blClock - ((int)lv_font_get_line_height(F_DISPLAY)
+                                   - (int)F_DISPLAY->base_line);
+      lv_obj_set_pos(s_ampm, 44 + w + 18, topAmpm);
+    }
+  }
   // Tracked CAPS. The rule this build adopts is that +1 tracking with capitals
   // means "this labels something" and zero tracking means "this is the data" —
   // so a tracked mixed-case string is neither, and reads as a typo.
@@ -384,6 +461,12 @@ void uiIdleRefresh() {
     if (g_board[i].state == GS_PRE) today++;
 
   const Game* nx = nextGame();
+  // Resolve the pointer back to an index so a tap can find it again. Every
+  // tappable thing on this screen is rebuilt here, because g_board is replaced
+  // wholesale on each poll and an index captured earlier would be stale.
+  s_nextIdx = -1;
+  if (nx) s_nextIdx = (int8_t)(nx - g_board);
+
   char buf[64];
   if (nx) {
     struct tm st;
@@ -437,6 +520,7 @@ void uiIdleRefresh() {
       snprintf(buf, sizeof buf, "%s  %s  %s", g.away.abbr, g.isFav ? "vs" : "@", g.home.abbr);
     lv_label_set_text(s_todayGame[row], buf);
     lv_label_set_text(s_todayLg[row], g.league);
+    s_rowIdx[row] = (int8_t)i;
     row++;
   }
   const uint8_t todayRows = row;
@@ -444,6 +528,7 @@ void uiIdleRefresh() {
     lv_label_set_text(s_todayTime[row], "");
     lv_label_set_text(s_todayGame[row], "");
     lv_label_set_text(s_todayLg[row], "");
+    s_rowIdx[row] = -1;                 // an empty row must not open anything
   }
 
   row = 0;
@@ -463,12 +548,14 @@ void uiIdleRefresh() {
       snprintf(buf, sizeof buf, "%u - %u", g.away.score, g.home.score);
       lv_label_set_text(s_finalScore[row], buf);
     }
+    s_finIdx[row] = (int8_t)i;
     row++;
   }
   const uint8_t finalRows = row;
   for (; row < IDLE_ROWS; row++) {
     lv_label_set_text(s_finalGame[row], "");
     lv_label_set_text(s_finalScore[row], "");
+    s_finIdx[row] = -1;
   }
 
   // A ruled heading with nothing under it reads as content that failed to
