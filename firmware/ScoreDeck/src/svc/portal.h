@@ -7,7 +7,7 @@
 // Served straight from flash with sendContent_P, so it costs no heap. That
 // matters more than it looks: the web server runs inside the same loop() that
 // drives the display, so response time IS panel stall time, and building this
-// page into a String first would put 31.0 KB through the allocator on
+// page into a String first would put 31.6 KB through the allocator on
 // every request.
 #pragma once
 #include <pgmspace.h>
@@ -360,11 +360,24 @@ function renderLeagues() {
   countLeagues();
   box.addEventListener('change', countLeagues);
 }
+function autoLeagues() {
+  // Leagues kept on by a favourite. The proxy merges these into the payload
+  // regardless, so they consume cap slots whether or not they are checked —
+  // the on-device pane counts them, and this picker must agree with it.
+  return new Set(favList().map(e => e.split(':')[0]).filter(Boolean));
+}
 function countLeagues() {
-  const n = document.querySelectorAll('#lgList input:checked').length;
-  document.getElementById('lgN').textContent = n ? n + ' / 12' : '';
+  const auto = autoLeagues();
+  let n = auto.size;
   for (const cb of document.querySelectorAll('#lgList input'))
+    if (cb.checked && !auto.has(cb.dataset.slug)) n++;
+  const lbl = document.getElementById('lgN');
+  lbl.textContent = n ? (n + ' / 12' + (auto.size ? ' · ' + auto.size + ' by favourites' : '')) : '';
+  lbl.style.color = n >= 12 ? '#F2B441' : '';
+  for (const cb of document.querySelectorAll('#lgList input')) {
+    if (auto.has(cb.dataset.slug)) { cb.checked = true; cb.disabled = true; continue; }
     if (!cb.checked) cb.disabled = n >= 12;
+  }
 }
 document.getElementById('saveLg').addEventListener('click', async () => {
   const slugs = [...document.querySelectorAll('#lgList input:checked')]

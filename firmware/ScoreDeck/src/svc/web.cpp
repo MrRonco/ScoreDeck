@@ -360,6 +360,15 @@ static void apiLeaguesPost() {
     }
     if (j == i) return fail(400, "empty league entry");
     if (++n > MAX_LEAGUES) return fail(400, "more than 12 leagues");
+    // Duplicates burn cap slots for nothing and make the count a lie.
+    for (size_t a = 0; a < i; ) {
+      size_t b = a;
+      while (b < lg.length() && lg[b] != ',') b++;
+      if (b - a == j - i && strncmp(lg.c_str() + a, lg.c_str() + i, j - i) == 0)
+        return fail(400, "duplicate league");
+      a = b + 1;
+      if (a > i) break;
+    }
     i = j + 1;
   }
   g_set.leagues = lg;

@@ -122,6 +122,14 @@ static void onEdit(lv_event_t*) {
 
 void uiRailToggle() {
   s_open = !s_open;
+  // Freeze the order at the moment of OPENING — not in uiRailInit, which
+  // reruns on every rebuild, including poll-triggered auto-density ones.
+  // "Rows never re-rank under a finger" has to survive those too.
+  if (s_open) {
+    s_orderN = 0;
+    for (uint8_t i = 0; i < g_leagueCount && s_orderN < MAX_LEAGUES; i++)
+      s_order[s_orderN++] = (int8_t)i;
+  }
   // The board rebuilds for the new geometry through the same guard a density
   // change uses; uiBoardRefresh() sees the state change and calls uiInit().
   uiInit();
@@ -165,11 +173,13 @@ static void rowApply(uint8_t r) {
 }
 
 void uiRailInit(lv_obj_t* parent) {
-  // Order is frozen HERE — at build, which for the open state is the moment
-  // of opening. Polls that land while open update counts, never positions.
-  s_orderN = 0;
-  for (uint8_t i = 0; i < g_leagueCount && s_orderN < MAX_LEAGUES; i++)
-    s_order[s_orderN++] = (int8_t)i;
+  // The frozen order is captured in uiRailToggle() at the open transition;
+  // capturing here would silently re-rank on any poll that rebuilds the
+  // board while the rail is up. If the rail somehow opens without a capture
+  // (boot state is closed, so this is belt-and-braces), take one now.
+  if (s_open && s_orderN == 0)
+    for (uint8_t i = 0; i < g_leagueCount && s_orderN < MAX_LEAGUES; i++)
+      s_order[s_orderN++] = (int8_t)i;
 
   if (!s_open) {
     s_root = nullptr;

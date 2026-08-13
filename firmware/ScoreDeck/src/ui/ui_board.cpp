@@ -47,14 +47,18 @@ static lv_obj_t* s_zc;         // zone C slot: clock / "+N NEW" / trouble
 static lv_obj_t* s_zcLbl;
 static lv_obj_t* s_navNewsDot;
 static char      s_clockStr[12] = "";   // "12:35 AM" is 8 chars + NUL — 8 truncated it
+static char      s_zcCache[52] = "\x01"; // zone C's change cache; reset by buildBar
 static char      c_zaCount[6], c_zaTotal[10], c_pill[30];
 // The delta ledger: scores that changed while you were not looking.
 static uint32_t  s_lastTouchMs;
 static uint8_t   s_deltaCount;
 static uint32_t  s_deltaUntil;
-// The poll heartbeat can live on more than one bar (board + idle).
+// The poll heartbeat lives on two bars with two LIFETIMES: slot 0 is the
+// board's line and dies with every uiInit() rebuild; slot 1 is the idle
+// bar's and lives forever (uiIdleInit runs once at boot). A shared counter
+// reset by uiInit orphaned the idle line after the first rebuild — on the
+// screen that is up most of the day. Review r1, blocker 2.
 static lv_obj_t* s_heart[2];
-static uint8_t   s_heartN;
 static int       c_heartW = -1;
 static bool      c_heartWarn;
 // Whole empty grid rows carry content rather than nothing. A bordered empty
@@ -124,6 +128,7 @@ struct TileUI {
   bool     cSitVis;
   bool     cBcastVis;
   bool     cDotVis;
+  int8_t   cShape;     // -1 unknown, 0 two-sided, 1 field — gates the vis swap
   uint32_t cScoreInk[2];
   uint32_t cChip[2];    // packed: 0 none, 1 logo+no chip, else colour|0x1000000
   int16_t  cStatusW;
@@ -491,6 +496,7 @@ static void buildTile(TileUI& t, int idx) {
   t.cSitVis = false;
   t.cBcastVis = true;
   t.cDotVis = false;
+  t.cShape = -1;
   t.cScoreInk[0] = t.cScoreInk[1] = 0xFFFFFFFF;
   t.cChip[0] = t.cChip[1] = 0xFFFFFFFFu;
   t.cStatusW = (int16_t)STATUS_W;      // matches the width set above
@@ -627,7 +633,7 @@ static void buildBar() {
   lv_obj_set_pos(hb, 0, barH - 2);
   lv_obj_set_style_bg_color(hb, C_LIVE_SD, 0);
   lv_obj_set_style_bg_opa(hb, LV_OPA_COVER, 0);
-  if (s_heartN < 2) s_heart[s_heartN++] = hb;
+  s_heart[0] = hb;
 
   // Page dots, relocated past the pill (the chips they used to dodge are gone).
   for (uint8_t i = 0; i < 8; i++) {
@@ -640,6 +646,11 @@ static void buildBar() {
   }
   s_lblPage = nullptr;
   c_zaCount[0] = c_zaTotal[0] = c_pill[0] = '\0';
+  // The zone C cache guards a label this function just recreated EMPTY. A
+  // surviving cache suppresses the first write after any rebuild — and
+  // rebuilds fire from rail toggles, density cycles, settings close, and the
+  // auto-density guard on ordinary polls. Review r1, blocker 1.
+  s_zcCache[0] = '\x01'; s_zcCache[1] = '\0';
 
   // The filler. Two columns: what has finished, and what is next.
   s_fill = glassPanel(s_board, 0, 0, 10, 10, 12);
@@ -991,10 +1002,23 @@ void uiBoardRefresh() {
     // Badge and logo visibility belong to exactly one place: the logo block
     // below. Two owners of one flag is not a race here, it is just a bug that
     // repaints forever.
-    lv_obj_t* const twoSided[] = { t.abbr[0], t.abbr[1],
-                                   t.rec[0], t.rec[1], t.score[0], t.score[1] };
-    for (lv_obj_t* o : twoSided)
-      isField ? lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+    // GATED on the tile's shape actually changing. lv_obj_clear_flag is not
+    // idempotent — it invalidates unconditionally on every call — so running
+    // these loops per refresh burned up to 16 invalidation regions per tile
+    // per poll for no pixel change, threatening the 64-region ceiling this
+    // file is architected around. Review r1, blocker 3.
+    if (t.cShape != (int8_t)isField) {
+      t.cShape = (int8_t)isField;
+      lv_obj_t* const twoSided[] = { t.abbr[0], t.abbr[1],
+                                     t.rec[0], t.rec[1], t.score[0], t.score[1] };
+      for (lv_obj_t* o : twoSided)
+        isField ? lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_t* const fieldOnly[] = { t.fldTitle, t.fldPos[0], t.fldPos[1], t.fldPos[2],
+                                      t.fldName[0], t.fldName[1], t.fldName[2],
+                                      t.fldVal[0], t.fldVal[1], t.fldVal[2] };
+      for (lv_obj_t* o : fieldOnly)
+        isField ? lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    }
     if (isField) {
       for (int k = 0; k < 2; k++) {
         setHiddenCached(t.badge[k], &t.cBadgeVis[k], true);
@@ -1002,11 +1026,6 @@ void uiBoardRefresh() {
         setHiddenCached(t.favRing[k], &t.cFav[k], true);
       }
     }
-    lv_obj_t* const fieldOnly[] = { t.fldTitle, t.fldPos[0], t.fldPos[1], t.fldPos[2],
-                                    t.fldName[0], t.fldName[1], t.fldName[2],
-                                    t.fldVal[0], t.fldVal[1], t.fldVal[2] };
-    for (lv_obj_t* o : fieldOnly)
-      isField ? lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
 
     if (isField) {
       lv_label_set_text(t.fldTitle, g.away.name);
@@ -1252,7 +1271,6 @@ void uiSetClock(const char* hhmm, const char* date) {
  * looked" a lie, and a fresh delta is more useful than the time.
  */
 static void zoneCApply() {
-  static char last[52] = "\x01";
   char buf[52];
   lv_color_t ink = C_INK2;
 
@@ -1278,8 +1296,8 @@ static void zoneCApply() {
       }
       break;
   }
-  if (strcmp(last, buf) == 0) return;
-  strncpy(last, buf, sizeof last - 1);
+  if (strcmp(s_zcCache, buf) == 0) return;
+  strncpy(s_zcCache, buf, sizeof s_zcCache - 1);
   if (s_zcLbl) {
     lv_label_set_text(s_zcLbl, buf);
     lv_obj_set_style_text_color(s_zcLbl, ink, 0);
@@ -1350,16 +1368,14 @@ void uiHeartbeatSet(uint8_t pct, bool overdue) {
   if (w == c_heartW && overdue == c_heartWarn) return;
   c_heartW = w;
   c_heartWarn = overdue;
-  for (uint8_t i = 0; i < s_heartN; i++) {
+  for (uint8_t i = 0; i < 2; i++) {
     if (!s_heart[i]) continue;
     lv_obj_set_width(s_heart[i], w < 1 ? 1 : w);
     lv_obj_set_style_bg_color(s_heart[i], overdue ? C_WARN : C_LIVE_SD, 0);
   }
 }
 
-void uiHeartbeatAdd(lv_obj_t* line) {
-  if (s_heartN < 2) s_heart[s_heartN++] = line;
-}
+void uiHeartbeatAdd(lv_obj_t* line) { s_heart[1] = line; }
 
 bool uiShouldIdle() {
   for (uint8_t i = 0; i < g_gameCount; i++)
@@ -1401,7 +1417,7 @@ void uiInit() {
   // Every tile is about to be deleted; drop the pulse timer's pointers first,
   // and the heartbeat lines with them — both hold raw object pointers.
   pulseForget();
-  s_heartN = 0;
+  s_heart[0] = nullptr;          // the board's line only; idle's survives
   c_heartW = -1;
   s_builtDensity = effectiveDensity();
   s_builtRail = uiRailOpen();
