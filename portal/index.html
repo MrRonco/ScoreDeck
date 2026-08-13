@@ -515,13 +515,13 @@ async function loadCatalog() {
     // is not the same as the proxy being down — say so, and try the device.
     $('#catInfo').textContent = 'Direct fetch failed — trying via the panel…';
     try { CAT = await api('/api/relay?p=' + encodeURIComponent('/v1/catalog?teams=1')); }
-    renderLeagues();
     catch { $('#catInfo').textContent = 'Could not reach the proxy from here or from the panel.';
             return; }
   }
   try { localStorage.setItem('sd.cat', JSON.stringify(CAT)); } catch {}
   $('#catInfo').textContent = catInfoText();
   renderFavs();
+  renderLeagues();
 }
 function catInfoText() {
   const n = CAT.t.reduce((a, r) => a + r[3].length, 0);

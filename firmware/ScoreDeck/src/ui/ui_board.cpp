@@ -129,6 +129,7 @@ struct TileUI {
   bool     cBcastVis;
   bool     cDotVis;
   int8_t   cShape;     // -1 unknown, 0 two-sided, 1 field — gates the vis swap
+  int8_t   cSetMode;   // -1 unknown — gates the SET font/width/long-mode config
   uint32_t cScoreInk[2];
   uint32_t cChip[2];    // packed: 0 none, 1 logo+no chip, else colour|0x1000000
   int16_t  cStatusW;
@@ -516,6 +517,7 @@ static void buildTile(TileUI& t, int idx) {
   t.cBcastVis = true;
   t.cDotVis = false;
   t.cShape = -1;
+  t.cSetMode = -1;
   t.cScoreInk[0] = t.cScoreInk[1] = 0xFFFFFFFF;
   t.cChip[0] = t.cChip[1] = 0xFFFFFFFFu;
   t.cStatusW = (int16_t)STATUS_W;      // matches the width set above
@@ -645,7 +647,15 @@ static void buildBar() {
   lv_obj_set_style_bg_opa(s_navNewsDot, LV_OPA_COVER, 0);
   lv_obj_add_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN);
 
-  // The signature: the poll heartbeat, along the bar's bottom edge.
+  // The signature: the poll heartbeat, along the bar's bottom edge — WITH a
+  // dim track, because a 1 px fill at 0% is indistinguishable from the
+  // feature not existing (review round 1, SHOULD).
+  lv_obj_t* ht = lv_obj_create(s_board);
+  lv_obj_remove_style_all(ht);
+  lv_obj_set_size(ht, SCR_W, 2);
+  lv_obj_set_pos(ht, 0, barH - 2);
+  lv_obj_set_style_bg_color(ht, C_LIVE_SD, 0);
+  lv_obj_set_style_bg_opa(ht, 90, 0);   // 46 measured ~1.2:1 — a track that reads
   lv_obj_t* hb = lv_obj_create(s_board);
   lv_obj_remove_style_all(hb);
   lv_obj_set_size(hb, 1, 2);
@@ -1082,16 +1092,24 @@ void uiBoardRefresh() {
       // Tennis needs "B. Shelton", which does not fit the 4-char abbr field —
       // the proxy puts the readable form in `name` for SET. It also needs a
       // different FACE: F_ABBR has no lowercase glyphs (see theme.h).
-      lv_obj_set_style_text_font(t.abbr[k], isSet ? F_BODY : F_ABBR, 0);
-      // Tennis names are prose and must not run into the score column —
-      // "N. Budkov Kjaer" touched the digits at 186 px on the real overnight
-      // board. Width-gated with an ellipsis; club abbreviations stay free.
-      if (isSet) {
-        lv_obj_set_width(t.abbr[k], d.tileW - (TILE_PAD_X + d.badge + 10) - 68);
-        lv_obj_set_height(t.abbr[k], (int)lv_font_get_line_height(F_BODY));
-        lv_label_set_long_mode(t.abbr[k], LV_LABEL_LONG_DOT);
-      } else {
-        lv_obj_set_width(t.abbr[k], LV_SIZE_CONTENT);
+      // GATED on the mode changing — lv_label_set_long_mode (and friends)
+      // invalidate unconditionally, and running this per poll reintroduced
+      // exactly the budget pathology the cShape gate had just closed three
+      // lines above it. Round 2 engineering, blocker 2.
+      if (t.cSetMode != (int8_t)isSet) {
+        if (k == 1) t.cSetMode = (int8_t)isSet;      // after both sides ran
+        lv_obj_set_style_text_font(t.abbr[k], isSet ? F_BODY : F_ABBR, 0);
+        if (isSet) {
+          // Tennis names are prose and must not run into the score column —
+          // "N. Budkov Kjaer" touched the digits at 186 px on the real
+          // overnight board. Width-gated; club abbreviations stay free.
+          lv_obj_set_width(t.abbr[k], d.tileW - (TILE_PAD_X + d.badge + 10) - 68);
+          lv_obj_set_height(t.abbr[k], (int)lv_font_get_line_height(F_BODY));
+          lv_label_set_long_mode(t.abbr[k], LV_LABEL_LONG_DOT);
+        } else {
+          lv_label_set_long_mode(t.abbr[k], LV_LABEL_LONG_WRAP);   // v8 default
+          lv_obj_set_width(t.abbr[k], LV_SIZE_CONTENT);
+        }
       }
       setTextCached(t.abbr[k], t.cAbbr[k], sizeof t.cAbbr[k],
                     isSet ? side[k]->name : side[k]->abbr);
@@ -1140,7 +1158,7 @@ void uiBoardRefresh() {
       else if (g.state == GS_PRE || g.away.score == g.home.score)
         want = 0xFFFFFFFFu;
       else
-        want = leading ? teamInkOn(side[k]->color, si.fill, 5.5f) : 0xFFFFFFFDu;
+        want = leading ? teamInkOn(side[k]->color, si.fill, 6.5f) : 0xFFFFFFFDu;
       if (t.cScoreInk[k] != want) {
         t.cScoreInk[k] = want;
         lv_obj_set_style_text_color(t.score[k],

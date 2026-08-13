@@ -131,7 +131,9 @@ void uiIdleInit(lv_obj_t* parent) {
   lv_obj_t* brand = lbl(bar, 18, hdrY, C_INK2, F_MICRO);
   lv_label_set_text(brand, "SCOREDECK");
   // Stops short of the three buttons at the right — they end at SCR_W-18-148.
-  s_hdrStatus = lbl(bar, 612 - 240, hdrY, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 240);
+  // kStateInk[GS_LIVE].ink3 — solved 4.55 on this bar's SURF_2, where C_INK3
+  // measures 4.22: the review's AA miss.
+  s_hdrStatus = lbl(bar, 612 - 240, hdrY, kStateInk[GS_LIVE].ink3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 240);
 
   // ── clock ────────────────────────────────────────────────────────────────
   //
@@ -179,6 +181,12 @@ void uiIdleInit(lv_obj_t* parent) {
   uiNavPill(bar, 622 + 58, BAR_H, "NEWS", onIdleNews);
   uiNavPill(bar, 622 + 116, BAR_H, "SETUP", onIdleSettings);
   {
+    lv_obj_t* ht = lv_obj_create(s_root);
+    lv_obj_remove_style_all(ht);
+    lv_obj_set_size(ht, SCR_W, 2);
+    lv_obj_set_pos(ht, 0, BAR_H - 2);
+    lv_obj_set_style_bg_color(ht, C_LIVE_SD, 0);
+    lv_obj_set_style_bg_opa(ht, 90, 0);
     lv_obj_t* hb = lv_obj_create(s_root);
     lv_obj_remove_style_all(hb);
     lv_obj_set_size(hb, 1, 2);

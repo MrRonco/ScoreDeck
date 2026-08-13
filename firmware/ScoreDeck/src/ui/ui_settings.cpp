@@ -374,7 +374,7 @@ static void buildSports(lv_obj_t* p) {
     lv_obj_set_style_bg_color(s_spTick[i], C_EDGE, 0);
     lv_obj_set_style_bg_opa(s_spTick[i], LV_OPA_COVER, 0);
   }
-  s_spMsg = label(p, 24, 40, "", C_INK3, F_MICRO);
+  s_spMsg = label(p, 24, 40, "", kStateInk[GS_LIVE].ink3, F_MICRO);
   lv_obj_set_style_text_letter_space(s_spMsg, 1, 0);
 
   for (uint8_t f = 0; f < SP_FAMS; f++) {
@@ -396,9 +396,9 @@ static void buildSports(lv_obj_t* p) {
     lv_obj_set_style_bg_color(s_spFamEdge[f], C_LIVE, 0);
     lv_obj_set_style_bg_opa(s_spFamEdge[f], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_spFamEdge[f], LV_OBJ_FLAG_HIDDEN);
-    s_spFamLbl[f] = label(p, 28, y + 10, kFamName[f], C_INK3, F_MICRO);
+    s_spFamLbl[f] = label(p, 28, y + 10, kFamName[f], kStateInk[GS_LIVE].ink3, F_MICRO);
     lv_obj_set_style_text_letter_space(s_spFamLbl[f], 1, 0);
-    s_spFamCnt[f] = label(p, 128, y + 10, "", C_INK3, F_MICRO);
+    s_spFamCnt[f] = label(p, 128, y + 10, "", kStateInk[GS_LIVE].ink3, F_MICRO);
   }
 
   for (uint8_t i = 0; i < SP_SLOTS; i++) {
@@ -439,7 +439,9 @@ static void buildSports(lv_obj_t* p) {
   lv_obj_add_event_cb(s_spPager, onSpPager, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* pgl = label(s_spPager, 0, 0, "MORE >", C_INK2, F_MICRO);
   lv_obj_center(pgl);
-  label(p, 560, 66 + 4 * 62 + 8, "saved when you leave", C_INK3, F_MICRO);
+  // kStateInk[GS_LIVE].ink3 — the review measured the only statement of the
+  // save model at 4.01:1 on this pane; the solved tier clears 4.55.
+  label(p, 560, 66 + 4 * 62 + 8, "saved when you leave", kStateInk[GS_LIVE].ink3, F_MICRO);
 }
 
 static void renderSports() {
@@ -492,11 +494,11 @@ static void renderSports() {
     lv_obj_set_style_bg_opa(s_spFam[f], sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     sel ? lv_obj_clear_flag(s_spFamEdge[f], LV_OBJ_FLAG_HIDDEN)
         : lv_obj_add_flag(s_spFamEdge[f], LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_text_color(s_spFamLbl[f], sel ? C_INK : C_INK3, 0);
+    lv_obj_set_style_text_color(s_spFamLbl[f], sel ? C_INK : kStateInk[GS_LIVE].ink3, 0);
     char cb[6];
     snprintf(cb, sizeof cb, "%u", (unsigned)cnt);
     lv_label_set_text(s_spFamCnt[f], present ? cb : "-");
-    lv_obj_set_style_text_color(s_spFamCnt[f], cnt ? C_INK : C_INK3, 0);
+    lv_obj_set_style_text_color(s_spFamCnt[f], cnt ? C_INK : kStateInk[GS_LIVE].ink3, 0);
   }
 
   uint8_t famTotal = 0;

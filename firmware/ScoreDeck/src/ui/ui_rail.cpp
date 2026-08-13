@@ -118,6 +118,7 @@ static void onRow(lv_event_t* e) {
 static void onEdit(lv_event_t*) {
   s_open = false;                 // settings covers the screen; come back closed
   uiSettingsOpen();
+  uiSettingsTab(1);               // land on SPORTS, not wherever settings was
 }
 
 void uiRailToggle() {
@@ -160,14 +161,14 @@ static void rowApply(uint8_t r) {
   sel ? lv_obj_clear_flag(s_rowTab[r], LV_OBJ_FLAG_HIDDEN)
       : lv_obj_add_flag(s_rowTab[r], LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_style_text_color(s_rowName[r],
-      sel ? C_INK : (live ? C_INK2 : C_INK3), 0);
+      sel ? C_INK : (live ? C_INK2 : kStateInk[GS_PRE].ink3), 0);
 
   char buf[12];
   if (total) snprintf(buf, sizeof buf, "%u /%u", live, total);
   else       snprintf(buf, sizeof buf, "-");
   lv_label_set_text(s_rowCount[r], buf);
   lv_obj_set_style_text_color(s_rowCount[r],
-      live ? C_LIVE : (total ? C_INK3 : lv_color_hex(0x4A5666)), 0);
+      live ? C_LIVE : (total ? kStateInk[GS_PRE].ink3 : lv_color_hex(0x4A5666)), 0);
   (live && !sel) ? lv_obj_clear_flag(s_rowUnder[r], LV_OBJ_FLAG_HIDDEN)
                  : lv_obj_add_flag(s_rowUnder[r], LV_OBJ_FLAG_HIDDEN);
 }
@@ -294,7 +295,9 @@ void uiRailInit(lv_obj_t* parent) {
   lv_obj_set_pos(edit, 14, RAIL_H - 26);
   lv_obj_set_style_text_font(edit, F_MICRO, 0);
   lv_obj_set_style_text_letter_space(edit, 1, 0);
-  lv_obj_set_style_text_color(edit, C_INK3, 0);
+  // kStateInk[GS_PRE].ink3: solved 4.52 on this rail's SURF_1 fill, where
+  // C_INK3 measures 4.0 — the review's AODA-relevant AA miss.
+  lv_obj_set_style_text_color(edit, kStateInk[GS_PRE].ink3, 0);
   lv_label_set_text(edit, "EDIT SPORTS  >");
   lv_obj_add_flag(edit, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_ext_click_area(edit, 8);

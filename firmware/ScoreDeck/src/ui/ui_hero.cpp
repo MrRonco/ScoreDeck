@@ -308,7 +308,7 @@ void uiHeroShow(int8_t gameIdx) {
     if (g.away.score == g.home.score)
       want = 0xFFFFFFFFu;
     else
-      want = leading ? teamInkOn(side[k]->color, si.fill, 5.5f) : 0xFFFFFFFEu;
+      want = leading ? teamInkOn(side[k]->color, si.fill, 6.5f) : 0xFFFFFFFEu;
     if (c_scoreInk[k] != want) {
       c_scoreInk[k] = want;
       lv_obj_set_style_text_color(s_score[k],
