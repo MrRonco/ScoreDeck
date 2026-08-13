@@ -46,7 +46,7 @@ static lv_obj_t* s_pillUnder;  // C_LIVE_SD underline when the filter has live
 static lv_obj_t* s_zc;         // zone C slot: clock / "+N NEW" / trouble
 static lv_obj_t* s_zcLbl;
 static lv_obj_t* s_navNewsDot;
-static char      s_clockStr[8] = "";
+static char      s_clockStr[12] = "";   // "12:35 AM" is 8 chars + NUL — 8 truncated it
 static char      c_zaCount[6], c_zaTotal[10], c_pill[30];
 // The delta ledger: scores that changed while you were not looking.
 static uint32_t  s_lastTouchMs;
