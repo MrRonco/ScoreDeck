@@ -986,7 +986,10 @@ void uiBoardRefresh() {
       // The score-ink cache stores a team colour or a "use si.ink2" sentinel,
       // and si.ink2 has just moved. Invalidate, or a non-leading side keeps the
       // previous state's ink2 for as long as it stays behind.
-      t.cScoreInk[0] = t.cScoreInk[1] = 0xFFFFFFFE;
+      // 0xFFFFFFFC, NOT one of the live sentinels: FE now means "FINAL
+      // winner", and a poison that equals a real sentinel suppresses the
+      // very write it exists to force when the new state computes that value.
+      t.cScoreInk[0] = t.cScoreInk[1] = 0xFFFFFFFCu;
     }
 
     // Three models do not have two sides and a score. Show/hide the two
