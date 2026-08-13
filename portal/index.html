@@ -501,7 +501,7 @@ function renderFavs() {
 async function loadCatalog() {
   const cached = localStorage.getItem('sd.cat');
   if (cached) { try { CAT = JSON.parse(cached); } catch {} }
-  if (CAT) { $('#catInfo').textContent = catInfoText(); renderFavs(); return; }
+  if (CAT) { $('#catInfo').textContent = catInfoText(); renderFavs(); renderLeagues(); return; }
   if (!CFG.proxy) { toast('No proxy configured — search needs one.', true); return; }
   $('#catInfo').textContent = 'Loading…';
   const url = CFG.proxy.replace(/\/$/, '') + '/v1/catalog?teams=1';
