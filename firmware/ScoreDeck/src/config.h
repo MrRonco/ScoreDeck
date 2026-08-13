@@ -63,9 +63,9 @@ struct DensitySpec {
 // beside the hero. cols=1 makes the generic x formula land it at x=536, and
 // rows=2 gives the two live slots at y=60 and y=200.
 static const DensitySpec kDensity[4] = {
-  { 58, 244, 186, 16, 18, 72, 3, 2, 38, 0 },
+  { 58, 248, 193, 12, 16, 70, 3, 2, 38, 0 },
   { 48, 248, 128, 12, 16, 60, 3, 3, 30, 1 },
-  { 44, 186, 131, 10, 12, 56, 4, 3, 26, 1 },
+  { 44, 183, 128, 12, 16, 56, 4, 3, 26, 1 },
   { 48, 248, 128, 12, 536, 60, 1, 2, 30, 1 },
 };
 

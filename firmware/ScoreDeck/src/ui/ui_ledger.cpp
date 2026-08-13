@@ -21,8 +21,8 @@
 #include "../core/state.h"
 
 #define LED_ROWS    3
-#define LED_COL_W 348
-#define LED_X0     24
+#define LED_COL_W 372
+#define LED_X0     16
 #define LED_X1    412
 #define LED_ROW_H  30
 
@@ -38,7 +38,7 @@ static lv_obj_t* s_cell[2][LED_ROWS][3];
 // seven mono glyphs at roughly 9 px, so it ellipsised to "7:..." — the field
 // clipped exactly the part that made it a time.
 static const int kColX[2][3] = { { 0, 78, 214 }, { 0, 96, 214 } };
-static const int kColW[2][3] = { { 74, 130, 134 }, { 92, 112, 134 } };
+static const int kColW[2][3] = { { 74, 130, 158 }, { 92, 112, 158 } };
 
 static lv_obj_t* cell(lv_obj_t* p, int x, int y, int w, lv_color_t c,
                       lv_text_align_t al = LV_TEXT_ALIGN_LEFT) {
@@ -104,8 +104,8 @@ lv_obj_t* uiLedgerRoot() { return s_root; }
  */
 void uiLedgerLayout(bool railOpen) {
   if (!s_root) return;
-  static const int xO[2] = { 156, 482 };
-  static const int xC[2] = { 24, 412 };
+  static const int xO[2] = { 156, 488 };
+  static const int xC[2] = { 16, 412 };
   static const int colXO[2][3] = { { 0, 72, 192 }, { 0, 90, 192 } };
   static const int colWO[2][3] = { { 68, 116, 108 }, { 86, 98, 108 } };
   const int colW = railOpen ? 300 : LED_COL_W;

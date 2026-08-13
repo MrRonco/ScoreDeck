@@ -29,6 +29,7 @@ static lv_obj_t* s_board;      // page root
 static lv_obj_t* s_bar;
 static lv_obj_t* s_lblPage;
 static lv_obj_t* s_dot[8];
+static void zaDotsLayout();    // fwd — dots clamp past the measured pill
 static uint8_t   s_dotCount;
 
 // ── the refreshed header ───────────────────────────────────────────────────
@@ -40,6 +41,9 @@ static lv_obj_t* s_zaDot;      // pulse-registered
 static lv_obj_t* s_zaLive;     // "LIVE" / "NO GAMES LIVE"
 static lv_obj_t* s_zaCount;    // the first bright thing on the panel
 static lv_obj_t* s_zaTotal;    // "/ 9" — the denominator
+static lv_obj_t* s_zaDiv;      // zone A|B divider — rides zone A's measured width
+static int s_pillX = 148;      // the pill's computed x — lv_obj_get_x is stale pre-layout
+static uint8_t s_dotsShown;    // visible page dots — so zone A can re-clamp them
 static lv_obj_t* s_pill;       // zone B: names the filter, opens the rail
 static lv_obj_t* s_pillLbl;
 static lv_obj_t* s_pillUnder;  // C_LIVE_SD underline when the filter has live
@@ -563,7 +567,29 @@ static void buildBar() {
   auto midY = [barH](const lv_font_t* f) {
     return (barH - (int)lv_font_get_line_height(f)) / 2;
   };
-  s_bar = glassPanel(s_board, 0, 0, SCR_W, barH, 0);
+  // Every label in the strip hangs from ONE baseline (the one F_MICRO's
+  // centred position implies). The count previously used (barH-30)/2 — a
+  // second vertical model that put its baseline 1 px below everything else.
+  auto baseY = [barH](const lv_font_t* f) {
+    const int B = (barH - (int)lv_font_get_line_height(F_MICRO)) / 2
+                + (int)lv_font_get_line_height(F_MICRO) - (int)F_MICRO->base_line;
+    return B - (int)lv_font_get_line_height(f) + (int)f->base_line;
+  };
+  // Not a glassPanel: the bar sat on C_FROST — the live-tile surface — so the
+  // chrome occupied the same elevation as the most important content. On the
+  // bare plate with a single hairline underneath, the cards become the only
+  // figures and the header gets its authority by subtraction.
+  s_bar = lv_obj_create(s_board);
+  lv_obj_remove_style_all(s_bar);
+  lv_obj_set_pos(s_bar, 0, 0);
+  lv_obj_set_size(s_bar, SCR_W, barH);
+  lv_obj_clear_flag(s_bar, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* barLine = lv_obj_create(s_bar);
+  lv_obj_remove_style_all(barLine);
+  lv_obj_set_pos(barLine, 0, barH - 1);
+  lv_obj_set_size(barLine, SCR_W, 1);
+  lv_obj_set_style_bg_color(barLine, C_LINE, 0);
+  lv_obj_set_style_bg_opa(barLine, OPA_HAIR, 0);
 
   // Zone A — the live organ. The first fixation point on the panel now says
   // the one thing this product exists to say. The count is display-size: at
@@ -571,22 +597,22 @@ static void buildBar() {
   s_zaDot = lv_obj_create(s_bar);
   lv_obj_remove_style_all(s_zaDot);
   lv_obj_set_size(s_zaDot, 9, 9);
-  lv_obj_set_pos(s_zaDot, 14, (barH - 9) / 2);
+  lv_obj_set_pos(s_zaDot, 16, (barH - 9) / 2);
   lv_obj_set_style_radius(s_zaDot, 5, 0);
   lv_obj_set_style_bg_color(s_zaDot, C_LIVE, 0);
   lv_obj_set_style_bg_opa(s_zaDot, LV_OPA_COVER, 0);
   pulseRegister(s_zaDot);
-  s_zaLive  = microLabel(s_bar, 30, midY(F_MICRO), C_LIVE_SD, F_MICRO);
+  s_zaLive  = microLabel(s_bar, 32, baseY(F_MICRO), C_LIVE_SD, F_MICRO);
   lv_obj_set_style_text_letter_space(s_zaLive, 2, 0);
   lv_label_set_text(s_zaLive, "LIVE");
-  s_zaCount = microLabel(s_bar, 72, (barH - 30) / 2, C_LIVE, F_DISPLAY);
-  s_zaTotal = microLabel(s_bar, 96, midY(F_MICRO), C_INK3, F_MICRO);
-  lv_obj_t* div = lv_obj_create(s_bar);
-  lv_obj_remove_style_all(div);
-  lv_obj_set_size(div, 1, 20);
-  lv_obj_set_pos(div, 134, (barH - 20) / 2);
-  lv_obj_set_style_bg_color(div, C_EDGE, 0);
-  lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+  s_zaCount = microLabel(s_bar, 78, baseY(F_DISPLAY), C_LIVE, F_DISPLAY);
+  s_zaTotal = microLabel(s_bar, 102, baseY(F_MICRO), C_INK3, F_MICRO);
+  s_zaDiv = lv_obj_create(s_bar);
+  lv_obj_remove_style_all(s_zaDiv);
+  lv_obj_set_size(s_zaDiv, 1, 20);
+  lv_obj_set_pos(s_zaDiv, 136, (barH - 20) / 2);
+  lv_obj_set_style_bg_color(s_zaDiv, C_EDGE, 0);
+  lv_obj_set_style_bg_opa(s_zaDiv, LV_OPA_COVER, 0);
 
   // Zone B — the filter pill. Names the current filter in words and is the
   // rail's PRIMARY opener: a 16 px sliver is an undiscoverable Fitts target,
@@ -621,7 +647,8 @@ static void buildBar() {
   s_zc = lv_obj_create(s_bar);
   lv_obj_remove_style_all(s_zc);
   lv_obj_set_size(s_zc, 150, 24);
-  lv_obj_set_pos(s_zc, 460, (barH - 24) / 2);
+  // Ends at 594 — 12 px short of the nav block at 606, same gap as everywhere.
+  lv_obj_set_pos(s_zc, 444, (barH - 24) / 2);
   lv_obj_set_style_radius(s_zc, 7, 0);
   lv_obj_clear_flag(s_zc, LV_OBJ_FLAG_SCROLLABLE);
   s_zcLbl = lv_label_create(s_zc);
@@ -631,12 +658,12 @@ static void buildBar() {
   lv_label_set_text(s_zcLbl, "");
   lv_obj_align(s_zcLbl, LV_ALIGN_RIGHT_MID, -4, 0);
 
-  uiNavPill(s_bar, 622, barH, "TABLE", [](lv_event_t*){ onNavTouch(); onTableBtn(nullptr); });
-  lv_obj_t* news = uiNavPill(s_bar, 622 + 58, barH, "NEWS",
+  uiNavPill(s_bar, 606, barH, "TABLE", [](lv_event_t*){ onNavTouch(); onTableBtn(nullptr); });
+  lv_obj_t* news = uiNavPill(s_bar, 606 + 62, barH, "NEWS",
                              [](lv_event_t*){ onNavTouch(); g_newsUnread = false;
                                               if (s_navNewsDot) lv_obj_add_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN);
                                               onNewsBtn(nullptr); });
-  uiNavPill(s_bar, 622 + 116, barH, "SETUP", [](lv_event_t*){ onNavTouch(); onSettingsBtn(nullptr); });
+  uiNavPill(s_bar, 606 + 124, barH, "SETUP", [](lv_event_t*){ onNavTouch(); onSettingsBtn(nullptr); });
   s_navNewsDot = lv_obj_create(s_bar);
   lv_obj_remove_style_all(s_navNewsDot);
   lv_obj_set_size(s_navNewsDot, 7, 7);
@@ -652,13 +679,13 @@ static void buildBar() {
   lv_obj_t* ht = lv_obj_create(s_board);
   lv_obj_remove_style_all(ht);
   lv_obj_set_size(ht, SCR_W, 2);
-  lv_obj_set_pos(ht, 0, barH - 2);
+  lv_obj_set_pos(ht, 0, barH - 3);      // above the hairline, which keeps the last row
   lv_obj_set_style_bg_color(ht, C_LIVE_SD, 0);
   lv_obj_set_style_bg_opa(ht, 90, 0);   // 46 measured ~1.2:1 — a track that reads
   lv_obj_t* hb = lv_obj_create(s_board);
   lv_obj_remove_style_all(hb);
   lv_obj_set_size(hb, 1, 2);
-  lv_obj_set_pos(hb, 0, barH - 2);
+  lv_obj_set_pos(hb, 0, barH - 3);
   lv_obj_set_style_bg_color(hb, C_LIVE_SD, 0);
   lv_obj_set_style_bg_opa(hb, LV_OPA_COVER, 0);
   s_heart[0] = hb;
@@ -1322,15 +1349,27 @@ void uiBoardRefresh() {
   // the rail is open: paging is clamped there, and an affordance for a
   // disabled gesture is worse than none.
   const uint8_t shown = (pages > 1 && !uiRailOpen()) ? (pages < 8 ? pages : 8) : 0;
-  const int dotsW = shown ? shown * 14 - 8 : 0;
+  s_dotsShown = shown;
   for (uint8_t p = 0; p < 8; p++) {
     if (p >= shown) { lv_obj_add_flag(s_dot[p], LV_OBJ_FLAG_HIDDEN); continue; }
     lv_obj_clear_flag(s_dot[p], LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_pos(s_dot[p], 410 - dotsW / 2 + p * 14, (spec().barH - 6) / 2);
+    lv_obj_set_y(s_dot[p], (spec().barH - 6) / 2);
     lv_obj_set_style_bg_color(s_dot[p], p == g_page ? C_INK : C_EDGE_HI, 0);
   }
+  // x is set in zaDotsLayout() AFTER uiSetStatus computes the pill's measured
+  // position — clamping against a value this refresh is about to move would
+  // leave the dots one refresh stale (seen on glass: a dot inside the pill).
   uiSetStatus();
+  zaDotsLayout();
   uiRailRefresh();
+}
+
+static void zaDotsLayout() {
+  const int dotsW = s_dotsShown ? s_dotsShown * 14 - 8 : 0;
+  const int pEnd = s_pillX + 224;
+  int x0 = 410 - dotsW / 2;
+  if (x0 < pEnd + 12) x0 = pEnd + 12;
+  for (uint8_t p = 0; p < s_dotsShown; p++) lv_obj_set_x(s_dot[p], x0 + p * 14);
 }
 
 void uiSetClock(const char* hhmm, const char* date) {
@@ -1396,8 +1435,16 @@ void uiSetStatus() {
     // "LIVE12 /12" with the denominator shaved against a two-digit count.
     const int cw = (int)lv_txt_get_width(buf, (uint32_t)strlen(buf),
                                          F_DISPLAY, 0, LV_TEXT_FLAG_NONE);
-    lv_obj_set_x(s_zaTotal, 72 + cw + 8);
+    lv_obj_set_x(s_zaTotal, 78 + cw + 8);
     setTextCached(s_zaTotal, c_zaTotal, sizeof c_zaTotal, tot);
+    // The divider rides zone A's measured end so its 12 px gaps hold at any
+    // count width; the pill follows. set_x is a no-op when nothing moved.
+    const int tw = (int)lv_txt_get_width(tot, (uint32_t)strlen(tot),
+                                         F_MICRO, 0, LV_TEXT_FLAG_NONE);
+    lv_obj_set_x(s_zaDiv, 78 + cw + 8 + tw + 12);
+    s_pillX = 78 + cw + 8 + tw + 25;
+    lv_obj_set_x(s_pill, s_pillX);
+    lv_obj_set_x(s_pillUnder, s_pillX + 6);
     lv_obj_clear_flag(s_zaTotal, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(s_zaLive, "LIVE");
     lv_obj_set_style_text_color(s_zaLive, C_LIVE_SD, 0);
@@ -1405,9 +1452,17 @@ void uiSetStatus() {
   } else {
     lv_obj_add_flag(s_zaCount, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_zaTotal, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(s_zaLive, g_gameCount ? "NO GAMES LIVE" : "NO GAMES");
+    const char* nt = g_gameCount ? "NO GAMES LIVE" : "NO GAMES";
+    lv_label_set_text(s_zaLive, nt);
     lv_obj_set_style_text_color(s_zaLive, C_INK3, 0);
     lv_obj_set_style_bg_color(s_zaDot, C_EDGE_HI, 0);
+    // Same 12/12 divider rule when zone A is a sentence instead of a count.
+    const int nw = (int)lv_txt_get_width(nt, (uint32_t)strlen(nt),
+                                         F_MICRO, 2, LV_TEXT_FLAG_NONE);
+    lv_obj_set_x(s_zaDiv, 32 + nw + 12);
+    s_pillX = 32 + nw + 25;
+    lv_obj_set_x(s_pill, s_pillX);
+    lv_obj_set_x(s_pillUnder, s_pillX + 6);
     c_zaCount[0] = '\0';
   }
 

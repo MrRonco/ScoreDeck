@@ -124,16 +124,30 @@ void uiIdleInit(lv_obj_t* parent) {
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
 
   // ── header strip ─────────────────────────────────────────────────────────
-  lv_obj_t* bar = glassPanel(s_root, 0, 0, SCR_W, BAR_H, 0);
+  // Bare-plate bar with a single hairline — same treatment as the board's
+  // (chrome by subtraction; the frost fill put chrome on the live-tile rung).
+  lv_obj_t* bar = lv_obj_create(s_root);
+  lv_obj_remove_style_all(bar);
+  lv_obj_set_pos(bar, 0, 0);
+  lv_obj_set_size(bar, SCR_W, BAR_H);
+  lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* barLine = lv_obj_create(bar);
+  lv_obj_remove_style_all(barLine);
+  lv_obj_set_pos(barLine, 0, BAR_H - 1);
+  lv_obj_set_size(barLine, SCR_W, 1);
+  lv_obj_set_style_bg_color(barLine, C_LINE, 0);
+  lv_obj_set_style_bg_opa(barLine, OPA_HAIR, 0);
   // Centred from the face's own line height, not a hardcoded y — BAR_H is 44,
   // 48 or 58 depending on density.
   const int hdrY = (BAR_H - (int)lv_font_get_line_height(F_MICRO)) / 2;
-  lv_obj_t* brand = lbl(bar, 18, hdrY, C_INK2, F_MICRO);
+  lv_obj_t* brand = lbl(bar, 16, hdrY, C_INK2, F_MICRO);
   lv_label_set_text(brand, "SCOREDECK");
   // Stops short of the three buttons at the right — they end at SCR_W-18-148.
   // kStateInk[GS_LIVE].ink3 — solved 4.55 on this bar's SURF_2, where C_INK3
   // measures 4.22: the review's AA miss.
-  s_hdrStatus = lbl(bar, 612 - 240, hdrY, kStateInk[GS_LIVE].ink3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 240);
+  // Ends at 594 — 12 px short of the nav block at 606 (it clipped under
+  // TABLE when the nav moved onto the 16 px frame).
+  s_hdrStatus = lbl(bar, 594 - 240, hdrY, kStateInk[GS_LIVE].ink3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 240);
 
   // ── clock ────────────────────────────────────────────────────────────────
   //
@@ -177,20 +191,20 @@ void uiIdleInit(lv_obj_t* parent) {
   // The idle bar speaks the same language as the board's: word pills, and
   // the poll heartbeat along its bottom edge. Zone A's job is done here by
   // the brand — idle IS the "no games live" state, saying it twice is noise.
-  uiNavPill(bar, 622, BAR_H, "TABLE", onIdleTable);
-  uiNavPill(bar, 622 + 58, BAR_H, "NEWS", onIdleNews);
-  uiNavPill(bar, 622 + 116, BAR_H, "SETUP", onIdleSettings);
+  uiNavPill(bar, 606, BAR_H, "TABLE", onIdleTable);
+  uiNavPill(bar, 606 + 62, BAR_H, "NEWS", onIdleNews);
+  uiNavPill(bar, 606 + 124, BAR_H, "SETUP", onIdleSettings);
   {
     lv_obj_t* ht = lv_obj_create(s_root);
     lv_obj_remove_style_all(ht);
     lv_obj_set_size(ht, SCR_W, 2);
-    lv_obj_set_pos(ht, 0, BAR_H - 2);
+    lv_obj_set_pos(ht, 0, BAR_H - 3);
     lv_obj_set_style_bg_color(ht, C_LIVE_SD, 0);
     lv_obj_set_style_bg_opa(ht, 90, 0);
     lv_obj_t* hb = lv_obj_create(s_root);
     lv_obj_remove_style_all(hb);
     lv_obj_set_size(hb, 1, 2);
-    lv_obj_set_pos(hb, 0, BAR_H - 2);
+    lv_obj_set_pos(hb, 0, BAR_H - 3);
     lv_obj_set_style_bg_color(hb, C_LIVE_SD, 0);
     lv_obj_set_style_bg_opa(hb, LV_OPA_COVER, 0);
     uiHeartbeatAdd(hb);

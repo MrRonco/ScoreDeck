@@ -127,13 +127,15 @@ void uiHeroInit(lv_obj_t* parent) {
   // Or the hero swallows the swipe, exactly as the tiles did.
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
-  const int innerW = HERO_W - 2 * HERO_PAD;
 
-  s_league = lab(s_root, HERO_PAD, 18, HI().ink3, F_MICRO, 200, LV_TEXT_ALIGN_LEFT, 1);
-  s_dot    = dot(s_root, HERO_W - 178, 26);
+  // The dot sits with the string it qualifies — same idiom as the tiles and
+  // zone A. Floating it mid-card made it read as a stray pixel that drifted
+  // with the status string's length.
+  s_dot    = dot(s_root, HERO_PAD, 23);
+  s_league = lab(s_root, HERO_PAD + 14, 18, HI().ink3, F_MICRO, 200, LV_TEXT_ALIGN_LEFT, 1);
   pulseRegister(s_dot);
   s_status = lab(s_root, HERO_W - 164, 14, HI().ink, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
-  hairline(s_root, HERO_PAD - 4, 46, innerW + 8);
+  hairline(s_root, HERO_PAD - 4, 46, HERO_W - 204);
 
   // The leading-row marker. Vertical, at x=0, aligned to whichever side is
   // ahead — it names a team, not a tile perimeter.
@@ -170,13 +172,15 @@ void uiHeroInit(lv_obj_t* parent) {
     // hero and finding the glyph's bounding box put its centre at child
     // (466, y+18) — 46 px right and 12 px down from the second guess.
     s_bloom[k] = bloomCreate(s_root, 220, 220);
-    if (s_bloom[k]) lv_obj_set_pos(s_bloom[k], (HERO_W - 42) - 110, (y + 18) - 110);
+    if (s_bloom[k]) lv_obj_set_pos(s_bloom[k], (HERO_W - 42) - 110, (y + 26) - 110);
 
     s_name[k] = lab(s_root, 92, y, HI().ink, F_DISPLAY, HERO_W - 268);
     s_sub[k]  = lab(s_root, 92, y + 34, HI().ink3, F_NUM, HERO_W - 268);
-    s_score[k] = lab(s_root, HERO_W - 168, y - 8, HI().ink2, F_HERO, 144, LV_TEXT_ALIGN_RIGHT);
+    s_score[k] = lab(s_root, HERO_W - 168, y, HI().ink2, F_HERO, 144, LV_TEXT_ALIGN_RIGHT);
   }
-  hairline(s_root, HERO_PAD - 4, 148, innerW + 8);
+  // At the optical midpoint between the rows' ink, ending 16 px before the
+  // score column so the digits never draw across it.
+  hairline(s_root, HERO_PAD - 4, 131, HERO_W - 204);
 
   // Win probability, along the foot of the cell.
   //
