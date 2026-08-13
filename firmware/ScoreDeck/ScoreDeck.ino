@@ -90,7 +90,11 @@ static void applyPending() {
   // Most of the day nothing is live. A board of dimmed finals is a sad object,
   // so the panel becomes a countdown instead. UI.md §7.
   // Never navigate away from a game the user is reading.
-  if (!uiSetupActive() && !uiGameIsOpen() && !uiStandingsIsOpen() && !uiNewsIsOpen() && !uiLineupIsOpen())
+  // Settings included: the SPORTS pane schedules a save that calls
+  // webPollNow() ~1.5 s after any league toggle, so without this guard the
+  // pane summoned the very poll that then ejected the user mid-edit.
+  if (!uiSetupActive() && !uiGameIsOpen() && !uiStandingsIsOpen() && !uiNewsIsOpen() &&
+      !uiLineupIsOpen() && uiCurrent() != SCR_SETTINGS)
     uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
   if (uiAlertActive()) lv_obj_move_foreground(uiAlertRoot());
 }

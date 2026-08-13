@@ -204,7 +204,8 @@ static lv_obj_t* s_spPill[SP_SLOTS], *s_spPillName[SP_SLOTS], *s_spPillSub[SP_SL
 static lv_obj_t* s_spPager;
 static uint8_t   s_spFamSel = 4;          // soccer has the most; a fine default
 static uint8_t   s_spPage;
-static bool      s_spKicked;              // catalog fetch attempted this session
+static uint32_t  s_spTryAt;               // last catalog attempt
+static uint8_t   s_spTries;               // attempts this boot (retry, don't latch)
 
 static const char* kFamName[SP_FAMS] =
   { "FOOTBALL", "BASKETBALL", "HOCKEY", "BASEBALL", "SOCCER", "TENNIS", "GOLF", "RACING" };
@@ -471,7 +472,9 @@ static void renderSports() {
     lv_label_set_text(s_spMsg, "AT LIMIT - TURN ONE OFF TO ADD ANOTHER");
     lv_obj_set_style_text_color(s_spMsg, C_WARN, 0);
   } else if (!g_catalogLoaded) {
-    lv_label_set_text(s_spMsg, g_catalogInFlight
+    // Honest states: keep saying LOADING while retries are still young —
+    // "could not reach" is only earned after ~3 real attempts have failed.
+    lv_label_set_text(s_spMsg, (g_catalogInFlight || s_spTries < 3)
         ? "LOADING THE CATALOG..."
         : "COULD NOT REACH THE PROXY - SHOWING WHAT'S ON THE BOARD");
     lv_obj_set_style_text_color(s_spMsg, C_INK3, 0);
@@ -542,7 +545,16 @@ static void renderSports() {
 }
 
 static void spKick() {
-  if (!s_spKicked) { s_spKicked = true; apiCatalogStart(); }
+  // Retry, never latch: the old one-shot flag meant a single failed start —
+  // settings opened before Wi-Fi finished associating after a reboot was
+  // enough — wore "COULD NOT REACH THE PROXY" for the whole session while
+  // the proxy sat healthy. Attempts are 3 s apart, capped at 10 per boot.
+  if (!g_catalogLoaded && !g_catalogInFlight && s_spTries < 10 &&
+      (s_spTries == 0 || millis() - s_spTryAt > 3000)) {
+    s_spTryAt = millis();
+    s_spTries++;
+    apiCatalogStart();
+  }
   renderSports();
 }
 
@@ -1039,5 +1051,11 @@ void uiSettingsTick() {
     g_catalogReady = false;
     if (s_tab == 1 && uiCurrent() == SCR_SETTINGS) renderSports();
   }
+  // The retry heartbeat: while the SPORTS pane is up without a catalog,
+  // keep trying on the same 3 s cadence spKick() uses.
+  if (s_tab == 1 && uiCurrent() == SCR_SETTINGS &&
+      !g_catalogLoaded && !g_catalogInFlight &&
+      s_spTries > 0 && s_spTries < 10 && millis() - s_spTryAt > 3000)
+    spKick();
   if (s_dirty && millis() - s_dirtyAt > 1500) flushNow();
 }
