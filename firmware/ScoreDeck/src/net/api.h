@@ -18,6 +18,9 @@ bool apiStandingsStart(const char* league);
 
 /** Fetch headlines for the followed teams. Loop context only. */
 bool apiNewsStart();
+/** The league catalog, leagues-only form. Fetched when the SPORTS pane first
+ *  opens; the pane falls back to (stored ∪ tonight's board) offline. */
+bool apiCatalogStart();
 
 /** Lineups and one player's card. Loop context only. */
 bool apiLineupStart(const char* league, const char* id);

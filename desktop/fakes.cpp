@@ -198,3 +198,35 @@ bool webUp()    { return false; }
 
 
 
+
+// ── catalog + poll fakes ───────────────────────────────────────────────────
+bool apiCatalogStart() {
+  static const struct { const char* s; const char* l; const char* f; } K[] = {
+    { "nfl", "NFL", "football" },   { "ncaaf", "NCAAF", "football" },
+    { "nba", "NBA", "basketball" }, { "wnba", "WNBA", "basketball" },
+    { "ncaam", "NCAAM", "basketball" }, { "ncaaw", "NCAAW", "basketball" },
+    { "nhl", "NHL", "hockey" },     { "ncaawh", "NCAAW H", "hockey" },
+    { "mlb", "MLB", "baseball" },
+    { "eng.1", "EPL", "soccer" },   { "esp.1", "LaLiga", "soccer" },
+    { "ger.1", "Bund", "soccer" },  { "ita.1", "SerieA", "soccer" },
+    { "fra.1", "Ligue1", "soccer" },{ "ucl", "UCL", "soccer" },
+    { "uel", "UEL", "soccer" },     { "uwcl", "UWCL", "soccer" },
+    { "mls", "MLS", "soccer" },     { "nwsl", "NWSL", "soccer" },
+    { "atp", "ATP", "other" },      { "wta", "WTA", "other" },
+    { "pga", "PGA", "other" },      { "lpga", "LPGA", "other" },
+    { "f1", "F1", "other" },
+  };
+  g_catalogCount = 0;
+  for (auto& k : K) {
+    CatEntry& c = g_catalog[g_catalogCount++];
+    memset(&c, 0, sizeof c);
+    strncpy(c.slug, k.s, sizeof c.slug - 1);
+    strncpy(c.label, k.l, sizeof c.label - 1);
+    strncpy(c.family, k.f, sizeof c.family - 1);
+  }
+  g_catalogLoaded = true;
+  g_catalogReady = true;
+  return true;
+}
+
+void webPollNow() {}

@@ -94,6 +94,12 @@ extern volatile bool g_newsReady;
 extern volatile bool g_newsInFlight;
 
 extern Standings     g_standings;
+
+extern CatEntry      g_catalog[CAT_MAX];
+extern uint8_t       g_catalogCount;
+extern volatile bool g_catalogReady;
+extern volatile bool g_catalogInFlight;
+extern bool          g_catalogLoaded;
 extern volatile bool g_standingsReady;
 extern volatile bool g_standingsInFlight;
 

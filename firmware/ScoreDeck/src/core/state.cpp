@@ -45,6 +45,12 @@ volatile bool g_newsReady = false;
 volatile bool g_newsInFlight = false;
 
 Standings     g_standings;
+
+CatEntry      g_catalog[CAT_MAX];
+uint8_t       g_catalogCount = 0;
+volatile bool g_catalogReady = false;
+volatile bool g_catalogInFlight = false;
+bool          g_catalogLoaded = false;
 volatile bool g_standingsReady = false;
 volatile bool g_standingsInFlight = false;
 

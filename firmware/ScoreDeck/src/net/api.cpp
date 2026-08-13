@@ -586,6 +586,61 @@ bool apiPlayerStart(const char* league, const char* athleteId) {
   return startSimple(p, s_pcUrl, s_pcToken, sizeof s_pcUrl, &g_playerInFlight, playerTask, "sdPlayer");
 }
 
+// ── the league catalog ─────────────────────────────────────────────────────
+static char s_catUrl[300];
+static char s_catToken[80];
+
+static bool catalogOnce(const char* url, const char* token) {
+  WiFiClient plain; WiFiClientSecure secure;
+  const bool https = strncmp(url, "https:", 6) == 0;
+  if (https) secure.setInsecure();
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setReuse(false);
+  if (!(https ? http.begin(secure, url) : http.begin(plain, url))) return false;
+  http.setUserAgent("ScoreDeck/" SD_VERSION);
+  if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
+  if (http.GET() != 200) { http.end(); return false; }
+
+  // ~1.3 KB payload; 6 KB of document is generous headroom.
+  DynamicJsonDocument doc(6144);
+  StaticJsonDocument<192> filter;
+  JsonObject e = filter["leagues"].createNestedObject();
+  e["slug"] = true; e["label"] = true; e["family"] = true;
+  const auto err = deserializeJson(doc, http.getStream(),
+                                   DeserializationOption::Filter(filter));
+  http.end();
+  if (err) return false;
+
+  uint8_t n = 0;
+  for (JsonObjectConst l : doc["leagues"].as<JsonArrayConst>()) {
+    if (n >= CAT_MAX) break;
+    CatEntry& c = g_catalog[n];
+    strncpy(c.slug,   l["slug"]   | "", sizeof c.slug - 1);
+    strncpy(c.label,  l["label"]  | "", sizeof c.label - 1);
+    strncpy(c.family, l["family"] | "", sizeof c.family - 1);
+    c.slug[sizeof c.slug - 1] = c.label[sizeof c.label - 1] = c.family[sizeof c.family - 1] = '\0';
+    if (c.slug[0]) n++;
+  }
+  g_catalogCount = n;
+  g_catalogLoaded = n > 0;
+  return n > 0;
+}
+
+static void catalogTask(void*) {
+  const bool ok = catalogOnce(s_catUrl, s_catToken);
+  Serial.printf("[net] catalog %s n=%u\n", ok ? "ok" : "FAIL", g_catalogCount);
+  g_catalogReady = true;                 // even on failure — the pane must
+  g_catalogInFlight = false;             // stop saying "loading" either way
+  vTaskDelete(nullptr);
+}
+
+bool apiCatalogStart() {
+  return startSimple("/v1/catalog", s_catUrl, s_catToken, sizeof s_catUrl,
+                     &g_catalogInFlight, catalogTask, "sdCatalog");
+}
+
 // ── news ───────────────────────────────────────────────────────────────────
 static char s_nwUrl[380];
 static char s_nwToken[80];

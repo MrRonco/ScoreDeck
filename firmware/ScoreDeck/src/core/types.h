@@ -210,6 +210,13 @@ struct NewsFeed {
   NewsItem items[NEWS_MAX];
 };
 
+#define CAT_MAX 32
+struct CatEntry {
+  char slug[10];
+  char label[12];
+  char family[12];   // proxy families; tennis/golf/racing are split in UI only
+};
+
 struct LeagueCount {
   char    slug[8];
   uint8_t live;

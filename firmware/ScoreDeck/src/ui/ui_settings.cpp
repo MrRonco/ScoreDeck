@@ -42,13 +42,15 @@
 #include "../config.h"
 #include "../core/state.h"
 #include "../net/api.h"
+#include "../svc/web.h"
+#include "../net/api.h"
 #include <WiFi.h>
 
 // Four panes, not three. The split of WHAT belongs on the panel has not
 // changed — this is a layout consequence: adding the clock row left 46 px
 // under the last setting, which is not a list. Favourites get their own card
 // and room to show full team names.
-#define PANE_COUNT 4
+#define PANE_COUNT 5
 #define ROW_H      56
 #define ROW_PITCH  57
 #define ROWS_MAX    6
@@ -92,6 +94,7 @@ static uint8_t   s_tzPage;
 
 // Debounced save — see the file header.
 static bool     s_dirty;
+static bool     s_leaguesDirty;   // a league change forces a poll on flush
 static uint32_t s_dirtyAt;
 
 lv_obj_t* uiSettingsRoot() { return s_root; }
@@ -106,6 +109,7 @@ static void flushNow() {
   if (!s_dirty) return;
   s_dirty = false;
   settingsSave();
+  if (s_leaguesDirty) { s_leaguesDirty = false; webPollNow(); }
   if (s_dirtyDot) lv_obj_add_flag(s_dirtyDot, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -176,8 +180,374 @@ static void switchSet(lv_obj_t* sw, bool on) {
 }
 
 // ── events ─────────────────────────────────────────────────────────────────
+
+// ── SPORTS — which leagues fill the board beyond the favourites ────────────
+//
+// The invariant this pane breaks, and how it is honoured: the device still
+// ships knowing NO leagues. The registry arrives from GET /v1/catalog
+// (leagues-only, ~1.3 KB) when the pane first opens, cached for the session;
+// offline, the pane degrades to (stored CSV ∪ tonight's board) with a note.
+//
+// The cap is real and asymmetric — api.cpp stops parsing league counts at
+// MAX_LEAGUES(12), so a 13th selection would silently vanish from the header.
+// The meter therefore counts AUTO leagues (kept on by a favourite) against
+// the 12, drawn dimmer and first, so "four of my twelve are spoken for" is
+// visible rather than discovered.
+#define SP_FAMS   8
+#define SP_SLOTS  8            // 2 cols x 4 rows per page
+
+static lv_obj_t* s_spMeterLbl;
+static lv_obj_t* s_spTick[MAX_LEAGUES];
+static lv_obj_t* s_spMsg;                 // cap warning / AUTO explanation / offline
+static lv_obj_t* s_spFam[SP_FAMS], *s_spFamLbl[SP_FAMS], *s_spFamCnt[SP_FAMS], *s_spFamEdge[SP_FAMS];
+static lv_obj_t* s_spPill[SP_SLOTS], *s_spPillName[SP_SLOTS], *s_spPillSub[SP_SLOTS],
+               *s_spPillState[SP_SLOTS], *s_spPillEdge[SP_SLOTS];
+static lv_obj_t* s_spPager;
+static uint8_t   s_spFamSel = 4;          // soccer has the most; a fine default
+static uint8_t   s_spPage;
+static bool      s_spKicked;              // catalog fetch attempted this session
+
+static const char* kFamName[SP_FAMS] =
+  { "FOOTBALL", "BASKETBALL", "HOCKEY", "BASEBALL", "SOCCER", "TENNIS", "GOLF", "RACING" };
+
+/** Proxy families plus the UI-only split of `other` by slug — a five-entry
+ *  static map, not registry knowledge. Unknown future slugs land in RACING,
+ *  which is wrong for them and right for not hiding them entirely. */
+static uint8_t famOf(const char* slug, const char* family) {
+  if (strcmp(family, "football") == 0)   return 0;
+  if (strcmp(family, "basketball") == 0) return 1;
+  if (strcmp(family, "hockey") == 0)     return 2;
+  if (strcmp(family, "baseball") == 0)   return 3;
+  if (strcmp(family, "soccer") == 0)     return 4;
+  if (strcmp(slug, "atp") == 0 || strcmp(slug, "wta") == 0)   return 5;
+  if (strcmp(slug, "pga") == 0 || strcmp(slug, "lpga") == 0)  return 6;
+  return 7;
+}
+
+/** The working catalog: the fetched one, or a degraded set synthesised from
+ *  (stored CSV ∪ tonight's board) so the pane still works offline. */
+static uint8_t spCatalog(CatEntry* out, uint8_t cap) {
+  if (g_catalogLoaded) {
+    const uint8_t n = g_catalogCount < cap ? g_catalogCount : cap;
+    memcpy(out, g_catalog, n * sizeof(CatEntry));
+    return n;
+  }
+  uint8_t n = 0;
+  auto add = [&](const char* slug) {
+    if (!slug[0] || n >= cap) return;
+    for (uint8_t i = 0; i < n; i++) if (strcmp(out[i].slug, slug) == 0) return;
+    CatEntry& c = out[n++];
+    memset(&c, 0, sizeof c);
+    strncpy(c.slug, slug, sizeof c.slug - 1);
+    size_t j = 0;
+    for (; slug[j] && j < sizeof c.label - 1; j++) c.label[j] = (char)toupper((unsigned char)slug[j]);
+    c.label[j] = '\0';
+  };
+  for (uint8_t i = 0; i < g_leagueCount; i++) add(g_leagues[i].slug);
+  // The stored CSV too — an enabled league with no game tonight must be
+  // visible, or the user cannot turn it off.
+  const char* csv = g_set.leagues.c_str();
+  char slug[10]; size_t k = 0;
+  for (size_t i = 0; ; i++) {
+    const char ch = csv[i];
+    if (ch == ',' || ch == '\0') {
+      slug[k] = '\0'; if (k) add(slug); k = 0;
+      if (!ch) break;
+    } else if (k < sizeof slug - 1) slug[k++] = ch;
+  }
+  return n;
+}
+
+/** Leagues kept on by a favourite — the proxy re-merges them regardless, so
+ *  the pane must refuse to pretend they can be turned off. */
+static uint8_t spAutoList(char out[][10], uint8_t cap) {
+  uint8_t n = 0;
+  char lg[10], id[14];
+  for (uint8_t i = 0; i < favCount() && n < cap; i++) {
+    if (!favAt(i, lg, sizeof lg, id, sizeof id)) continue;
+    bool dup = false;
+    for (uint8_t k = 0; k < n; k++) if (strcmp(out[k], lg) == 0) { dup = true; break; }
+    if (!dup) { strncpy(out[n], lg, 10); out[n][9] = '\0'; n++; }
+  }
+  return n;
+}
+
+static bool spSelHas(const char* slug) {
+  const char* csv = g_set.leagues.c_str();
+  const size_t sl = strlen(slug);
+  for (const char* p2 = strstr(csv, slug); p2; p2 = strstr(p2 + 1, slug)) {
+    const bool a = (p2 == csv) || p2[-1] == ',';
+    const bool b = p2[sl] == ',' || p2[sl] == '\0';
+    if (a && b) return true;
+  }
+  return false;
+}
+
+static void spSelToggle(const char* slug, bool on) {
+  String next;
+  const char* csv = g_set.leagues.c_str();
+  char cur[10]; size_t k = 0;
+  for (size_t i = 0; ; i++) {
+    const char ch = csv[i];
+    if (ch == ',' || ch == '\0') {
+      cur[k] = '\0';
+      if (k && strcmp(cur, slug) != 0) {
+        if (next.length()) next += ',';
+        next += cur;
+      }
+      k = 0;
+      if (!ch) break;
+    } else if (k < sizeof cur - 1) cur[k++] = ch;
+  }
+  if (on) {
+    if (next.length()) next += ',';
+    next += slug;
+  }
+  g_set.leagues = next;
+  s_leaguesDirty = true;
+  markDirty();
+}
+
+static void renderSports();
+
+static void onSpFam(lv_event_t* e) {
+  s_spFamSel = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+  s_spPage = 0;
+  renderSports();
+}
+static void onSpPager(lv_event_t*) { s_spPage ^= 1; renderSports(); }
+
+static void onSpPill(lv_event_t* e) {
+  const int slot = (int)(intptr_t)lv_event_get_user_data(e);
+  static CatEntry cat[CAT_MAX];
+  const uint8_t n = spCatalog(cat, CAT_MAX);
+  char autoLg[MAX_LEAGUES][10];
+  const uint8_t nAuto = spAutoList(autoLg, MAX_LEAGUES);
+
+  uint8_t idx = 0;
+  for (uint8_t i = 0; i < n; i++) {
+    if (famOf(cat[i].slug, cat[i].family) != s_spFamSel) continue;
+    if (idx / SP_SLOTS == s_spPage && (idx % SP_SLOTS) == slot) {
+      bool isAuto = false;
+      for (uint8_t a = 0; a < nAuto; a++)
+        if (strcmp(autoLg[a], cat[i].slug) == 0) { isAuto = true; break; }
+      if (isAuto) {
+        char msg[64];
+        snprintf(msg, sizeof msg, "%s STAYS ON WHILE A FAVOURITE PLAYS THERE", cat[i].label);
+        lv_label_set_text(s_spMsg, msg);
+        lv_obj_set_style_text_color(s_spMsg, C_INK2, 0);
+        return;
+      }
+      const bool on = spSelHas(cat[i].slug);
+      if (!on) {
+        uint8_t total = nAuto;
+        for (uint8_t c2 = 0; c2 < n; c2++)
+          if (spSelHas(cat[c2].slug)) {
+            bool dup = false;
+            for (uint8_t a = 0; a < nAuto; a++)
+              if (strcmp(autoLg[a], cat[c2].slug) == 0) { dup = true; break; }
+            if (!dup) total++;
+          }
+        if (total >= MAX_LEAGUES) {
+          lv_label_set_text(s_spMsg, "AT LIMIT - TURN ONE OFF TO ADD ANOTHER");
+          lv_obj_set_style_text_color(s_spMsg, C_WARN, 0);
+          return;
+        }
+      }
+      spSelToggle(cat[i].slug, !on);
+      renderSports();
+      return;
+    }
+    idx++;
+  }
+}
+
+static void buildSports(lv_obj_t* p) {
+  label(p, 24, 14, "Your favourite teams always show. Pick the leagues that fill the rest.",
+        C_INK2, F_BODY);
+  s_spMeterLbl = label(p, 560, 40, "", C_INK2, F_NUM);
+  for (uint8_t i = 0; i < MAX_LEAGUES; i++) {
+    s_spTick[i] = lv_obj_create(p);
+    lv_obj_remove_style_all(s_spTick[i]);
+    lv_obj_set_size(s_spTick[i], 8, 10);
+    lv_obj_set_pos(s_spTick[i], 630 + i * 11, 42);
+    lv_obj_set_style_bg_color(s_spTick[i], C_EDGE, 0);
+    lv_obj_set_style_bg_opa(s_spTick[i], LV_OPA_COVER, 0);
+  }
+  s_spMsg = label(p, 24, 40, "", C_INK3, F_MICRO);
+  lv_obj_set_style_text_letter_space(s_spMsg, 1, 0);
+
+  for (uint8_t f = 0; f < SP_FAMS; f++) {
+    const int y = 66 + f * 40;
+    s_spFam[f] = lv_obj_create(p);
+    lv_obj_remove_style_all(s_spFam[f]);
+    lv_obj_set_size(s_spFam[f], 140, 34);
+    lv_obj_set_pos(s_spFam[f], 16, y);
+    lv_obj_set_style_radius(s_spFam[f], 7, 0);
+    lv_obj_set_style_bg_color(s_spFam[f], C_SURF_3, 0);
+    lv_obj_set_style_bg_opa(s_spFam[f], LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(s_spFam[f], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_spFam[f], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_spFam[f], onSpFam, LV_EVENT_CLICKED, (void*)(intptr_t)f);
+    s_spFamEdge[f] = lv_obj_create(p);
+    lv_obj_remove_style_all(s_spFamEdge[f]);
+    lv_obj_set_size(s_spFamEdge[f], 3, 34);
+    lv_obj_set_pos(s_spFamEdge[f], 13, y);
+    lv_obj_set_style_bg_color(s_spFamEdge[f], C_LIVE, 0);
+    lv_obj_set_style_bg_opa(s_spFamEdge[f], LV_OPA_COVER, 0);
+    lv_obj_add_flag(s_spFamEdge[f], LV_OBJ_FLAG_HIDDEN);
+    s_spFamLbl[f] = label(p, 28, y + 10, kFamName[f], C_INK3, F_MICRO);
+    lv_obj_set_style_text_letter_space(s_spFamLbl[f], 1, 0);
+    s_spFamCnt[f] = label(p, 128, y + 10, "", C_INK3, F_MICRO);
+  }
+
+  for (uint8_t i = 0; i < SP_SLOTS; i++) {
+    const int x = 176 + (i % 2) * 288, y = 66 + (i / 2) * 62;
+    s_spPill[i] = lv_obj_create(p);
+    lv_obj_remove_style_all(s_spPill[i]);
+    lv_obj_set_size(s_spPill[i], 276, 52);
+    lv_obj_set_pos(s_spPill[i], x, y);
+    lv_obj_set_style_radius(s_spPill[i], 9, 0);
+    lv_obj_set_style_bg_opa(s_spPill[i], LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_spPill[i], 1, 0);
+    lv_obj_clear_flag(s_spPill[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_spPill[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_spPill[i], onSpPill, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+    s_spPillEdge[i] = lv_obj_create(s_spPill[i]);
+    lv_obj_remove_style_all(s_spPillEdge[i]);
+    lv_obj_set_size(s_spPillEdge[i], 3, 52);
+    lv_obj_set_pos(s_spPillEdge[i], 0, 0);
+    lv_obj_set_style_bg_color(s_spPillEdge[i], C_LIVE, 0);
+    lv_obj_set_style_bg_opa(s_spPillEdge[i], LV_OPA_COVER, 0);
+    s_spPillName[i] = label(s_spPill[i], 14, 8, "", C_INK, F_BODY);
+    s_spPillSub[i] = label(s_spPill[i], 14, 30, "", C_INK3, F_MICRO);
+    lv_obj_set_style_text_letter_space(s_spPillSub[i], 1, 0);
+    s_spPillState[i] = label(s_spPill[i], 0, 18, "", C_LIVE, F_MICRO);
+    lv_obj_set_width(s_spPillState[i], 56);
+    lv_obj_set_style_text_align(s_spPillState[i], LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_x(s_spPillState[i], 276 - 14 - 56);
+  }
+
+  s_spPager = lv_obj_create(p);
+  lv_obj_remove_style_all(s_spPager);
+  lv_obj_set_size(s_spPager, 120, 30);
+  lv_obj_set_pos(s_spPager, 176, 66 + 4 * 62);
+  lv_obj_set_style_radius(s_spPager, 7, 0);
+  lv_obj_set_style_bg_color(s_spPager, C_FROST_2, 0);
+  lv_obj_set_style_bg_opa(s_spPager, LV_OPA_COVER, 0);
+  lv_obj_add_flag(s_spPager, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(s_spPager, onSpPager, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* pgl = label(s_spPager, 0, 0, "MORE >", C_INK2, F_MICRO);
+  lv_obj_center(pgl);
+  label(p, 560, 66 + 4 * 62 + 8, "saved when you leave", C_INK3, F_MICRO);
+}
+
+static void renderSports() {
+  static CatEntry cat[CAT_MAX];
+  const uint8_t n = spCatalog(cat, CAT_MAX);
+  char autoLg[MAX_LEAGUES][10];
+  const uint8_t nAuto = spAutoList(autoLg, MAX_LEAGUES);
+  auto isAuto = [&](const char* slug) {
+    for (uint8_t a = 0; a < nAuto; a++) if (strcmp(autoLg[a], slug) == 0) return true;
+    return false;
+  };
+
+  uint8_t nSel = 0;
+  for (uint8_t i = 0; i < n; i++)
+    if (spSelHas(cat[i].slug) && !isAuto(cat[i].slug)) nSel++;
+  const uint8_t total = (uint8_t)(nAuto + nSel);
+  char m[12];
+  snprintf(m, sizeof m, "%u / %u", (unsigned)total, (unsigned)MAX_LEAGUES);
+  lv_label_set_text(s_spMeterLbl, m);
+  lv_obj_set_style_text_color(s_spMeterLbl, total >= MAX_LEAGUES ? C_WARN : C_INK2, 0);
+  for (uint8_t i = 0; i < MAX_LEAGUES; i++) {
+    lv_color_t c = C_EDGE;
+    if (i < nAuto) c = C_EDGE_HI;                      // spoken for
+    else if (i < total) c = total >= MAX_LEAGUES ? C_WARN : C_LIVE_SD;
+    lv_obj_set_style_bg_color(s_spTick[i], c, 0);
+  }
+  if (total >= MAX_LEAGUES) {
+    lv_label_set_text(s_spMsg, "AT LIMIT - TURN ONE OFF TO ADD ANOTHER");
+    lv_obj_set_style_text_color(s_spMsg, C_WARN, 0);
+  } else if (!g_catalogLoaded) {
+    lv_label_set_text(s_spMsg, g_catalogInFlight
+        ? "LOADING THE CATALOG..."
+        : "COULD NOT REACH THE PROXY - SHOWING WHAT'S ON THE BOARD");
+    lv_obj_set_style_text_color(s_spMsg, C_INK3, 0);
+  } else if (!g_set.leagues.length()) {
+    lv_label_set_text(s_spMsg, "USING THE DEFAULT SET - ANY CHANGE MAKES IT YOURS");
+    lv_obj_set_style_text_color(s_spMsg, C_INK3, 0);
+  } else {
+    lv_label_set_text(s_spMsg, "");
+  }
+
+  for (uint8_t f = 0; f < SP_FAMS; f++) {
+    uint8_t cnt = 0, present = 0;
+    for (uint8_t i = 0; i < n; i++) {
+      if (famOf(cat[i].slug, cat[i].family) != f) continue;
+      present++;
+      if (spSelHas(cat[i].slug) || isAuto(cat[i].slug)) cnt++;
+    }
+    const bool sel = (f == s_spFamSel);
+    lv_obj_set_style_bg_opa(s_spFam[f], sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    sel ? lv_obj_clear_flag(s_spFamEdge[f], LV_OBJ_FLAG_HIDDEN)
+        : lv_obj_add_flag(s_spFamEdge[f], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_text_color(s_spFamLbl[f], sel ? C_INK : C_INK3, 0);
+    char cb[6];
+    snprintf(cb, sizeof cb, "%u", (unsigned)cnt);
+    lv_label_set_text(s_spFamCnt[f], present ? cb : "-");
+    lv_obj_set_style_text_color(s_spFamCnt[f], cnt ? C_INK : C_INK3, 0);
+  }
+
+  uint8_t famTotal = 0;
+  for (uint8_t i = 0; i < n; i++)
+    if (famOf(cat[i].slug, cat[i].family) == s_spFamSel) famTotal++;
+  const bool paged = famTotal > SP_SLOTS;
+  if (!paged) s_spPage = 0;
+  paged ? lv_obj_clear_flag(s_spPager, LV_OBJ_FLAG_HIDDEN)
+        : lv_obj_add_flag(s_spPager, LV_OBJ_FLAG_HIDDEN);
+
+  uint8_t idx = 0, slot = 0;
+  for (uint8_t i = 0; i < n && slot < SP_SLOTS; i++) {
+    if (famOf(cat[i].slug, cat[i].family) != s_spFamSel) continue;
+    if (idx++ / SP_SLOTS != s_spPage) continue;
+    const uint8_t sl = slot++;
+    lv_obj_clear_flag(s_spPill[sl], LV_OBJ_FLAG_HIDDEN);
+    const bool au = isAuto(cat[i].slug);
+    const bool on = au || spSelHas(cat[i].slug);
+    lv_label_set_text(s_spPillName[sl], cat[i].label);
+    uint8_t liveN = 0;
+    for (uint8_t k = 0; k < g_leagueCount; k++)
+      if (strcmp(g_leagues[k].slug, cat[i].slug) == 0) liveN = g_leagues[k].live;
+    char sub[26];
+    if (au)         snprintf(sub, sizeof sub, "KEPT ON BY A FAVOURITE");
+    else if (liveN) snprintf(sub, sizeof sub, "%u LIVE NOW", (unsigned)liveN);
+    else            snprintf(sub, sizeof sub, "%s", cat[i].slug);
+    lv_label_set_text(s_spPillSub[sl], sub);
+    lv_obj_set_style_text_color(s_spPillSub[sl],
+        (!au && liveN) ? C_LIVE_SD : C_INK3, 0);
+
+    lv_label_set_text(s_spPillState[sl], au ? "AUTO" : (on ? "ON" : "-"));
+    lv_obj_set_style_text_color(s_spPillState[sl],
+        au ? C_INK3 : (on ? C_LIVE : C_INK3), 0);
+    lv_obj_set_style_bg_color(s_spPill[sl], on ? C_SURF_2 : lv_color_hex(0x0B111B), 0);
+    lv_obj_set_style_border_color(s_spPill[sl], on ? C_LIVE_SD : lv_color_hex(0x1E2836), 0);
+    lv_obj_set_style_border_opa(s_spPill[sl], on ? 150 : LV_OPA_COVER, 0);
+    on ? lv_obj_clear_flag(s_spPillEdge[sl], LV_OBJ_FLAG_HIDDEN)
+       : lv_obj_add_flag(s_spPillEdge[sl], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_text_color(s_spPillName[sl], on ? C_INK : C_INK2, 0);
+  }
+  for (; slot < SP_SLOTS; slot++) lv_obj_add_flag(s_spPill[slot], LV_OBJ_FLAG_HIDDEN);
+}
+
+static void spKick() {
+  if (!s_spKicked) { s_spKicked = true; apiCatalogStart(); }
+  renderSports();
+}
+
 static void onTab(lv_event_t* e) {
   s_tab = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+  if (s_tab == 1) spKick();      // first open fetches the catalog
   uiSettingsRender();
 }
 static void onDone(lv_event_t*) { uiSettingsClose(); }
@@ -293,11 +663,12 @@ void uiSettingsInit(lv_obj_t* parent) {
   label(bar, 20, 15, "SETTINGS", C_INK, F_ABBR);
 
   // Three panes do not justify a 176 px rail, so the selector is a segment.
-  static const char* kTab[PANE_COUNT] = { "BOARD", "TEAMS", "NETWORK", "SYSTEM" };
+  static const char* kTab[PANE_COUNT] = { "BOARD", "SPORTS", "TEAMS", "NETWORK", "SYSTEM" };
   for (uint8_t i = 0; i < PANE_COUNT; i++) {
     s_seg[i] = lv_btn_create(bar);
-    lv_obj_set_size(s_seg[i], 104, 36);
-    lv_obj_set_pos(s_seg[i], 196 + i * 108, 6);
+    // Five tabs: 88 wide on a 92 pitch from x=172 (was 104/108 from 196).
+    lv_obj_set_size(s_seg[i], 88, 36);
+    lv_obj_set_pos(s_seg[i], 172 + i * 92, 6);
     lv_obj_set_style_radius(s_seg[i], 8, 0);
     lv_obj_set_style_border_width(s_seg[i], 0, 0);
     lv_obj_add_event_cb(s_seg[i], onTab, LV_EVENT_CLICKED, (void*)(intptr_t)i);
@@ -375,7 +746,10 @@ void uiSettingsInit(lv_obj_t* parent) {
 
   // ── TEAMS ────────────────────────────────────────────────────────────────
   {
-    lv_obj_t* p = s_pane[1];
+    buildSports(s_pane[1]);
+  }
+  {
+    lv_obj_t* p = s_pane[2];
     lv_obj_t* fr = row(p, 0, "Your teams", nullptr);
     s_favCount = label(fr, 160, (ROW_H - 13) / 2, "", C_INK3, F_NUM);
     lv_obj_t* pageBtn = lv_btn_create(fr);
@@ -437,7 +811,7 @@ void uiSettingsInit(lv_obj_t* parent) {
 
   // ── NETWORK ──────────────────────────────────────────────────────────────
   {
-    lv_obj_t* p = s_pane[2];
+    lv_obj_t* p = s_pane[3];
     static const char* kRow[5] = { "Wi-Fi", "Proxy", "Proxy token", "Panel password", "Time zone" };
     for (uint8_t i = 0; i < 5; i++) {
       lv_obj_t* r = row(p, i, kRow[i], i == 4 ? onTzOpen : nullptr);
@@ -528,7 +902,7 @@ void uiSettingsInit(lv_obj_t* parent) {
 
   // ── SYSTEM ───────────────────────────────────────────────────────────────
   {
-    lv_obj_t* p = s_pane[3];
+    lv_obj_t* p = s_pane[4];
     static const char* kRow[5] = { "Version", "Address", "Uptime", "Heap", "Last poll" };
     for (uint8_t i = 0; i < 5; i++) {
       lv_obj_t* r = row(p, i, kRow[i], nullptr);
@@ -648,7 +1022,7 @@ void uiSettingsOpen() {
 
 void uiSettingsTzOpen() { onTzOpen(nullptr); }
 
-void uiSettingsTab(uint8_t i) { s_tab = i < PANE_COUNT ? i : 0; uiSettingsRender(); }
+void uiSettingsTab(uint8_t i) { s_tab = i < PANE_COUNT ? i : 0; if (s_tab == 1) spKick(); uiSettingsRender(); }
 
 void uiSettingsClose() {
   flushNow();
@@ -660,5 +1034,9 @@ void uiSettingsClose() {
 }
 
 void uiSettingsTick() {
+  if (g_catalogReady) {
+    g_catalogReady = false;
+    if (s_tab == 1 && uiCurrent() == SCR_SETTINGS) renderSports();
+  }
   if (s_dirty && millis() - s_dirtyAt > 1500) flushNow();
 }
