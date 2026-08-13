@@ -66,6 +66,73 @@ static int      c_wpW = -1;
 
 static const StateInk& HI() { return kStateInk[SI_HERO]; }
 
+// ── motion (C.6) ───────────────────────────────────────────────────────────
+// Event-driven and finite, never continuous. Every animation is skippable:
+// a game change, a rebuild or a new value mid-flight sets the end state
+// directly. Motion never delays data — the caches store the FINAL value the
+// moment it arrives; only the pixels catch up.
+static lv_timer_t* s_odo[2];          // M2: the hero-score odometer
+static int32_t     s_odoCur[2], s_odoTo[2];
+static uint8_t     s_odoStep[2];
+static char        c_id[24];          // hero game identity — animations are per-game
+static int32_t     s_wpCur = -1;      // M5: displayed win-prob width (cache holds target)
+
+static void odoKill(int k) {
+  if (s_odo[k]) { lv_timer_del(s_odo[k]); s_odo[k] = nullptr; }
+}
+static void odoTick(lv_timer_t* tm) {
+  const int k = (int)(intptr_t)tm->user_data;
+  s_odoStep[k]++;
+  int32_t v;
+  if (s_odoStep[k] >= 6) {
+    v = s_odoTo[k];
+    s_odo[k] = nullptr;
+    lv_timer_del(tm);
+  } else {
+    // ease-out: big early steps, settling at the end — 6 frames over 200 ms.
+    const float t = s_odoStep[k] / 6.0f;
+    const float pr = 1.0f - (1.0f - t) * (1.0f - t);
+    v = s_odoCur[k] + (int32_t)((s_odoTo[k] - s_odoCur[k]) * pr + 0.5f);
+  }
+  char b[8];
+  snprintf(b, sizeof b, "%d", (int)v);
+  if (s_score[k]) lv_label_set_text(s_score[k], b);
+}
+static void odoStart(int k, int32_t from, int32_t to) {
+  odoKill(k);
+  s_odoCur[k] = from;
+  s_odoTo[k] = to;
+  s_odoStep[k] = 0;
+  // 33 ms period: the first frame lands on the tick AFTER the poll's own
+  // one-shot invalidation burst, so the two never share a flush.
+  s_odo[k] = lv_timer_create(odoTick, 33, (void*)(intptr_t)k);
+}
+
+// M8, salvaged hero-only: when the layout flips and the hero APPEARS, it
+// steps in over two 80 ms opacity rungs instead of popping. The full-screen
+// variant was rejected — four steps of a 384k px screen cannot hold a 60 ms
+// cadence (~230 ms of flush each); the hero card alone is alert-class.
+static lv_timer_t* s_rev;
+static uint8_t     s_revStep;
+static void revKill() {
+  if (s_rev) { lv_timer_del(s_rev); s_rev = nullptr; }
+  if (s_root) lv_obj_set_style_opa(s_root, LV_OPA_COVER, 0);
+}
+static void revTick(lv_timer_t* tm) {
+  s_revStep++;
+  if (s_root) lv_obj_set_style_opa(s_root, s_revStep == 1 ? 170 : LV_OPA_COVER, 0);
+  if (s_revStep >= 2) { s_rev = nullptr; lv_timer_del(tm); }
+}
+
+static void wpExec(void* var, int32_t v) {
+  (void)var;
+  s_wpCur = v;
+  const int inner = HERO_W - 2 * HERO_PAD;
+  lv_obj_set_size(s_wp[0], inner - v, 4);
+  lv_obj_set_size(s_wp[1], v, 4);
+  lv_obj_set_pos(s_wp[1], HERO_PAD + inner - v, HERO_H - 10);
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────
 static lv_obj_t* lab(lv_obj_t* p, int x, int y, lv_color_t c, const lv_font_t* f,
                      int w = 0, lv_text_align_t al = LV_TEXT_ALIGN_LEFT, int track = 0) {
@@ -211,6 +278,13 @@ void uiHeroInit(lv_obj_t* parent) {
 
   // Caches must match the objects' real state at build time, or the first
   // update sees a match and skips the write it was meant to make cheap.
+  // Labels were just recreated: any in-flight animation now points at dead
+  // objects. Kill first, reset the motion state with the caches.
+  odoKill(0); odoKill(1);
+  if (s_rev) { lv_timer_del(s_rev); s_rev = nullptr; }   // old root is gone
+  lv_anim_del(s_wp, nullptr);
+  s_wpCur = -1;
+  c_id[0] = '\0';
   memset(c_league, 0, sizeof c_league);
   memset(c_status, 0, sizeof c_status);
   memset(c_foot, 0, sizeof c_foot);
@@ -235,7 +309,13 @@ void uiHeroInit(lv_obj_t* parent) {
 
 lv_obj_t* uiHeroRoot() { return s_root; }
 int8_t    uiHeroGameIdx() { return s_gameIdx; }
-void      uiHeroHide() { if (s_root) lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); s_gameIdx = -1; }
+void      uiHeroHide() {
+  if (s_root) lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+  s_gameIdx = -1;
+  odoKill(0); odoKill(1);
+  revKill();
+  lv_anim_del(s_wp, nullptr);
+}
 
 // ── update ─────────────────────────────────────────────────────────────────
 static void setText(lv_obj_t* o, char* cache, size_t cap, const char* v) {
@@ -255,6 +335,7 @@ void uiHeroShow(int8_t gameIdx) {
   s_gameIdx = gameIdx;
   const Game& g = g_board[gameIdx];
   const StateInk& si = HI();
+  const bool appearing = lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN);
 
   // League only. This carried "NHL  ·  SPORTSNET" and the footer carried the
   // broadcast too, so the hero printed the channel twice — once in each corner.
@@ -272,11 +353,23 @@ void uiHeroShow(int8_t gameIdx) {
     setText(s_sub[k], c_sub[k], sizeof c_sub[k], side[k]->rec);
 
     if (g.state == GS_PRE) {
+      odoKill(k);
       if (c_score[k] != -2) { c_score[k] = -2; lv_label_set_text(s_score[k], "-"); }
     } else if (c_score[k] != (int32_t)side[k]->score) {
+      // M2: the moment the product exists for gets a moment — a 200 ms
+      // odometer roll, only for a same-game live increase. Everything else
+      // (new game, correction downward, final) writes directly.
+      const int32_t from = c_score[k];
       c_score[k] = side[k]->score;
-      snprintf(buf, sizeof buf, "%u", side[k]->score);
-      lv_label_set_text(s_score[k], buf);
+      const bool sameG = (strncmp(c_id, g.id, sizeof c_id - 1) == 0);
+      if (sameG && g.state == GS_LIVE && from >= 0 &&
+          (int32_t)side[k]->score > from) {
+        odoStart(k, from, (int32_t)side[k]->score);
+      } else {
+        odoKill(k);
+        snprintf(buf, sizeof buf, "%u", side[k]->score);
+        lv_label_set_text(s_score[k], buf);
+      }
     }
 
     // The name takes every pixel the score's ACTUAL digits leave free —
@@ -368,15 +461,27 @@ void uiHeroShow(int8_t gameIdx) {
     const int inner = HERO_W - 2 * HERO_PAD;   // the hero's own inset, not 18
     const int hw = inner * g.winProbHome / 100;
     if (c_wpW != hw) {
-      c_wpW = hw;
-      // Away on the left, home on the right, meeting where the probability
-      // sits. Two rects and one width write per change.
-      lv_obj_set_size(s_wp[0], inner - hw, 4);
+      const bool first = (c_wpW == -1);
+      c_wpW = hw;                 // the cache holds the TARGET immediately
       lv_obj_set_pos(s_wp[0], HERO_PAD, HERO_H - 10);
-      lv_obj_set_size(s_wp[1], hw, 4);
-      lv_obj_set_pos(s_wp[1], HERO_PAD + inner - hw, HERO_H - 10);
       lv_obj_set_style_bg_color(s_wp[0], lv_color_hex(teamInkOn(g.away.color, si.fill)), 0);
       lv_obj_set_style_bg_color(s_wp[1], lv_color_hex(teamInkOn(g.home.color, si.fill)), 0);
+      lv_anim_del(s_wp, nullptr);
+      if (first || s_wpCur < 0) {
+        wpExec(nullptr, hw);      // first appearance snaps — nothing to move from
+      } else {
+        // M5: the one value that changes continuously finally LOOKS like it
+        // does. ~2.4k px/frame for 300 ms, driven through s_wpCur so the
+        // pixels and the cache can never disagree at rest.
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, s_wp);
+        lv_anim_set_values(&a, s_wpCur, hw);
+        lv_anim_set_time(&a, 300);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_set_exec_cb(&a, wpExec);
+        lv_anim_start(&a);
+      }
       for (int k = 0; k < 2; k++) lv_obj_clear_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN);
     }
   }
@@ -388,5 +493,17 @@ void uiHeroShow(int8_t gameIdx) {
   setText(s_footR, c_footR, sizeof c_footR, g.bcast);
   setText(s_play, c_play, sizeof c_play, g.lastPlay);
 
+  // Identity captured LAST — the score branch above compares against the
+  // PREVIOUS occupant to decide whether a change is a same-game event
+  // (animate) or a new tenant (write directly).
+  strncpy(c_id, g.id, sizeof c_id - 1);
+  c_id[sizeof c_id - 1] = '\0';
+
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+  if (appearing) {
+    revKill();
+    lv_obj_set_style_opa(s_root, 85, 0);
+    s_revStep = 0;
+    s_rev = lv_timer_create(revTick, 80, nullptr);
+  }
 }

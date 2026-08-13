@@ -30,6 +30,7 @@ static lv_obj_t* s_bar;
 static lv_obj_t* s_lblPage;
 static lv_obj_t* s_dot[8];
 static void zaDotsLayout();    // fwd — dots clamp past the measured pill
+
 static uint8_t   s_dotCount;
 
 // ── the refreshed header ───────────────────────────────────────────────────
@@ -44,6 +45,26 @@ static lv_obj_t* s_zaTotal;    // "/ 9" — the denominator
 static lv_obj_t* s_zaDiv;      // zone A|B divider — rides zone A's measured width
 static int s_pillX = 148;      // the pill's computed x — lv_obj_get_x is stale pre-layout
 static uint8_t s_dotsShown;    // visible page dots — so zone A can re-clamp them
+// M4: the live count rolls like the hero score — 6 frames, 200 ms, ease-out.
+// The cache stores the FINAL string the moment it arrives; only the label
+// catches up. ~5k px per frame (one F_DISPLAY label bbox).
+static lv_timer_t* s_zaOdo;
+static int s_zaOdoCur, s_zaOdoTo;
+static uint8_t s_zaOdoStep;
+static void zaOdoKill() { if (s_zaOdo) { lv_timer_del(s_zaOdo); s_zaOdo = nullptr; } }
+static void zaOdoTick(lv_timer_t* tm) {
+  s_zaOdoStep++;
+  int v;
+  if (s_zaOdoStep >= 6) { v = s_zaOdoTo; s_zaOdo = nullptr; lv_timer_del(tm); }
+  else {
+    const float t = s_zaOdoStep / 6.0f;
+    const float pr = 1.0f - (1.0f - t) * (1.0f - t);
+    v = s_zaOdoCur + (int)((s_zaOdoTo - s_zaOdoCur) * pr + 0.5f);
+  }
+  char b[8];
+  snprintf(b, sizeof b, "%d", v);
+  if (s_zaCount) lv_label_set_text(s_zaCount, b);
+}
 static lv_obj_t* s_pill;       // zone B: names the filter, opens the rail
 static lv_obj_t* s_pillLbl;
 static lv_obj_t* s_pillChev;   // the disclosure chevron, pinned to the pill's edge
@@ -780,6 +801,7 @@ static void buildBar() {
     lv_obj_add_flag(s_dot[i], LV_OBJ_FLAG_HIDDEN);
   }
   s_lblPage = nullptr;
+  zaOdoKill();                   // the label it drove was just recreated
   c_zaCount[0] = c_zaTotal[0] = c_pill[0] = '\0';
   // The zone C cache guards a label this function just recreated EMPTY. A
   // surviving cache suppresses the first write after any rebuild — and
@@ -817,12 +839,22 @@ int8_t uiBoardTileGame(uint8_t slot) {
   return slot < TILES_PER_PAGE ? s_tile[slot].gameIdx : -1;
 }
 
+// M9: 3-step opacity in, hold, 3-step out — the proven alert-class pattern
+// (9.2k px per step, one-shot). The container's opa composites its subtree
+// through a small transient layer; at 220x42 that is alert-sized, not the
+// tile-grid case the old tri-opacity scheme was removed for.
+static uint32_t s_toastPhase;   // 0 idle; else millis of the phase edge
+static void toastOpa(uint8_t o) {
+  if (s_toast) lv_obj_set_style_opa(s_toast, o, 0);
+}
 void uiToast(const char* text) {
   if (!s_toast) return;
   lv_label_set_text(s_toastLbl, text);
+  toastOpa(80);
   lv_obj_clear_flag(s_toast, LV_OBJ_FLAG_HIDDEN);
   lv_obj_move_foreground(s_toast);
-  s_toastUntil = millis() + 1200;
+  s_toastPhase = millis();
+  s_toastUntil = millis() + 1440;   // 120 in + 1200 hold + 120 out
 }
 
 // ── score flare ────────────────────────────────────────────────────────────
@@ -847,18 +879,34 @@ void uiBoardFlash(const char* gameId) {
 }
 
 static void flashTick() {
-  if (s_flashTile < 0 || millis() < s_flashUntil) return;
+  if (s_flashTile < 0) return;
+  const uint32_t now = millis();
+  if (now < s_flashUntil) return;
   TileUI& t = s_tile[s_flashTile];
-  if (t.root) lv_obj_set_width(t.edge, EDGE_W);
-  s_flashTile = -1;
+  if (!t.root) { s_flashTile = -1; return; }
+  // M3: ease the 9 px flare back to 3 over 240 ms (~360 px per write)
+  // instead of snapping — attribution with an exhale.
+  const uint32_t el = now - s_flashUntil;
+  const uint32_t cl = el > 240 ? 240 : el;
+  lv_obj_set_width(t.edge, EDGE_W * 3 - (int)(EDGE_W * 2 * cl / 240));
+  if (el >= 240) s_flashTile = -1;
 }
 
 void uiToastTick() {
   flashTick();
   if (!s_toast || !s_toastUntil) return;
-  if (millis() >= s_toastUntil) {
+  const uint32_t now = millis();
+  const uint32_t el = now - s_toastPhase;
+  if (now >= s_toastUntil) {
     s_toastUntil = 0;
+    toastOpa(LV_OPA_COVER);       // reset for the next show
     lv_obj_add_flag(s_toast, LV_OBJ_FLAG_HIDDEN);
+  } else if (s_toastUntil - now <= 120) {
+    toastOpa(s_toastUntil - now <= 60 ? 80 : 165);
+  } else if (el <= 120) {
+    toastOpa(el <= 60 ? 80 : 165);
+  } else {
+    toastOpa(LV_OPA_COVER);
   }
 }
 
@@ -1557,7 +1605,19 @@ void uiSetStatus() {
   char buf[8];
   if (live) {
     snprintf(buf, sizeof buf, "%u", live);
-    setTextCached(s_zaCount, c_zaCount, sizeof c_zaCount, buf);
+    if (strcmp(c_zaCount, buf) != 0) {
+      const int oldV = c_zaCount[0] ? atoi(c_zaCount) : -1;
+      strncpy(c_zaCount, buf, sizeof c_zaCount - 1);
+      c_zaCount[sizeof c_zaCount - 1] = '\0';
+      if (oldV >= 0 && (int)live != oldV) {
+        zaOdoKill();
+        s_zaOdoCur = oldV; s_zaOdoTo = (int)live; s_zaOdoStep = 0;
+        s_zaOdo = lv_timer_create(zaOdoTick, 33, nullptr);
+      } else {
+        zaOdoKill();
+        lv_label_set_text(s_zaCount, buf);
+      }
+    }
     lv_obj_clear_flag(s_zaCount, LV_OBJ_FLAG_HIDDEN);
     char tot[10];
     snprintf(tot, sizeof tot, "/ %u", (unsigned)g_gameCount);
@@ -1579,6 +1639,7 @@ void uiSetStatus() {
     lv_obj_set_style_text_color(s_zaLive, C_LIVE_SD, 0);
     lv_obj_set_style_bg_color(s_zaDot, C_LIVE, 0);
   } else {
+    zaOdoKill();
     lv_obj_add_flag(s_zaCount, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_zaTotal, LV_OBJ_FLAG_HIDDEN);
     const char* nt = g_gameCount ? "NO GAMES LIVE" : "NO GAMES";
