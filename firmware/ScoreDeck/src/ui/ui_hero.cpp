@@ -23,9 +23,14 @@
 #include "../core/state.h"
 #include "../net/logos.h"
 
-#define HERO_X   16
+// Two geometries, one anatomy. Closed rail: the shipped 508 at x=16. Open
+// rail: 430 at x=156 — the audit verified the internals fit (the hero digits
+// are Archivo Condensed at 31.4-34.5 px/glyph, so even a 3-digit score is
+// ~104 px, not the 130 the spec's F_NUM-based arithmetic feared). Everything
+// x-positioned from the RIGHT is derived from W so both widths share code.
+#define HERO_X   (uiRailOpen() ? 156 : 16)
+#define HERO_W   (uiRailOpen() ? 430 : 508)
 #define HERO_Y   60
-#define HERO_W  508
 #define HERO_H  268
 #define HERO_ROW_H 84          // one side's band, badge included
 #define HERO_PAD   24
@@ -54,6 +59,7 @@ static char     c_league[24], c_status[16], c_foot[24], c_footR[13], c_play[44];
 static char     c_name[2][24], c_sub[2][10], c_logoKey[2][10];
 static int32_t  c_score[2];
 static uint32_t c_color[2], c_scoreInk[2], c_edgeC, c_bloom[2];
+static int      c_nameW[2];
 static bool     c_logoVis[2], c_badgeVis[2], c_dotVis, c_footDotVis, c_edgeVis;
 static int      c_edgeY;
 static int      c_wpW = -1;
@@ -124,9 +130,9 @@ void uiHeroInit(lv_obj_t* parent) {
   const int innerW = HERO_W - 2 * HERO_PAD;
 
   s_league = lab(s_root, HERO_PAD, 18, HI().ink3, F_MICRO, 200, LV_TEXT_ALIGN_LEFT, 1);
-  s_dot    = dot(s_root, 330, 26);
+  s_dot    = dot(s_root, HERO_W - 178, 26);
   pulseRegister(s_dot);
-  s_status = lab(s_root, 344, 14, HI().ink, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
+  s_status = lab(s_root, HERO_W - 164, 14, HI().ink, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
   hairline(s_root, HERO_PAD - 4, 46, innerW + 8);
 
   // The leading-row marker. Vertical, at x=0, aligned to whichever side is
@@ -167,11 +173,11 @@ void uiHeroInit(lv_obj_t* parent) {
     // hero and finding the glyph's bounding box put its centre at child
     // (466, y+18) — 46 px right and 12 px down from the second guess.
     s_bloom[k] = bloomCreate(s_root, 220, 220);
-    if (s_bloom[k]) lv_obj_set_pos(s_bloom[k], 466 - 110, (y + 18) - 110);
+    if (s_bloom[k]) lv_obj_set_pos(s_bloom[k], (HERO_W - 42) - 110, (y + 18) - 110);
 
-    s_name[k] = lab(s_root, 92, y, HI().ink, F_DISPLAY, 240);
-    s_sub[k]  = lab(s_root, 92, y + 34, HI().ink3, F_NUM, 240);
-    s_score[k] = lab(s_root, 340, y - 8, HI().ink2, F_HERO, 144, LV_TEXT_ALIGN_RIGHT);
+    s_name[k] = lab(s_root, 92, y, HI().ink, F_DISPLAY, HERO_W - 268);
+    s_sub[k]  = lab(s_root, 92, y + 34, HI().ink3, F_NUM, HERO_W - 268);
+    s_score[k] = lab(s_root, HERO_W - 168, y - 8, HI().ink2, F_HERO, 144, LV_TEXT_ALIGN_RIGHT);
   }
   hairline(s_root, HERO_PAD - 4, 148, innerW + 8);
 
@@ -198,7 +204,7 @@ void uiHeroInit(lv_obj_t* parent) {
   // then the win-probability bar at the very foot.
   s_footDot = dot(s_root, HERO_PAD, 224);
   s_foot    = lab(s_root, HERO_PAD + 14, 218, C_LIVE, F_NUM, 180);
-  s_footR   = lab(s_root, 344, 218, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
+  s_footR   = lab(s_root, HERO_W - 164, 218, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
   s_play    = lab(s_root, HERO_PAD, 240, HI().ink2, F_MICRO, HERO_W - 2 * HERO_PAD);
   lv_obj_set_style_text_letter_space(s_play, 1, 0);
 
@@ -217,6 +223,7 @@ void uiHeroInit(lv_obj_t* parent) {
   c_scoreInk[0] = c_scoreInk[1] = 0xFFFFFFFF;
   c_edgeC = 0xFFFFFFFF;
   c_bloom[0] = c_bloom[1] = 0xFFFFFFFF;
+  c_nameW[0] = c_nameW[1] = -1;
   c_edgeY = -1;
   c_logoVis[0] = c_logoVis[1] = false;
   c_badgeVis[0] = c_badgeVis[1] = true;
@@ -269,6 +276,26 @@ void uiHeroShow(int8_t gameIdx) {
       c_score[k] = side[k]->score;
       snprintf(buf, sizeof buf, "%u", side[k]->score);
       lv_label_set_text(s_score[k], buf);
+    }
+
+    // The name takes every pixel the score's ACTUAL digits leave free —
+    // measured, not reserved. A fixed reservation sized for "999" cut
+    // "MAPLE LEAFS" to "MAPLE..." at 430 wide beside a one-digit score; the
+    // audit's rule is to gate on the rendered width, so a long name only
+    // shortens in the case that actually collides.
+    {
+      char st[8];
+      snprintf(st, sizeof st, "%u", (unsigned)side[k]->score);
+      const char* shown = (g.state == GS_PRE) ? "-" : st;
+      const int sw = (int)lv_txt_get_width(shown, (uint32_t)strlen(shown),
+                                           F_HERO, 0, LV_TEXT_FLAG_NONE);
+      int nameW = (HERO_W - HERO_PAD - sw - 14) - 92;
+      if (nameW < 140) nameW = 140;
+      if (c_nameW[k] != nameW) {
+        c_nameW[k] = nameW;
+        lv_obj_set_width(s_name[k], nameW);
+        lv_obj_set_width(s_sub[k], nameW);
+      }
     }
 
     const bool leading = (g.state != GS_PRE) &&

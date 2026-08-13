@@ -94,6 +94,35 @@ void uiLedgerInit(lv_obj_t* parent) {
 }
 
 lv_obj_t* uiLedgerRoot() { return s_root; }
+
+/**
+ * Two column layouts: bare-plate at 24/412 with 348-wide columns when the
+ * rail is closed, and 156/482 with 300-wide columns when it is open — the
+ * rail owns x<140 and the old left column would vanish underneath it.
+ * Field widths compress with the column; every cell already carries
+ * LV_LABEL_LONG_DOT, so the loss is an ellipsis, not an overlap.
+ */
+void uiLedgerLayout(bool railOpen) {
+  if (!s_root) return;
+  static const int xO[2] = { 156, 482 };
+  static const int xC[2] = { 24, 412 };
+  static const int colXO[2][3] = { { 0, 72, 192 }, { 0, 90, 192 } };
+  static const int colWO[2][3] = { { 68, 116, 108 }, { 86, 98, 108 } };
+  const int colW = railOpen ? 300 : LED_COL_W;
+  for (int c = 0; c < 2; c++) {
+    const int x = railOpen ? xO[c] : xC[c];
+    lv_obj_set_x(s_hdr[c], x);
+    lv_obj_set_pos(s_rule[c], x, 28);
+    lv_obj_set_width(s_rule[c], colW);
+    for (int r = 0; r < LED_ROWS; r++)
+      for (int f = 0; f < 3; f++) {
+        const int cx = railOpen ? colXO[c][f] : kColX[c][f];
+        const int cw = railOpen ? colWO[c][f] : kColW[c][f];
+        lv_obj_set_x(s_cell[c][r][f], x + cx);
+        lv_obj_set_width(s_cell[c][r][f], cw);
+      }
+  }
+}
 void uiLedgerHide() { if (s_root) lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
 
 /**

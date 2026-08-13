@@ -159,10 +159,7 @@ static uint8_t effectiveDensity() {
   if (n <= 9)  return DEN_STANDARD;
   return DEN_DENSE;
 }
-// FEATURE is suppressed while the rail is open: this iteration ships the
-// rail-open state as the 3-column grid only (the narrowed-hero variant is
-// iteration 2, per the approved scope split).
-static bool isFeature() { return effectiveDensity() == LAY_FEATURE && !uiRailOpen(); }
+static bool isFeature() { return effectiveDensity() == LAY_FEATURE; }
 
 /**
  * The layout in force — BY VALUE, because the rail rewrites geometry that
@@ -176,12 +173,20 @@ static bool isFeature() { return effectiveDensity() == LAY_FEATURE && !uiRailOpe
  */
 static DensitySpec spec() {
   const uint8_t e = effectiveDensity();
-  DensitySpec d = kDensity[(e == LAY_FEATURE && uiRailOpen()) ? DEN_STANDARD : e];
+  DensitySpec d = kDensity[e];
   if (uiRailOpen()) {
-    d.cols = d.cols < 3 ? d.cols : 3;
-    d.gut  = 10;
-    d.tileW = (uint16_t)((632 - 10 * (d.cols - 1)) / d.cols);
-    d.marg = 156;                       // 140 rail + 16 gap
+    if (e == LAY_FEATURE) {
+      // The narrowed-hero variant: hero 430 at x=156 (ui_hero derives its own
+      // internals from the rail state), tile strip at x=596, 192 wide — the
+      // one column the remaining 204 px minus a gutter can hold.
+      d.marg = 596;
+      d.tileW = 192;
+    } else {
+      d.cols = d.cols < 3 ? d.cols : 3;
+      d.gut  = 10;
+      d.tileW = (uint16_t)((632 - 10 * (d.cols - 1)) / d.cols);
+      d.marg = 156;                     // 140 rail + 16 gap
+    }
   } else if (d.marg < 16) {
     d.marg = 16;                        // clear the sliver
   }
@@ -1213,6 +1218,7 @@ void uiBoardRefresh() {
     uint8_t nUsed = 0;
     if (heroIdx >= 0) used[nUsed++] = heroIdx;
     for (uint8_t i = 0; i < filled; i++) used[nUsed++] = s_tile[i].gameIdx;
+    uiLedgerLayout(uiRailOpen());
     uiLedgerRender(s_order, g_gameCount, used, nUsed, passesFilter);
   } else {
     layoutFiller(d, filled, per);

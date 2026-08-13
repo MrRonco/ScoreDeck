@@ -108,6 +108,9 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
                     const int8_t* exclude, uint8_t nExclude,
                     bool (*passes)(const Game&));
 void uiLedgerHide();
+/** Reposition the ledger's columns for the rail state — a one-shot layout
+ *  write on toggle, not a per-poll cost. */
+void uiLedgerLayout(bool railOpen);
 lv_obj_t* uiLedgerRoot();
 
 /** Game index shown in tile `slot`, or -1. Lets the logo fetcher bound its
