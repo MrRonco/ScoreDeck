@@ -447,6 +447,8 @@ uint16_t webNextPollSecs() {
   return s_nextPollMs > now ? (uint16_t)((s_nextPollMs - now) / 1000) : 0;
 }
 
+void webPollNow() { s_nextPollMs = 0; }
+
 void webCollectDiag(WebDiag& d) {
   d.resetReason  = resetReasonName();
   d.pollAgeS     = s_lastPollMs ? (millis() - s_lastPollMs) / 1000 : 0;

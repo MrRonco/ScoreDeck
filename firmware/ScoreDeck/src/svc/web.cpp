@@ -235,6 +235,7 @@ static void apiConfigGet() {
   // exception and it is deliberate — see apiToken() below.
   j += ",\"hasToken\":" + String(g_set.token.length() ? "true" : "false");
   j += ",\"hasPass\":" + String(g_set.panelPass.length() ? "true" : "false");
+  j += ",\"leagues\":" + jstr(g_set.leagues);
   j += ",\"rgn\":" + jstr(g_set.region);
   j += ",\"tz\":" + jstr(g_set.tz);
   j += ",\"tzi\":" + jstr(tzForProxy());
@@ -329,6 +330,41 @@ static void apiFavsPost() {
   if (!validFavs(favs, why)) return fail(400, why.c_str());
   g_set.favs = favs;
   settingsSave();
+  sendJson("{\"ok\":true}");
+}
+
+/**
+ * Which leagues fill the board beyond the favourites. This route is the whole
+ * of "EDIT SPORTS · IN BROWSER" until the on-device pane lands: g_set.leagues
+ * had ZERO writers in the shipped firmware — the audit traced every path —
+ * so the rail's deep link needed a real endpoint, not a pointer.
+ *
+ * Validation mirrors validFavs(): reject, never truncate. Slugs are the
+ * proxy registry's shapes (lowercase alnum and dots, "eng.1"); the count cap
+ * is the device's real MAX_LEAGUES — api.cpp stops parsing league counts at
+ * 12, so a 13th selection would silently vanish from the header.
+ */
+static void apiLeaguesPost() {
+  if (!guard()) return;
+  String lg;
+  if (!jsonField(bodyOf(), "leagues", lg)) return fail(400, "no leagues in the request");
+  if (lg.length() > 96) return fail(400, "list too long");
+  uint8_t n = 0;
+  for (size_t i = 0; i < lg.length();) {
+    size_t j = i;
+    while (j < lg.length() && lg[j] != ',') {
+      const char c = lg[j];
+      const bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.';
+      if (!ok) return fail(400, "bad league slug");
+      j++;
+    }
+    if (j == i) return fail(400, "empty league entry");
+    if (++n > MAX_LEAGUES) return fail(400, "more than 12 leagues");
+    i = j + 1;
+  }
+  g_set.leagues = lg;
+  settingsSave();
+  webPollNow();          // the board should reflect the choice immediately
   sendJson("{\"ok\":true}");
 }
 
@@ -572,6 +608,7 @@ void webBegin() {
   s_srv.on("/api/config", HTTP_GET, apiConfigGet);
   s_srv.on("/api/config", HTTP_POST, apiConfigPost);
   s_srv.on("/api/favs", HTTP_POST, apiFavsPost);
+  s_srv.on("/api/leagues", HTTP_POST, apiLeaguesPost);
   s_srv.on("/api/state", HTTP_GET, apiState);
   s_srv.on("/api/diag", HTTP_GET, apiDiag);
   s_srv.on("/api/probe", HTTP_GET, apiProbe);

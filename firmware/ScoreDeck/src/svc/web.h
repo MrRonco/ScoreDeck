@@ -32,3 +32,5 @@ struct WebDiag {
 void webCollectDiag(WebDiag& out);
 /** Seconds until the next scheduled poll. */
 uint16_t webNextPollSecs();
+/** Queue an immediate poll — a settings change should show up now. */
+void webPollNow();

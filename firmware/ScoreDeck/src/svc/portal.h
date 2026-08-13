@@ -7,7 +7,7 @@
 // Served straight from flash with sendContent_P, so it costs no heap. That
 // matters more than it looks: the web server runs inside the same loop() that
 // drives the display, so response time IS panel stall time, and building this
-// page into a String first would put 29.1 KB through the allocator on
+// page into a String first would put 31.0 KB through the allocator on
 // every request.
 #pragma once
 #include <pgmspace.h>
@@ -149,6 +149,17 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
 
   <!-- TEAMS -->
   <section class="view" id="v-teams">
+    <h2>Sports on the board <span id="lgN" class="host"></span></h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0">Your favourite teams always show.
+        Pick the leagues that fill the rest of the board — up to 12. Empty
+        means the proxy's default set.</p>
+      <div id="lgList" class="list"><small>Load the catalog below to pick from
+        a list, or the board is using the current set.</small></div>
+      <div class="row"><div class="k"></div>
+        <div class="v"><button id="saveLg">Save sports</button></div></div>
+    </div>
+
     <h2>Your teams <span id="favN" class="host"></span></h2>
     <div class="card"><div id="favs" class="list"></div></div>
     <p class="hint">Order breaks ties on the board — the first team wins.</p>
@@ -332,6 +343,40 @@ const REGIONS = [['us','United States'],['ca','Canada'],['gb','United Kingdom'],
   ['fr','France'],['es','Spain'],['it','Italy'],['mx','Mexico'],['in','India']];
 const DENS = ['Roomy','Standard','Dense','Auto'];
 
+function renderLeagues() {
+  const box = document.getElementById('lgList');
+  if (!CAT || !CAT.leagues) return;
+  const on = new Set((CFG.leagues || '').split(',').filter(Boolean));
+  box.innerHTML = '';
+  for (const l of CAT.leagues) {
+    const row = document.createElement('label');
+    row.className = 'row';
+    row.style.cursor = 'pointer';
+    row.innerHTML = '<div class="k"><input type="checkbox" data-slug="' + l.slug +
+      '"' + (on.has(l.slug) ? ' checked' : '') + '> ' + l.label +
+      ' <small>' + l.slug + '</small></div>';
+    box.appendChild(row);
+  }
+  countLeagues();
+  box.addEventListener('change', countLeagues);
+}
+function countLeagues() {
+  const n = document.querySelectorAll('#lgList input:checked').length;
+  document.getElementById('lgN').textContent = n ? n + ' / 12' : '';
+  for (const cb of document.querySelectorAll('#lgList input'))
+    if (!cb.checked) cb.disabled = n >= 12;
+}
+document.getElementById('saveLg').addEventListener('click', async () => {
+  const slugs = [...document.querySelectorAll('#lgList input:checked')]
+    .map(cb => cb.dataset.slug);
+  try {
+    await api('/api/leagues', { method: 'POST',
+      body: JSON.stringify({ leagues: slugs.join(',') }) });
+    toast('Sports saved — the board is refreshing');
+    CFG.leagues = slugs.join(',');
+  } catch (e) { toast('Save failed: ' + e.message); }
+});
+
 async function loadConfig() {
   CFG = await api('/api/config');
   $('#host').textContent = CFG.host + ' · ' + CFG.ip;
@@ -471,6 +516,7 @@ async function loadCatalog() {
     // is not the same as the proxy being down — say so, and try the device.
     $('#catInfo').textContent = 'Direct fetch failed — trying via the panel…';
     try { CAT = await api('/api/relay?p=' + encodeURIComponent('/v1/catalog?teams=1')); }
+    renderLeagues();
     catch { $('#catInfo').textContent = 'Could not reach the proxy from here or from the panel.';
             return; }
   }
