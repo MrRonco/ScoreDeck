@@ -19,6 +19,7 @@
 #include "scenarios.h"
 #include "lint_fonts.h"
 #include "mockup.h"
+#include "spike.h"
 #include "../firmware/ScoreDeck/src/config.h"
 #include "../firmware/ScoreDeck/src/core/state.h"
 #include "../firmware/ScoreDeck/src/ui/ui.h"
@@ -30,11 +31,26 @@ static SDL_Texture*  s_tex;
 static uint16_t      s_fb[SCR_W * SCR_H];      // our own copy, for --shot
 static int           s_scenario = SCN_TYPICAL;
 
+// Read by spike.cpp to measure pixels-flushed per redraw against the
+// documented ~50,000 px/tick budget (pulse.cpp). Not used outside --spike.
+volatile uint32_t g_spikePx = 0;
+volatile uint32_t g_spikeFlushN = 0;
+volatile int32_t  g_spikeX1 = 0, g_spikeY1 = 0, g_spikeX2 = 0, g_spikeY2 = 0;
+
 /**
  * Flush handler. Writes into s_fb as well as the texture so --shot works with
  * no window at all — SDL_INIT_VIDEO is never called in headless mode.
  */
 static void flush_cb(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
+  g_spikePx += (uint32_t)(a->x2 - a->x1 + 1) * (uint32_t)(a->y2 - a->y1 + 1);
+  if (g_spikeFlushN == 0) { g_spikeX1 = a->x1; g_spikeY1 = a->y1; g_spikeX2 = a->x2; g_spikeY2 = a->y2; }
+  else {
+    if (a->x1 < g_spikeX1) g_spikeX1 = a->x1;
+    if (a->y1 < g_spikeY1) g_spikeY1 = a->y1;
+    if (a->x2 > g_spikeX2) g_spikeX2 = a->x2;
+    if (a->y2 > g_spikeY2) g_spikeY2 = a->y2;
+  }
+  g_spikeFlushN++;
   for (int y = a->y1; y <= a->y2; y++) {
     for (int x = a->x1; x <= a->x2; x++) {
       s_fb[y * SCR_W + x] = px[(y - a->y1) * (a->x2 - a->x1 + 1) + (x - a->x1)].full;
@@ -59,7 +75,7 @@ static void read_cb(lv_indev_drv_t*, lv_indev_data_t* data) {
 }
 
 /** 24-bit BMP, bottom-up — the same shape the device's own capture uses. */
-static bool writeBmp(const char* path) {
+bool writeBmp(const char* path) {
   FILE* f = fopen(path, "wb");
   if (!f) { fprintf(stderr, "cannot write %s\n", path); return false; }
   const int rowBytes = (SCR_W * 3 + 3) & ~3;
@@ -128,6 +144,7 @@ int main(int argc, char** argv) {
   const char* shot = nullptr;
   const char* screen = nullptr;
   bool lint = false;
+  bool spike = false;
   int  mock = -1;
   int  density = -1;
   for (int i = 1; i < argc; i++) {
@@ -135,6 +152,7 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--scenario") && i + 1 < argc) s_scenario = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--screen") && i + 1 < argc)   screen = argv[++i];
     else if (!strcmp(argv[i], "--lint"))                     lint = true;
+    else if (!strcmp(argv[i], "--spike"))                    spike = true;
     else if (!strcmp(argv[i], "--mock") && i + 1 < argc)     mock = atoi(argv[++i]);
     // AUTO now resolves to the FEATURE layout whenever one to three games are
     // live, which is most evenings — so the three grid densities became hard
@@ -144,7 +162,7 @@ int main(int argc, char** argv) {
   }
   if (s_scenario < 0 || s_scenario >= SCN_COUNT) s_scenario = SCN_TYPICAL;
 
-  if (SDL_Init((shot || lint) ? 0 : SDL_INIT_VIDEO) != 0) {
+  if (SDL_Init((shot || lint || spike) ? 0 : SDL_INIT_VIDEO) != 0) {
     fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
     return 1;
   }
@@ -197,6 +215,14 @@ int main(int argc, char** argv) {
   showScreen(screen);
   scenarioReapply(s_scenario);
   if (mock >= 0) mockupApply(mock);
+
+  if (spike) {
+    uiShow(SCR_BOARD);
+    lv_refr_now(nullptr);
+    spikeRun();
+    SDL_Quit();
+    return 0;
+  }
 
   if (lint) {
     // Every screen, on every scenario. A face is only wrong for the text it is

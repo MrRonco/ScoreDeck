@@ -37,7 +37,7 @@ LDLIBS   = $(SDL_LIBS)
 FW_CXX = $(wildcard $(SRC)/ui/*.cpp) $(SRC)/core/state.cpp
 FW_C   = $(wildcard $(SRC)/assets/*.c)
 LV_C   = $(shell find $(LVGL)/src -name '*.c')
-OWN    = main.cpp fakes.cpp scenarios.cpp lint_fonts.cpp mockup.cpp
+OWN    = main.cpp fakes.cpp scenarios.cpp lint_fonts.cpp mockup.cpp spike.cpp
 
 OBJ = $(patsubst %,$(BUILD)/%.o,$(notdir $(OWN)) $(notdir $(FW_CXX)) $(notdir $(FW_C))) \
       $(patsubst $(LVGL)/%,$(BUILD)/lv/%.o,$(LV_C))
@@ -84,9 +84,13 @@ mocks: $(BIN)
 lint: $(BIN)
 	@./$(BIN) --lint
 
+spike: $(BIN)
+	@mkdir -p shots
+	@./$(BIN) --spike
+
 clean:
 	@rm -rf $(BUILD) $(BIN) shots shot.bmp
 
 -include $(OBJ:.o=.d)
 
-.PHONY: all clean shots screens lint mocks
+.PHONY: all clean shots screens lint mocks spike
