@@ -153,13 +153,32 @@ static uint8_t liveVisible() {
   return n;
 }
 
+/** Can this game hold the hero cell? A leaderboard or a grid has no two
+ *  sides, no score pair and no team colours — the real panel promoted the
+ *  FedEx St. Jude Championship into the two-sided hero anatomy and rendered
+ *  empty badges around a phantom 0-0. Tennis (SET) is eligible: sides,
+ *  names, and sets-as-score all read correctly at hero scale. */
+static bool heroEligible(const Game& g) {
+  return g.state == GS_LIVE && g.model != SM_LEADERBOARD && g.model != SM_GRID;
+}
+
+static uint8_t liveHeroable() {
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < g_gameCount; i++)
+    if (heroEligible(g_board[i]) && passesFilter(g_board[i])) n++;
+  return n;
+}
+
 static uint8_t effectiveDensity() {
   if (g_set.density != DEN_AUTO) return g_set.density;
   uint8_t n = 0;
   for (uint8_t i = 0; i < g_gameCount; i++)
     if (passesFilter(g_board[i])) n++;
   const uint8_t live = liveVisible();
-  if (live >= 1 && live <= 3) return LAY_FEATURE;
+  // FEATURE needs something that can actually BE a hero. A lone live golf
+  // tournament stays on the grid, where the leaderboard tile renders it
+  // properly; it must never be squeezed into the two-sided hero.
+  if (live >= 1 && live <= 3 && liveHeroable() >= 1) return LAY_FEATURE;
   if (n <= 6)  return DEN_ROOMY;
   if (n <= 9)  return DEN_STANDARD;
   return DEN_DENSE;
@@ -931,7 +950,7 @@ void uiBoardRefresh() {
   if (feature) {
     for (uint8_t oi = 0; oi < g_gameCount; oi++) {
       const Game& g = g_board[s_order[oi]];
-      if (passesFilter(g) && g.state == GS_LIVE) { heroIdx = (int8_t)s_order[oi]; break; }
+      if (passesFilter(g) && heroEligible(g)) { heroIdx = (int8_t)s_order[oi]; break; }
     }
     if (heroIdx >= 0) uiHeroShow(heroIdx); else uiHeroHide();
     g_page = 0;
