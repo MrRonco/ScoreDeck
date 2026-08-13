@@ -179,6 +179,11 @@ LogoChip chipSolve(const uint8_t* rgb565a8, int w, int h, uint32_t against);
  *  carried white text at 1.58:1; this takes it to 12.1:1. */
 lv_color_t badgeInk(uint32_t fill);
 
+/** Truncate a badge label to what a chip of `size` px can hold without the
+ *  rounded rect cutting glyphs mid-stroke. F_MICRO is 7.8 px/glyph mono;
+ *  no ellipsis — two clean letters beat one letter and dots. */
+void badgeLabelFit(char* dst, size_t cap, const char* src, int size);
+
 // ── FONT COVERAGE — read before choosing a face ────────────────────────────
 //
 // These are generated with the narrowest glyph range each job needs, which is

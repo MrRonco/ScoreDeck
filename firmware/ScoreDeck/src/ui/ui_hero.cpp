@@ -302,11 +302,18 @@ void uiHeroShow(int8_t gameIdx) {
                          ((k == 1) == g.leaderHome) && (g.away.score != g.home.score);
     // 0xFFFFFFFF = "not leading, use si.ink2" — see the grid for why ink2 is
     // never round-tripped through the cache.
-    const uint32_t want = leading ? teamInkOn(side[k]->color, si.fill) : 0xFFFFFFFF;
+    // Same emphasis rule as the tiles: the leader lifts to 5.5:1, the
+    // trailer drops to ink3, ties stay ink2. The hero only ever shows live.
+    uint32_t want;
+    if (g.away.score == g.home.score)
+      want = 0xFFFFFFFFu;
+    else
+      want = leading ? teamInkOn(side[k]->color, si.fill, 5.5f) : 0xFFFFFFFEu;
     if (c_scoreInk[k] != want) {
       c_scoreInk[k] = want;
       lv_obj_set_style_text_color(s_score[k],
-          want == 0xFFFFFFFF ? si.ink2 : lv_color_hex(want), 0);
+          want == 0xFFFFFFFFu ? si.ink2 :
+          want == 0xFFFFFFFEu ? si.ink3 : lv_color_hex(want), 0);
     }
 
     // The signature. Only the leading side, only while the game is live —

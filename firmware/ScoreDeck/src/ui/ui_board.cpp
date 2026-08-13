@@ -1061,6 +1061,16 @@ void uiBoardRefresh() {
       // the proxy puts the readable form in `name` for SET. It also needs a
       // different FACE: F_ABBR has no lowercase glyphs (see theme.h).
       lv_obj_set_style_text_font(t.abbr[k], isSet ? F_BODY : F_ABBR, 0);
+      // Tennis names are prose and must not run into the score column —
+      // "N. Budkov Kjaer" touched the digits at 186 px on the real overnight
+      // board. Width-gated with an ellipsis; club abbreviations stay free.
+      if (isSet) {
+        lv_obj_set_width(t.abbr[k], d.tileW - (TILE_PAD_X + d.badge + 10) - 68);
+        lv_obj_set_height(t.abbr[k], (int)lv_font_get_line_height(F_BODY));
+        lv_label_set_long_mode(t.abbr[k], LV_LABEL_LONG_DOT);
+      } else {
+        lv_obj_set_width(t.abbr[k], LV_SIZE_CONTENT);
+      }
       setTextCached(t.abbr[k], t.cAbbr[k], sizeof t.cAbbr[k],
                     isSet ? side[k]->name : side[k]->abbr);
       setTextCached(t.rec[k],  t.cRec[k],  sizeof t.cRec[k],  side[k]->rec);
@@ -1091,11 +1101,30 @@ void uiBoardRefresh() {
       // 0xFFFFFFFF is the "not leading, use this state's ink2" sentinel — ink2
       // is not round-tripped through the cache, because lv_color_t is RGB565
       // here and reconstructing it would quietly shift the colour.
-      const uint32_t want = leading ? teamInkOn(side[k]->color, si.fill) : 0xFFFFFFFF;
+      // Sentinels (lv_color_t is RGB565; round-tripping a state ink through
+      // the cache would shift it):
+      //   0xFFFFFFFF  si.ink2  — ties and PRE
+      //   0xFFFFFFFE  si.ink   — a FINAL's winner (finals surrender colour)
+      //   0xFFFFFFFD  si.ink3  — the recessive side (FINAL loser, LIVE trailer)
+      //
+      // The LIVE leader lifts its team colour to 5.5:1, not teamInk()'s 3.5 —
+      // the review measured the leader at 3.5 against the trailer's neutral
+      // 7.3, so the winning score was the DIMMEST number in the tile. The
+      // trailer now drops to ink3 (~4.5) and emphasis points the right way;
+      // lift() saturates before it whitens, so the hue survives the extra lift.
+      uint32_t want;
+      if (g.state == GS_FINAL)
+        want = leading ? 0xFFFFFFFEu : 0xFFFFFFFDu;
+      else if (g.state == GS_PRE || g.away.score == g.home.score)
+        want = 0xFFFFFFFFu;
+      else
+        want = leading ? teamInkOn(side[k]->color, si.fill, 5.5f) : 0xFFFFFFFDu;
       if (t.cScoreInk[k] != want) {
         t.cScoreInk[k] = want;
-        lv_obj_set_style_text_color(
-            t.score[k], want == 0xFFFFFFFF ? si.ink2 : lv_color_hex(want), 0);
+        lv_obj_set_style_text_color(t.score[k],
+            want == 0xFFFFFFFFu ? si.ink2 :
+            want == 0xFFFFFFFEu ? si.ink  :
+            want == 0xFFFFFFFDu ? si.ink3 : lv_color_hex(want), 0);
       }
 
       // Followed teams keep a ring — see buildTile().
@@ -1147,7 +1176,14 @@ void uiBoardRefresh() {
           lv_label_set_text(t.badgeLbl[k], "");
         } else if (!img) {
           teamBadgeSet(t.badge[k], side[k]->color);   // restores fill AND ink
-          lv_label_set_text(t.badgeLbl[k], side[k]->abbr);
+          {
+        // A four-letter tennis fragment ("TRUN") is wider than a 26 px chip
+        // and the rounded rect cut the glyphs mid-stroke on 12 of 14 chips
+        // on the real board. Truncate to what the chip can actually hold.
+        char fit[6];
+        badgeLabelFit(fit, sizeof fit, side[k]->abbr, d.badge);
+        lv_label_set_text(t.badgeLbl[k], fit);
+      }
         }
       }
       setHiddenCached(t.badge[k], &t.cBadgeVis[k], img && !chip.opa);

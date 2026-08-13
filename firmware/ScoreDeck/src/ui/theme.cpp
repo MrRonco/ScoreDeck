@@ -254,6 +254,15 @@ const StateInk kStateInk[4] = {
     lv_color_hex(0xF3F7FB), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8), 0x222E40 },
 };
 
+void badgeLabelFit(char* dst, size_t cap, const char* src, int size) {
+  // 7.8125 px advance, 3 px of breathing room each side.
+  int maxG = (size - 6) * 16 / 125;
+  if (maxG < 1) maxG = 1;
+  size_t i = 0;
+  for (; src[i] && i < (size_t)maxG && i < cap - 1; i++) dst[i] = src[i];
+  dst[i] = '\0';
+}
+
 void themeInit() {
   buildLinearLut();
 
