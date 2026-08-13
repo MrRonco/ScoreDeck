@@ -22,7 +22,7 @@
 #define GRID_ROWS     3
 #define TILES_PER_PAGE 12   // largest density (Dense 4x3), not the default
 
-#define TILE_PAD_X   13
+#define TILE_PAD_X   16
 #define TILE_PAD_Y   11
 #define BADGE_S      30
 #define EDGE_W        3   // the signature edge light

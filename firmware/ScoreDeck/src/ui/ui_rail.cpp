@@ -226,7 +226,7 @@ void uiRailInit(lv_obj_t* parent) {
   lv_obj_set_pos(edge, RAIL_W - 1, 0);
   lv_obj_set_size(edge, 1, RAIL_H);
   lv_obj_set_style_bg_color(edge, C_LINE, 0);
-  lv_obj_set_style_bg_opa(edge, 26, 0);
+  lv_obj_set_style_bg_opa(edge, OPA_HAIR, 0);
 
   const uint8_t rows = (uint8_t)(1 + s_orderN);
   for (uint8_t r = 0; r < rows && r < RAIL_MAX_ROWS; r++) {
@@ -235,7 +235,8 @@ void uiRailInit(lv_obj_t* parent) {
     lv_obj_remove_style_all(s_rowBg[r]);
     lv_obj_set_pos(s_rowBg[r], 6, y - 3);
     lv_obj_set_size(s_rowBg[r], RAIL_W - 12, 26);
-    lv_obj_set_style_radius(s_rowBg[r], 6, 0);
+    lv_obj_set_style_radius(s_rowBg[r], R_MD, 0);
+    uiPressable(s_rowBg[r]);
     lv_obj_set_style_bg_color(s_rowBg[r], C_EDGE_HI, 0);
     lv_obj_set_style_bg_opa(s_rowBg[r], LV_OPA_TRANSP, 0);
     lv_obj_add_flag(s_rowBg[r], LV_OBJ_FLAG_CLICKABLE);
@@ -275,7 +276,7 @@ void uiRailInit(lv_obj_t* parent) {
     lv_obj_remove_style_all(s_rowUnder[r]);
     lv_obj_set_pos(s_rowUnder[r], 14, y + 15);
     lv_obj_set_size(s_rowUnder[r], 30, 2);
-    lv_obj_set_style_radius(s_rowUnder[r], 1, 0);
+    lv_obj_set_style_radius(s_rowUnder[r], R_XS, 0);
     lv_obj_set_style_bg_color(s_rowUnder[r], C_LIVE, 0);
     lv_obj_set_style_bg_opa(s_rowUnder[r], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_rowUnder[r], LV_OBJ_FLAG_HIDDEN);

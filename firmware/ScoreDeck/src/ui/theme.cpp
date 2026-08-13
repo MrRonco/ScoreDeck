@@ -239,16 +239,22 @@ LogoChip chipSolve(const uint8_t* px, int w, int h, uint32_t against) {
 // is why the values look arbitrary: each is the first step on a cool-neutral
 // ramp that clears its target ratio on that specific fill. ink >= 10:1,
 // ink2 >= 7:1, ink3 >= 4.5:1. Re-solve rather than eyeball if a surface moves.
+// ink2/ink3 are the two globals (hero-solved — see theme.h): fixed light inks
+// on darker surfaces only GAIN contrast, so the AA floor rises everywhere and
+// identical-role text finally renders in identical grey across adjacent tiles.
+// The one exception: final.ink2 keeps its own solve, because the global INK_2
+// (L* 75.6) sits 2.9 L* ABOVE final's deliberately dim primary (L* 78.5) and
+// would merge the tile's first and second tiers.
 const StateInk kStateInk[4] = {
   // pre — present but recessive
   { lv_color_hex(0x16202E), lv_color_hex(0x2E3A4C),
-    lv_color_hex(0xD2DEEA), lv_color_hex(0x9CACBE), lv_color_hex(0x78889A), 0x16202E },
+    lv_color_hex(0xD2DEEA), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8), 0x16202E },
   // live — full strength
   { lv_color_hex(0x1B2636), lv_color_hex(0x3A4759),
-    lv_color_hex(0xF3F7FB), lv_color_hex(0xA2B2C4), lv_color_hex(0x7E8EA0), 0x1B2636 },
+    lv_color_hex(0xF3F7FB), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8), 0x1B2636 },
   // final — quieter, but every tier still reads
   { lv_color_hex(0x101825), lv_color_hex(0x232E3E),
-    lv_color_hex(0xB6C4D2), lv_color_hex(0x95A5B7), lv_color_hex(0x728294), 0x101825 },
+    lv_color_hex(0xB6C4D2), lv_color_hex(0x95A5B7), lv_color_hex(0x8696A8), 0x101825 },
   // hero — the lightest surface on the panel, so the brightest inks
   { lv_color_hex(0x222E40), lv_color_hex(0x44526A),
     lv_color_hex(0xF3F7FB), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8), 0x222E40 },
@@ -287,20 +293,22 @@ void themeInit() {
   lv_style_init(&s_glass);
   lv_style_set_bg_color(&s_glass, C_FROST);
   lv_style_set_bg_opa(&s_glass, LV_OPA_COVER);
-  lv_style_set_border_color(&s_glass, C_EDGE);
+  lv_style_set_border_color(&s_glass, C_LINE);
   lv_style_set_border_width(&s_glass, 1);
-  lv_style_set_border_opa(&s_glass, LV_OPA_COVER);
-  lv_style_set_radius(&s_glass, 12);
+  lv_style_set_border_opa(&s_glass, OPA_EDGE);
+  lv_style_set_radius(&s_glass, R_LG);
   lv_style_set_pad_all(&s_glass, 0);
   lv_style_set_text_color(&s_glass, C_INK);
   lv_style_set_text_font(&s_glass, F_BODY);
 
+  // Press is an OUTLINE, never a fill — see uiPressable() in theme.h.
   lv_style_init(&s_glassPressed);
-  lv_style_set_bg_color(&s_glassPressed, lv_color_hex(0x243040));
-  lv_style_set_border_color(&s_glassPressed, C_EDGE_HI);
+  lv_style_set_border_color(&s_glassPressed, C_LIVE);
+  lv_style_set_border_opa(&s_glassPressed, 150);
+  lv_style_set_border_width(&s_glassPressed, 2);
 
   lv_style_init(&s_badge);
-  lv_style_set_radius(&s_badge, 7);
+  lv_style_set_radius(&s_badge, R_SM);
   lv_style_set_bg_opa(&s_badge, LV_OPA_COVER);
   lv_style_set_border_width(&s_badge, 0);
   lv_style_set_text_color(&s_badge, lv_color_white());
@@ -344,6 +352,10 @@ static void glassRelayout(lv_event_t* e) {
   lv_obj_set_pos(hi, r, 0);
   lv_obj_set_size(lo, sw, 2);
   lv_obj_set_pos(lo, r, h - 3);
+}
+
+void uiPressable(lv_obj_t* o) {
+  lv_obj_add_style(o, &s_glassPressed, LV_STATE_PRESSED);
 }
 
 lv_obj_t* glassPanel(lv_obj_t* parent, int x, int y, int w, int h, int radius) {

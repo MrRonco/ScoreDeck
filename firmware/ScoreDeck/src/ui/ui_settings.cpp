@@ -132,9 +132,8 @@ static lv_obj_t* row(lv_obj_t* pane, int idx, const char* title, lv_event_cb_t c
   lv_obj_set_size(r, 736, ROW_H);
   lv_obj_set_pos(r, 16, 16 + idx * ROW_PITCH);
   lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_bg_color(r, C_EDGE, LV_STATE_PRESSED);
-  lv_obj_set_style_bg_opa(r, LV_OPA_COVER, LV_STATE_PRESSED);
-  lv_obj_set_style_radius(r, 8, 0);
+  uiPressable(r);
+  lv_obj_set_style_radius(r, R_MD, 0);
   lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
   if (cb) {
     lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
@@ -383,7 +382,7 @@ static void buildSports(lv_obj_t* p) {
     lv_obj_remove_style_all(s_spFam[f]);
     lv_obj_set_size(s_spFam[f], 140, 34);
     lv_obj_set_pos(s_spFam[f], 16, y);
-    lv_obj_set_style_radius(s_spFam[f], 7, 0);
+    lv_obj_set_style_radius(s_spFam[f], R_MD, 0);
     lv_obj_set_style_bg_color(s_spFam[f], C_SURF_3, 0);
     lv_obj_set_style_bg_opa(s_spFam[f], LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(s_spFam[f], LV_OBJ_FLAG_SCROLLABLE);
@@ -407,7 +406,7 @@ static void buildSports(lv_obj_t* p) {
     lv_obj_remove_style_all(s_spPill[i]);
     lv_obj_set_size(s_spPill[i], 276, 52);
     lv_obj_set_pos(s_spPill[i], x, y);
-    lv_obj_set_style_radius(s_spPill[i], 9, 0);
+    lv_obj_set_style_radius(s_spPill[i], R_MD, 0);
     lv_obj_set_style_bg_opa(s_spPill[i], LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_spPill[i], 1, 0);
     lv_obj_clear_flag(s_spPill[i], LV_OBJ_FLAG_SCROLLABLE);
@@ -432,7 +431,7 @@ static void buildSports(lv_obj_t* p) {
   lv_obj_remove_style_all(s_spPager);
   lv_obj_set_size(s_spPager, 120, 30);
   lv_obj_set_pos(s_spPager, 176, 66 + 4 * 62);
-  lv_obj_set_style_radius(s_spPager, 7, 0);
+  lv_obj_set_style_radius(s_spPager, R_MD, 0);
   lv_obj_set_style_bg_color(s_spPager, C_FROST_2, 0);
   lv_obj_set_style_bg_opa(s_spPager, LV_OPA_COVER, 0);
   lv_obj_add_flag(s_spPager, LV_OBJ_FLAG_CLICKABLE);
@@ -671,7 +670,7 @@ void uiSettingsInit(lv_obj_t* parent) {
     // Five tabs: 88 wide on a 92 pitch from x=172 (was 104/108 from 196).
     lv_obj_set_size(s_seg[i], 88, 36);
     lv_obj_set_pos(s_seg[i], 172 + i * 92, 6);
-    lv_obj_set_style_radius(s_seg[i], 8, 0);
+    lv_obj_set_style_radius(s_seg[i], R_MD, 0);
     lv_obj_set_style_border_width(s_seg[i], 0, 0);
     lv_obj_add_event_cb(s_seg[i], onTab, LV_EVENT_CLICKED, (void*)(intptr_t)i);
     s_segLbl[i] = lv_label_create(s_seg[i]);
@@ -693,7 +692,7 @@ void uiSettingsInit(lv_obj_t* parent) {
   lv_obj_set_size(done, 88, 36);
   lv_obj_set_pos(done, SCR_W - 20 - 88, 6);
   lv_obj_set_style_bg_color(done, C_EDGE, 0);
-  lv_obj_set_style_radius(done, 8, 0);
+  lv_obj_set_style_radius(done, R_MD, 0);
   lv_obj_set_style_border_width(done, 0, 0);
   lv_obj_add_event_cb(done, onDone, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* dl = lv_label_create(done);
@@ -716,7 +715,7 @@ void uiSettingsInit(lv_obj_t* parent) {
       s_denSeg[i] = lv_btn_create(r);
       lv_obj_set_size(s_denSeg[i], 82, 38);
       lv_obj_set_pos(s_denSeg[i], 736 - 8 - (DEN_COUNT - i) * 86, (ROW_H - 38) / 2);
-      lv_obj_set_style_radius(s_denSeg[i], 8, 0);
+      lv_obj_set_style_radius(s_denSeg[i], R_MD, 0);
       lv_obj_set_style_border_width(s_denSeg[i], 0, 0);
       lv_obj_add_event_cb(s_denSeg[i], onDensity, LV_EVENT_CLICKED, (void*)(intptr_t)i);
       lv_obj_t* l = lv_label_create(s_denSeg[i]);
@@ -731,7 +730,7 @@ void uiSettingsInit(lv_obj_t* parent) {
       s_clkSeg[i] = lv_btn_create(cr);
       lv_obj_set_size(s_clkSeg[i], 82, 38);
       lv_obj_set_pos(s_clkSeg[i], 736 - 8 - (2 - i) * 86, (ROW_H - 38) / 2);
-      lv_obj_set_style_radius(s_clkSeg[i], 8, 0);
+      lv_obj_set_style_radius(s_clkSeg[i], R_MD, 0);
       lv_obj_set_style_border_width(s_clkSeg[i], 0, 0);
       lv_obj_add_event_cb(s_clkSeg[i], onClock, LV_EVENT_CLICKED, (void*)(intptr_t)i);
       lv_obj_t* l = lv_label_create(s_clkSeg[i]);
@@ -757,7 +756,7 @@ void uiSettingsInit(lv_obj_t* parent) {
     lv_obj_t* pageBtn = lv_btn_create(fr);
     lv_obj_set_size(pageBtn, 60, 38);
     lv_obj_set_pos(pageBtn, 736 - 8 - 60, (ROW_H - 38) / 2);
-    lv_obj_set_style_radius(pageBtn, 8, 0);
+    lv_obj_set_style_radius(pageBtn, R_MD, 0);
     lv_obj_set_style_border_width(pageBtn, 0, 0);
     lv_obj_set_style_bg_color(pageBtn, C_EDGE, 0);
     lv_obj_add_event_cb(pageBtn, onFavPage, LV_EVENT_CLICKED, nullptr);
@@ -825,7 +824,7 @@ void uiSettingsInit(lv_obj_t* parent) {
         lv_obj_t* t = lv_btn_create(r);
         lv_obj_set_size(t, 76, 38);
         lv_obj_set_pos(t, 736 - 8 - 76, (ROW_H - 38) / 2);
-        lv_obj_set_style_radius(t, 8, 0);
+        lv_obj_set_style_radius(t, R_MD, 0);
         lv_obj_set_style_border_width(t, 0, 0);
         lv_obj_set_style_bg_color(t, C_EDGE, 0);
         lv_obj_add_event_cb(t, onProxyTest, LV_EVENT_CLICKED, nullptr);
@@ -844,7 +843,7 @@ void uiSettingsInit(lv_obj_t* parent) {
         lv_obj_t* cbtn = lv_btn_create(r);
         lv_obj_set_size(cbtn, 88, 38);
         lv_obj_set_pos(cbtn, 736 - 8 - 88, (ROW_H - 38) / 2);
-        lv_obj_set_style_radius(cbtn, 8, 0);
+        lv_obj_set_style_radius(cbtn, R_MD, 0);
         lv_obj_set_style_border_width(cbtn, 0, 0);
         lv_obj_set_style_bg_color(cbtn, C_EDGE, 0);
         lv_obj_add_event_cb(cbtn, i == 2 ? onClearToken : onClearPass,
@@ -865,7 +864,7 @@ void uiSettingsInit(lv_obj_t* parent) {
     lv_obj_t* back = lv_btn_create(s_tzView);
     lv_obj_set_size(back, 88, 36);
     lv_obj_set_pos(back, 768 - 20 - 88, 10);
-    lv_obj_set_style_radius(back, 8, 0);
+    lv_obj_set_style_radius(back, R_MD, 0);
     lv_obj_set_style_border_width(back, 0, 0);
     lv_obj_set_style_bg_color(back, C_EDGE, 0);
     lv_obj_add_event_cb(back, onTzClose, LV_EVENT_CLICKED, nullptr);
@@ -879,7 +878,7 @@ void uiSettingsInit(lv_obj_t* parent) {
       s_tzBtn[k] = lv_btn_create(s_tzView);
       lv_obj_set_size(s_tzBtn[k], 356, 38);
       lv_obj_set_pos(s_tzBtn[k], 20 + col * 372, 52 + rw * 42);
-      lv_obj_set_style_radius(s_tzBtn[k], 8, 0);
+      lv_obj_set_style_radius(s_tzBtn[k], R_MD, 0);
       lv_obj_set_style_border_width(s_tzBtn[k], 0, 0);
       lv_obj_add_event_cb(s_tzBtn[k], onTzPick, LV_EVENT_CLICKED, (void*)(intptr_t)k);
       s_tzBtnLbl[k] = lv_label_create(s_tzBtn[k]);
@@ -891,7 +890,7 @@ void uiSettingsInit(lv_obj_t* parent) {
     lv_obj_t* more = lv_btn_create(s_tzView);
     lv_obj_set_size(more, 120, 40);
     lv_obj_set_pos(more, 20, 52 + TZ_ROWS * 42 + 6);
-    lv_obj_set_style_radius(more, 8, 0);
+    lv_obj_set_style_radius(more, R_MD, 0);
     lv_obj_set_style_border_width(more, 0, 0);
     lv_obj_set_style_bg_color(more, C_EDGE, 0);
     lv_obj_add_event_cb(more, onTzPage, LV_EVENT_CLICKED, nullptr);
@@ -913,7 +912,7 @@ void uiSettingsInit(lv_obj_t* parent) {
     lv_obj_t* rb = lv_btn_create(p);
     lv_obj_set_size(rb, 150, 44);
     lv_obj_set_pos(rb, 16, 16 + 5 * ROW_PITCH + 8);
-    lv_obj_set_style_radius(rb, 8, 0);
+    lv_obj_set_style_radius(rb, R_MD, 0);
     lv_obj_set_style_border_width(rb, 0, 0);
     lv_obj_set_style_bg_color(rb, C_EDGE, 0);
     lv_obj_add_event_cb(rb, onReboot, LV_EVENT_CLICKED, nullptr);

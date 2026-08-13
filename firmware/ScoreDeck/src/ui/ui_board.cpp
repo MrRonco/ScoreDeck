@@ -138,6 +138,8 @@ struct TileUI {
   uint32_t cChip[2];    // packed: 0 none, 1 logo+no chip, else colour|0x1000000
   int16_t  cStatusW;
   bool     cLead;      // slot-0 lead treatment applied
+  int8_t   cBig;       // -1 unset; 1 = lead tile's 46 px score face
+  lv_obj_t* leadRule;  // 2 px top-inner rule — the lead tile's promotion
   bool     cUsed;
   int8_t   gameIdx;   // index into g_board, -1 when the slot is empty
 };
@@ -245,7 +247,7 @@ static void setNumCached(lv_obj_t* o, int32_t* cache, int32_t v) {
  * it printed as "8/21 -...".
  */
 static void setStatusWidth(TileUI& t, const DensitySpec& d, bool rightInUse) {
-  const int leftX = TILE_PAD_X + 12;
+  const int leftX = TILE_PAD_X + 14;   // dot 6 + 8 — the row's second edge
   const int w = rightInUse ? STATUS_W : (d.tileW - TILE_PAD_X - leftX);
   if (t.cStatusW == (int16_t)w) return;
   t.cStatusW = (int16_t)w;
@@ -276,7 +278,21 @@ static void buildTile(TileUI& t, int idx) {
   const int x = d.marg + col * (d.tileW + d.gut);
   const int y = d.gridTop + row * (d.tileH + d.gut);
 
-  t.root = glassPanel(s_board, x, y, d.tileW, d.tileH, 12);
+  t.root = glassPanel(s_board, x, y, d.tileW, d.tileH, R_LG);
+
+  // The lead tile's promotion device. It used to be a fill — the SI_HERO
+  // surface — which spent the product's brightest rung (the selection device
+  // everywhere else on earth) on whatever sorted first. A rule promotes
+  // without occupying the "touch this" channel; E4 now belongs to the hero
+  // card alone.
+  t.leadRule = lv_obj_create(t.root);
+  lv_obj_remove_style_all(t.leadRule);
+  lv_obj_set_size(t.leadRule, d.tileW - 2 * R_LG, 2);
+  lv_obj_set_pos(t.leadRule, R_LG, 1);
+  lv_obj_set_style_radius(t.leadRule, 1, 0);
+  lv_obj_set_style_bg_color(t.leadRule, C_LIVE, 0);
+  lv_obj_set_style_bg_opa(t.leadRule, LV_OPA_COVER, 0);
+  lv_obj_add_flag(t.leadRule, LV_OBJ_FLAG_HIDDEN);
 
   // The signature: a 3px luminous strip on the LEADING team's side, which
   // swaps ends when the lead changes. UI.md §2.
@@ -309,7 +325,7 @@ static void buildTile(TileUI& t, int idx) {
     lv_obj_remove_style_all(t.badge[i]);
     lv_obj_set_size(t.badge[i], d.badge, d.badge);
     lv_obj_set_pos(t.badge[i], TILE_PAD_X, mid - d.badge / 2);
-    lv_obj_set_style_radius(t.badge[i], 7, 0);
+    lv_obj_set_style_radius(t.badge[i], R_SM, 0);
     lv_obj_set_style_bg_opa(t.badge[i], LV_OPA_COVER, 0);
     // The followed-team mark. A ring rather than a coloured hairline: it is
     // independent of the team's own colour, it marks the TEAM rather than the
@@ -323,7 +339,7 @@ static void buildTile(TileUI& t, int idx) {
     lv_obj_remove_style_all(t.favRing[i]);
     lv_obj_set_size(t.favRing[i], d.badge + 6, d.badge + 6);
     lv_obj_set_pos(t.favRing[i], TILE_PAD_X - 3, mid - d.badge / 2 - 3);
-    lv_obj_set_style_radius(t.favRing[i], 10, 0);
+    lv_obj_set_style_radius(t.favRing[i], R_SM + 3, 0);   // concentric: outset 3
     lv_obj_set_style_bg_opa(t.favRing[i], LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_color(t.favRing[i], C_INK, 0);
     lv_obj_set_style_border_opa(t.favRing[i], LV_OPA_COVER, 0);
@@ -358,7 +374,7 @@ static void buildTile(TileUI& t, int idx) {
     t.rec[i]  = microLabel(t.root, tx, mid - textH / 2 + abbrH + 3, C_INK3, F_NUM);
 
     t.score[i] = lv_label_create(t.root);
-    lv_obj_set_style_text_font(t.score[i], F_SCORE, 0);
+    lv_obj_set_style_text_font(t.score[i], d.scoreFont == 0 ? F_SCORE_BIG : F_SCORE, 0);
     lv_obj_set_style_text_color(t.score[i], C_INK, 0);
     lv_obj_set_style_text_align(t.score[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(t.score[i], 74);
@@ -451,8 +467,10 @@ static void buildTile(TileUI& t, int idx) {
   // 117 px on Standard, 55 px on Dense. situationText() switches to a
   // five-glyph vocabulary when that is all the room there is.
   const int rowY   = d.tileH - TILE_PAD_Y - 15;
-  const int leftX  = TILE_PAD_X + 12;      // past the live dot's gutter
-  const int rightX = leftX + STATUS_W + 12;
+  const int leftX  = TILE_PAD_X + 14;      // past the live dot's gutter (6 + 8)
+  // Gutter 8 (SP_2): at Dense's 183 px the right column must still hold the
+  // five-glyph situation vocabulary (45 px of F_NUM) — 12 left it at 44.
+  const int rightX = leftX + STATUS_W + 8;
   const int rightW = d.tileW - TILE_PAD_X - rightX;
 
   // Indented past the dot's gutter whether the dot is showing or not, so the
@@ -460,6 +478,10 @@ static void buildTile(TileUI& t, int idx) {
   // cannot reach the right-hand label however long upstream makes it.
   t.status = microLabel(t.root, leftX, rowY, C_INK2, F_NUM);
   lv_obj_set_width(t.status, STATUS_W);
+  // One line, pinned — an 11-glyph basketball clock ("2nd 00:04.7") is 99 px
+  // and wrapped under the tile foot; LONG_DOT only ellipsises once height
+  // is bounded.
+  lv_obj_set_height(t.status, (int)lv_font_get_line_height(F_NUM));
   lv_label_set_long_mode(t.status, LV_LABEL_LONG_DOT);
 
   t.bcast  = lv_label_create(t.root);
@@ -490,6 +512,9 @@ static void buildTile(TileUI& t, int idx) {
   lv_obj_set_style_text_color(t.sit, C_WARN, 0);
   lv_obj_set_style_text_align(t.sit, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_width(t.sit, rightW);
+  // Pinned to one line — LONG_DOT only ellipsises past the label's HEIGHT,
+  // so unbounded it wraps first (the golf-title bug, same mechanism).
+  lv_obj_set_height(t.sit, (int)lv_font_get_line_height(F_NUM));
   lv_label_set_long_mode(t.sit, LV_LABEL_LONG_DOT);
   lv_obj_set_pos(t.sit, rightX, rowY);
   lv_label_set_text(t.sit, "");
@@ -505,6 +530,7 @@ static void buildTile(TileUI& t, int idx) {
   t.cBadgeVis[0] = t.cBadgeVis[1] = true;
   t.cLogoVis[0] = t.cLogoVis[1] = false;
   t.cScore[0] = t.cScore[1] = -1;
+  t.cBig = -1;
   t.cColor[0] = t.cColor[1] = 0xFFFFFFFF;
   t.cEdge = 0xFFFFFFFF;
   // MUST match the object's real state at build time (hidden), or the first
@@ -539,8 +565,8 @@ lv_obj_t* uiNavPill(lv_obj_t* bar, int x, int barH, const char* text, lv_event_c
   lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
   lv_obj_set_style_border_color(b, C_EDGE, 0);
   lv_obj_set_style_border_width(b, 1, 0);
-  lv_obj_set_style_radius(b, 8, 0);
-  lv_obj_set_style_bg_color(b, C_EDGE_HI, LV_STATE_PRESSED);
+  lv_obj_set_style_radius(b, R_MD, 0);
+  uiPressable(b);
   lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* l = lv_label_create(b);
   lv_label_set_text(l, text);
@@ -623,8 +649,8 @@ static void buildBar() {
   lv_obj_set_style_bg_color(s_pill, C_SURF_1, 0);
   lv_obj_set_style_bg_opa(s_pill, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(s_pill, 0, 0);
-  lv_obj_set_style_radius(s_pill, 7, 0);
-  lv_obj_set_style_bg_color(s_pill, C_EDGE_HI, LV_STATE_PRESSED);
+  lv_obj_set_style_radius(s_pill, R_MD, 0);
+  uiPressable(s_pill);
   lv_obj_add_event_cb(s_pill, onPill, LV_EVENT_CLICKED, nullptr);
   s_pillLbl = lv_label_create(s_pill);
   lv_obj_set_style_text_font(s_pillLbl, F_MICRO, 0);
@@ -649,7 +675,7 @@ static void buildBar() {
   lv_obj_set_size(s_zc, 150, 24);
   // Ends at 594 — 12 px short of the nav block at 606, same gap as everywhere.
   lv_obj_set_pos(s_zc, 444, (barH - 24) / 2);
-  lv_obj_set_style_radius(s_zc, 7, 0);
+  lv_obj_set_style_radius(s_zc, R_MD, 0);
   lv_obj_clear_flag(s_zc, LV_OBJ_FLAG_SCROLLABLE);
   s_zcLbl = lv_label_create(s_zc);
   lv_obj_set_style_text_font(s_zcLbl, F_MICRO, 0);
@@ -708,7 +734,7 @@ static void buildBar() {
   s_zcCache[0] = '\x01'; s_zcCache[1] = '\0';
 
   // The filler. Two columns: what has finished, and what is next.
-  s_fill = glassPanel(s_board, 0, 0, 10, 10, 12);
+  s_fill = glassPanel(s_board, 0, 0, 10, 10, R_LG);
   lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN);
   for (int c = 0; c < 2; c++) {
     s_fillHdr[c] = lv_label_create(s_fill);
@@ -724,7 +750,7 @@ static void buildBar() {
   }
 
   // Toast: one line, centred, 1.2 s. Built once and reused.
-  s_toast = glassPanel(s_board, (SCR_W - 220) / 2, SCR_H - 78, 220, 42, 10);
+  s_toast = glassPanel(s_board, (SCR_W - 220) / 2, SCR_H - 78, 220, 42, R_MD);
   lv_obj_add_flag(s_toast, LV_OBJ_FLAG_HIDDEN);
   s_toastLbl = lv_label_create(s_toast);
   lv_obj_set_style_text_font(s_toastLbl, F_ABBR, 0);
@@ -1023,12 +1049,17 @@ void uiBoardRefresh() {
     // hero already is the focal point). One rung up the surface ladder — the
     // whole treatment is a bg colour and the SI_HERO ink row.
     const bool lead = !feature && slot == 0 && g_page == 0 && g.state == GS_LIVE;
-    const StateInk& si = lead ? kStateInk[SI_HERO] : kStateInk[g.state];
+    const StateInk& si = kStateInk[g.state];
     if (t.cState != g.state || t.cLead != lead) {
       t.cState = g.state;
       t.cLead = lead;
       lv_obj_set_style_bg_color(t.root, si.plate, 0);
-      lv_obj_set_style_border_color(t.root, si.edge, 0);
+      // No per-state border: every card wears C_LINE @ OPA_EDGE from the glass
+      // style — one opacity over four fills tracks state on its own.
+      if (lead) lv_obj_clear_flag(t.leadRule, LV_OBJ_FLAG_HIDDEN);
+      else      lv_obj_add_flag(t.leadRule, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_style_bg_color(t.leadRule, C_LIVE, 0);   // field default; edge block overrides
+      t.cEdge = 0xFFFFFFFCu;                              // force the override to re-solve
       for (int k = 0; k < 2; k++) {
         lv_obj_set_style_text_color(t.abbr[k], si.ink, 0);
         lv_obj_set_style_text_color(t.rec[k],  si.ink3, 0);
@@ -1154,6 +1185,19 @@ void uiBoardRefresh() {
         }
         setNumCached(t.score[k], &t.cScore[k], side[k]->score);
       }
+      // The lead tile's second promotion device: the 46 px face — gated on
+      // both sides fitting the 74 px column (3 digits of 46 px tabular wrap).
+      {
+        const int8_t big =
+            (lead && side[0]->score < 100 && side[1]->score < 100) ? 1 : 0;
+        if (t.cBig != big) {
+          t.cBig = big;
+          const lv_font_t* f =
+              (big || d.scoreFont == 0) ? F_SCORE_BIG : F_SCORE;
+          lv_obj_set_style_text_font(t.score[0], f, 0);
+          lv_obj_set_style_text_font(t.score[1], f, 0);
+        }
+      }
       // The leading score is drawn in the LEADING TEAM'S OWN COLOUR, lifted
       // against this state's fill. That is roughly 900 px of team colour at the
       // point of the tile the eye lands on, which is what the 3 px perimeter
@@ -1275,7 +1319,7 @@ void uiBoardRefresh() {
     // Compact when the right-hand column cannot hold the full vocabulary —
     // which on Dense it cannot. Derived from the same geometry buildTile used,
     // so the two can never disagree about how much room there is.
-    const int rightW = d.tileW - TILE_PAD_X - (TILE_PAD_X + 12 + STATUS_W + 12);
+    const int rightW = d.tileW - TILE_PAD_X - (TILE_PAD_X + 14 + STATUS_W + 8);
     char sit[20] = "";
     situationText(g, sit, sizeof sit, rightW < SIT_FULL_W);
     setHiddenCached(t.sit,   &t.cSitVis,   !sit[0]);
@@ -1295,7 +1339,11 @@ void uiBoardRefresh() {
       // against the tile is 1.11:1, which made the product's signature element
       // invisible on its own flagship example. See theme.cpp.
       const uint32_t c = teamInkOn(g.leaderHome ? g.home.color : g.away.color, si.fill);
-      if (t.cEdge != c) { t.cEdge = c; lv_obj_set_style_bg_color(t.edge, lv_color_hex(c), 0); }
+      if (t.cEdge != c) {
+        t.cEdge = c;
+        lv_obj_set_style_bg_color(t.edge, lv_color_hex(c), 0);
+        if (t.cLead) lv_obj_set_style_bg_color(t.leadRule, lv_color_hex(c), 0);
+      }
       // Vertical, not horizontal: it names a row now. See buildTile().
       const int rowH = (d.tileH - 2 * TILE_PAD_Y - STATUS_H) / 2;
       lv_obj_set_y(t.edge, TILE_PAD_Y + (g.leaderHome ? rowH : 0) + 6);

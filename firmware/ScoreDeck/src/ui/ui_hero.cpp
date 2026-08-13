@@ -119,9 +119,8 @@ static void onTap(lv_event_t*) {
 
 // ── build ──────────────────────────────────────────────────────────────────
 void uiHeroInit(lv_obj_t* parent) {
-  s_root = glassPanel(parent, HERO_X, HERO_Y, HERO_W, HERO_H, 16);
+  s_root = glassPanel(parent, HERO_X, HERO_Y, HERO_W, HERO_H, R_XL);
   lv_obj_set_style_bg_color(s_root, HI().plate, 0);
-  lv_obj_set_style_border_color(s_root, HI().edge, 0);
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(s_root, onTap, LV_EVENT_SHORT_CLICKED, nullptr);
   // Or the hero swallows the swipe, exactly as the tiles did.
@@ -151,7 +150,7 @@ void uiHeroInit(lv_obj_t* parent) {
 
     s_badge[k] = teamBadge(s_root, "", 0x334455, 52);
     lv_obj_set_pos(s_badge[k], HERO_PAD, y);
-    lv_obj_set_style_radius(s_badge[k], 12, 0);
+    lv_obj_set_style_radius(s_badge[k], R_LG, 0);
     lv_obj_set_style_text_font(lv_obj_get_child(s_badge[k], 0), F_ABBR, 0);
 
     // See the grid's note: never set an explicit size on an lv_img in 8.3 —
@@ -195,7 +194,8 @@ void uiHeroInit(lv_obj_t* parent) {
     s_wp[k] = lv_obj_create(s_root);
     lv_obj_remove_style_all(s_wp[k]);
     lv_obj_set_size(s_wp[k], 1, 4);
-    lv_obj_set_pos(s_wp[k], 0, HERO_H - 6);
+    lv_obj_set_pos(s_wp[k], 0, HERO_H - 10);
+    lv_obj_set_style_radius(s_wp[k], R_XS, 0);
     lv_obj_set_style_bg_opa(s_wp[k], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN);
   }
@@ -365,16 +365,16 @@ void uiHeroShow(int8_t gameIdx) {
   } else {
     // Inset past the card's corner radius — at x=0 the bar's square end pokes
     // out of the rounded corner and reads as a rendering fault.
-    const int inner = HERO_W - 2 * 18;
+    const int inner = HERO_W - 2 * HERO_PAD;   // the hero's own inset, not 18
     const int hw = inner * g.winProbHome / 100;
     if (c_wpW != hw) {
       c_wpW = hw;
       // Away on the left, home on the right, meeting where the probability
       // sits. Two rects and one width write per change.
-      lv_obj_set_size(s_wp[0], inner - hw, 5);
-      lv_obj_set_pos(s_wp[0], 18, HERO_H - 10);
-      lv_obj_set_size(s_wp[1], hw, 5);
-      lv_obj_set_pos(s_wp[1], 18 + inner - hw, HERO_H - 10);
+      lv_obj_set_size(s_wp[0], inner - hw, 4);
+      lv_obj_set_pos(s_wp[0], HERO_PAD, HERO_H - 10);
+      lv_obj_set_size(s_wp[1], hw, 4);
+      lv_obj_set_pos(s_wp[1], HERO_PAD + inner - hw, HERO_H - 10);
       lv_obj_set_style_bg_color(s_wp[0], lv_color_hex(teamInkOn(g.away.color, si.fill)), 0);
       lv_obj_set_style_bg_color(s_wp[1], lv_color_hex(teamInkOn(g.home.color, si.fill)), 0);
       for (int k = 0; k < 2; k++) lv_obj_clear_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN);

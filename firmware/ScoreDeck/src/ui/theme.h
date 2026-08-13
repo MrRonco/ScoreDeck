@@ -36,8 +36,15 @@
 // see kStateInk, which varies each tier per surface to hold that floor. These
 // globals are the values for chrome sitting on the plate itself.
 #define C_INK     lv_color_hex(0xF3F7FB)
-#define C_INK2    lv_color_hex(0xA6B6C8)
-#define C_INK3    lv_color_hex(0x7A8899)   // was 0x5D6D7E — 2.58:1 on the hero
+// INK_2/INK_3 are kStateInk[SI_HERO].ink2/.ink3 — solved on the LIGHTEST
+// surface, so they clear AA on every darker one by construction. The palette
+// held eleven greys inside a 25 L* band (mean spacing 2.5 L* — invisible at
+// 610 mm, visibly inconsistent up close); it now holds six: the three primary
+// tiers, these two, and final's own ink2 (the one exception — the global INK_2
+// sits 2.9 L* ABOVE final's deliberately dim primary, which would merge
+// final's first and second tiers; see kStateInk).
+#define C_INK2    lv_color_hex(0xACBCCE)
+#define C_INK3    lv_color_hex(0x8696A8)
 #define C_EDGE    lv_color_hex(0x2A3646)
 #define C_EDGE_HI lv_color_hex(0x46566A)
 
@@ -79,9 +86,20 @@
 // One line colour at several opacities, rather than several near-identical
 // greys. Hairlines, borders and the specular catch are all this hue.
 #define C_LINE    lv_color_hex(0xB4CDE6)
-#define OPA_HAIR   20
-#define OPA_EDGE   46
+#define OPA_HAIR   24
+#define OPA_EDGE   40
 #define OPA_SPEC  120
+
+// ── RADII — one family, five rungs, 4 px apart ─────────────────────────────
+//
+// Twelve ad-hoc radii shipped (0/1/2/3/4/5/6/7/8/10/12/16); two controls on
+// the same bar carried 7 and 8 — a 1 px difference nobody chose. Concentricity
+// rule: a child inset d from a parent of radius R takes max(R_XS, R - d).
+#define R_XS   2   // edge lights, bars, sliver segments, underlines, tabs
+#define R_SM   6   // team badges, logo chips
+#define R_MD  10   // controls: nav pills, filter pill, zone C, rail rows, toast
+#define R_LG  14   // grid tiles, hero team badge
+#define R_XL  18   // the hero card
 
 // ── STATE INK — the state channel (UI.md §2) ───────────────────────────────
 //
@@ -220,6 +238,14 @@ extern const lv_font_t* F_NUM;
 extern const lv_font_t* F_MICRO;
 
 void themeInit();
+
+/** Adopt the ONE pressed treatment: a 2 px C_LIVE outline, no fill change.
+ *  Press was a fill (#243040) that measured +11 L* on a final tile and +0.85
+ *  on the hero surface — feedback that varied 28x and vanished exactly on the
+ *  lightest (most promoted) tiles. A border is state-independent, identical
+ *  everywhere, and gives the accent its declared second meaning: a teal
+ *  outline appears ONLY under a finger. */
+void uiPressable(lv_obj_t* o);
 
 /** Frosted panel style — the baked-glass primitive. */
 lv_obj_t* glassPanel(lv_obj_t* parent, int x, int y, int w, int h, int radius);
