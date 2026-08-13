@@ -54,6 +54,8 @@ export interface Game {
    *   CLOCK   bit0 home has possession   | bit1 red zone | bit2 power play
    */
   sit?: number;
+  /** Last play, one clamped line, live games only. */
+  lp?: string;
   /** Kickoff, unix seconds UTC. */
   t: number;
   /** Region-resolved broadcast. "SN" | "Sky Sports". <=9 chars. Empty = unknown. */

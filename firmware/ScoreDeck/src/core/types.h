@@ -49,6 +49,9 @@ struct Game {
   char       status[16];   // "3rd 04:21" | "Bot 7" | "Final" | "7:00 PM"
   char       bcast[13];    // region-resolved; empty = unknown
   uint16_t   situation;    // packed, see proxy types.ts
+  // The most recent scoring play, one short line ("Matthews (24) PP"), or "".
+  // Clamped by the proxy; sized for the hero's one-line slot.
+  char       lastPlay[44];
   uint32_t   startUtc;
   uint8_t    winProbHome;  // 255 = unavailable
   bool       leaderHome;

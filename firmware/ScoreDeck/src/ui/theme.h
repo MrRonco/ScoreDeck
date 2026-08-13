@@ -67,6 +67,13 @@
 // ever rises, or this colour is ever darkened, re-check it.
 #define C_LIVE    lv_color_hex(0x3BE0C0)
 #define C_LIVE_SD lv_color_hex(0x2A9E8C)   // the same hue, for LABELS not dots
+// The BODY-TEXT member of the live family, solved rather than picked. C_LIVE_SD
+// measures 4.63:1 on the live tile fill — it clears AA by 2.9%, which is the
+// definition of marginal — and 4.15:1 on the hero surface, which fails. This is
+// the first point on the C_LIVE hue ray clearing 5.5:1 on every surface it can
+// sit on: 6.15 (live), 5.52 (hero), 8.13 (plate). Use it for any live-state
+// SENTENCE OR VALUE; keep C_LIVE_SD for tracked caps labels only.
+#define C_LIVE_TX lv_color_hex(0x30B89D)
 #define C_WARN    lv_color_hex(0xF2B441)   // stale — never used for team data
 
 // One line colour at several opacities, rather than several near-identical

@@ -56,7 +56,7 @@ static void buildFilter(JsonDocument& f) {
   f["next"] = true;
   f["stale"] = true;
   JsonObject g = f["games"].createNestedObject();
-  for (const char* k : { "i", "l", "m", "g", "st", "sit", "t", "b", "wp", "lh", "f", "p" }) g[k] = true;
+  for (const char* k : { "i", "l", "m", "g", "st", "sit", "t", "b", "wp", "lh", "f", "p", "lp" }) g[k] = true;
   JsonObject fl = g["fld"].createNestedObject();
   for (const char* k : { "p", "n", "v", "d" }) fl[k] = true;
   g["sets"][0][0] = true;
@@ -159,6 +159,7 @@ static bool pollOnce(const PollJob& job) {
     copyStr(g.league, sizeof g.league, gj["l"]);
     copyStr(g.status, sizeof g.status, gj["st"]);
     copyStr(g.bcast,  sizeof g.bcast,  gj["b"]);
+    copyStr(g.lastPlay, sizeof g.lastPlay, gj["lp"]);
     g.model       = (ScoreModel)(gj["m"] | 0);
     g.state       = (GameState)(gj["g"] | 0);
     g.situation   = gj["sit"] | 0;

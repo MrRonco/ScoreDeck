@@ -44,12 +44,13 @@ static lv_obj_t* s_bloom[2];
 static lv_obj_t* s_footDot;
 static lv_obj_t* s_foot;
 static lv_obj_t* s_footR;
+static lv_obj_t* s_play;      // the last scoring play
 static lv_obj_t* s_wp[2];
 static int8_t    s_gameIdx = -1;
 
 // Change cache. Same discipline as the grid: LVGL repaints on any write, even
 // one that changes nothing, and unchanged writes fight the panel DMA.
-static char     c_league[24], c_status[16], c_foot[16], c_footR[13];
+static char     c_league[24], c_status[16], c_foot[24], c_footR[13], c_play[44];
 static char     c_name[2][24], c_sub[2][10], c_logoKey[2][10];
 static int32_t  c_score[2];
 static uint32_t c_color[2], c_scoreInk[2], c_edgeC, c_bloom[2];
@@ -192,15 +193,21 @@ void uiHeroInit(lv_obj_t* parent) {
     lv_obj_add_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN);
   }
 
-  s_footDot = dot(s_root, HERO_PAD, 238);
-  s_foot    = lab(s_root, HERO_PAD + 14, 232, HI().ink, F_NUM, 180);
-  s_footR   = lab(s_root, 344, 232, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
+  // Footer band, re-stacked for the refresh: situation (promoted to the
+  // accent — it is the one "happening now" fact), then the last scoring play,
+  // then the win-probability bar at the very foot.
+  s_footDot = dot(s_root, HERO_PAD, 224);
+  s_foot    = lab(s_root, HERO_PAD + 14, 218, C_LIVE, F_NUM, 180);
+  s_footR   = lab(s_root, 344, 218, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
+  s_play    = lab(s_root, HERO_PAD, 240, HI().ink2, F_MICRO, HERO_W - 2 * HERO_PAD);
+  lv_obj_set_style_text_letter_space(s_play, 1, 0);
 
   // Caches must match the objects' real state at build time, or the first
   // update sees a match and skips the write it was meant to make cheap.
   memset(c_league, 0, sizeof c_league);
   memset(c_status, 0, sizeof c_status);
   memset(c_foot, 0, sizeof c_foot);
+  memset(c_play, 0, sizeof c_play);
   memset(c_footR, 0, sizeof c_footR);
   memset(c_name, 0, sizeof c_name);
   memset(c_sub, 0, sizeof c_sub);
@@ -321,27 +328,30 @@ void uiHeroShow(int8_t gameIdx) {
     if (c_wpW != -1) { c_wpW = -1;
       for (int k = 0; k < 2; k++) lv_obj_add_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN); }
   } else {
-    const int inner = HERO_W - 2;
+    // Inset past the card's corner radius — at x=0 the bar's square end pokes
+    // out of the rounded corner and reads as a rendering fault.
+    const int inner = HERO_W - 2 * 18;
     const int hw = inner * g.winProbHome / 100;
     if (c_wpW != hw) {
       c_wpW = hw;
       // Away on the left, home on the right, meeting where the probability
       // sits. Two rects and one width write per change.
-      lv_obj_set_size(s_wp[0], inner - hw, 4);
-      lv_obj_set_pos(s_wp[0], 0, HERO_H - 6);
-      lv_obj_set_size(s_wp[1], hw, 4);
-      lv_obj_set_pos(s_wp[1], inner - hw, HERO_H - 6);
+      lv_obj_set_size(s_wp[0], inner - hw, 5);
+      lv_obj_set_pos(s_wp[0], 18, HERO_H - 10);
+      lv_obj_set_size(s_wp[1], hw, 5);
+      lv_obj_set_pos(s_wp[1], 18 + inner - hw, HERO_H - 10);
       lv_obj_set_style_bg_color(s_wp[0], lv_color_hex(teamInkOn(g.away.color, si.fill)), 0);
       lv_obj_set_style_bg_color(s_wp[1], lv_color_hex(teamInkOn(g.home.color, si.fill)), 0);
       for (int k = 0; k < 2; k++) lv_obj_clear_flag(s_wp[k], LV_OBJ_FLAG_HIDDEN);
     }
   }
 
-  char sit[14] = "";
+  char sit[20] = "";
   situationText(g, sit, sizeof sit);
   setVis(s_footDot, &c_footDotVis, !sit[0]);
   setText(s_foot, c_foot, sizeof c_foot, sit);
   setText(s_footR, c_footR, sizeof c_footR, g.bcast);
+  setText(s_play, c_play, sizeof c_play, g.lastPlay);
 
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_HIDDEN);
 }

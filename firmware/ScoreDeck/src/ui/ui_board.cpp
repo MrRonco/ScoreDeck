@@ -98,13 +98,14 @@ struct TileUI {
   uint32_t cEdge;
   bool     cEdgeVis;
   int8_t   cState;
-  char     cSit[14];
+  char     cSit[20];   // widest: three 3-byte diamonds + " 2 OUT"
   bool     cSitVis;
   bool     cBcastVis;
   bool     cDotVis;
   uint32_t cScoreInk[2];
   uint32_t cChip[2];    // packed: 0 none, 1 logo+no chip, else colour|0x1000000
   int16_t  cStatusW;
+  bool     cLead;      // slot-0 lead treatment applied
   bool     cUsed;
   int8_t   gameIdx;   // index into g_board, -1 when the slot is empty
 };
@@ -403,7 +404,9 @@ static void buildTile(TileUI& t, int idx) {
   // neither can overrun the other, which they did when the chip had its own x.
   t.sit = lv_label_create(t.root);
   lv_obj_set_style_text_font(t.sit, F_NUM, 0);
-  lv_obj_set_style_text_color(t.sit, C_INK, 0);
+  // Amber: the situation is a caution-class fact ("something is at stake
+  // RIGHT NOW"), and C_WARN is the only non-team hue with that meaning.
+  lv_obj_set_style_text_color(t.sit, C_WARN, 0);
   lv_obj_set_style_text_align(t.sit, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_width(t.sit, rightW);
   lv_label_set_long_mode(t.sit, LV_LABEL_LONG_DOT);
@@ -430,6 +433,7 @@ static void buildTile(TileUI& t, int idx) {
   t.cEdgeVis = false;
   t.cState = -1;
   t.cSit[0] = '\0';
+  t.cLead = false;
   // Must match the objects' real state at build time — see the note above.
   t.cSitVis = false;
   t.cBcastVis = true;
@@ -881,16 +885,23 @@ void uiBoardRefresh() {
     // frost and the text together and took a final's record and broadcast to
     // 1.73:1 — so a finished game read as a tile that had failed to load. It
     // also pushed every tile through a 63 KB composite buffer.
-    const StateInk& si = kStateInk[g.state];
-    if (t.cState != g.state) {
+    // The lead tile: slot 0 of page 0, live, grid layouts only (FEATURE's
+    // hero already is the focal point). One rung up the surface ladder — the
+    // whole treatment is a bg colour and the SI_HERO ink row.
+    const bool lead = !feature && slot == 0 && g_page == 0 && g.state == GS_LIVE;
+    const StateInk& si = lead ? kStateInk[SI_HERO] : kStateInk[g.state];
+    if (t.cState != g.state || t.cLead != lead) {
       t.cState = g.state;
+      t.cLead = lead;
       lv_obj_set_style_bg_color(t.root, si.plate, 0);
       lv_obj_set_style_border_color(t.root, si.edge, 0);
       for (int k = 0; k < 2; k++) {
         lv_obj_set_style_text_color(t.abbr[k], si.ink, 0);
         lv_obj_set_style_text_color(t.rec[k],  si.ink3, 0);
       }
-      lv_obj_set_style_text_color(t.status, si.ink2, 0);
+      // Live status reads AS live from across the desk — the family's solved
+      // body tint, not a grey. Finals and pre stay in the state ink.
+      lv_obj_set_style_text_color(t.status, g.state == GS_LIVE ? C_LIVE_TX : si.ink2, 0);
       lv_obj_set_style_text_color(t.bcast,  si.ink3, 0);
       lv_obj_set_style_text_color(t.fldTitle, si.ink, 0);
       // The score-ink cache stores a team colour or a "use si.ink2" sentinel,
@@ -1067,7 +1078,7 @@ void uiBoardRefresh() {
     // which on Dense it cannot. Derived from the same geometry buildTile used,
     // so the two can never disagree about how much room there is.
     const int rightW = d.tileW - TILE_PAD_X - (TILE_PAD_X + 12 + STATUS_W + 12);
-    char sit[14] = "";
+    char sit[20] = "";
     situationText(g, sit, sizeof sit, rightW < SIT_FULL_W);
     setHiddenCached(t.sit,   &t.cSitVis,   !sit[0]);
     setHiddenCached(t.bcast, &t.cBcastVis,  sit[0] != '\0');

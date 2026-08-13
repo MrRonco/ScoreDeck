@@ -135,6 +135,12 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
       snprintf(buf, sizeof buf, "%-4s %2u", g.home.abbr, g.home.score);
       lv_label_set_text(s_cell[1][r][1], buf);
       lv_label_set_text(s_cell[1][r][2], g.status);           // "Final" | "F/OT"
+      // Winner bright, loser recessive — a results list you read without
+      // parsing eight numbers. Ties (soccer) keep both sides equal.
+      const bool homeWon = g.home.score > g.away.score;
+      const bool tie = g.home.score == g.away.score;
+      lv_obj_set_style_text_color(s_cell[1][r][0], tie ? C_INK2 : (homeWon ? C_INK3 : C_INK), 0);
+      lv_obj_set_style_text_color(s_cell[1][r][1], tie ? C_INK2 : (homeWon ? C_INK : C_INK3), 0);
     }
   }
 

@@ -214,8 +214,17 @@ void situationText(const Game& g, char* out, size_t cap, bool compact) {
       else if (outs) snprintf(out, cap, "%u OUT", outs);
       return;
     }
-    if (on == 3)     snprintf(out, cap, "BASES LOADED");
-    else if (on)     snprintf(out, cap, "%u ON %u OUT", on, outs);
+    // Full form draws the BASES as glyphs — U+25C6 filled / U+25C7 open, in
+    // 1st-2nd-3rd order. Nine visual columns at F_NUM's 9 px advance, so it
+    // fits every slot the full vocabulary already fits. The glyphs live in
+    // font_num15 (pulled from Noto Sans Symbols 2 at build time); putting
+    // them in any other face renders hollow boxes — `make lint` guards this.
+    if (on) {
+      snprintf(out, cap, "%s%s%s %u OUT",
+               sitOnFirst(s)  ? "\u25C6" : "\u25C7",
+               sitOnSecond(s) ? "\u25C6" : "\u25C7",
+               sitOnThird(s)  ? "\u25C6" : "\u25C7", outs);
+    }
     else if (outs)   snprintf(out, cap, "%u OUT", outs);
     return;
   }

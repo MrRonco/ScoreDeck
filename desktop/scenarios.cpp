@@ -358,8 +358,10 @@ void scenarioApply(int n) {
       league("nhl", 3); league("nfl", 1); league("mlb", 2);
       // Game 0 home side (TOR) is the followed team: id 101 by push()'s scheme.
       g_set.favs = "nhl:101";
-      push("nhl", GS_LIVE,  "3rd 04:21", "MTL", 2, 0xAF1E2D, "TOR", 3, 0x00205B, "SN", true)
-        .situation = 0x04;                       // power play
+      { Game& t0 = push("nhl", GS_LIVE, "3rd 04:21", "MTL", 2, 0xAF1E2D,
+                        "TOR", 3, 0x00205B, "SN", true);
+        t0.situation = 0x04;                     // power play
+        strncpy(t0.lastPlay, "Matthews (24) PP, from Marner", sizeof t0.lastPlay - 1); }
       push("nfl", GS_LIVE,  "Q2 11:03",  "BUF", 14, 0x00338D, "KC", 21, 0xE31837, "CBS")
         .situation = 0x02;                       // red zone
       push("nhl", GS_LIVE,  "1st 18:44", "EDM", 1, 0xFF4C00, "CGY", 0, 0xC8102E, "SN");
@@ -388,6 +390,7 @@ void scenarioApply(int n) {
                         "TOR", 3, 0x00205B, "Sportsnet", true);
       feat.situation = 0x04;                     // power play
       feat.winProbHome = 71;                     // drawn on the hero's foot
+      strncpy(feat.lastPlay, "Matthews (24) PP, from Marner", sizeof feat.lastPlay - 1);
       push("nfl", GS_LIVE,  "Q2 11:03",  "BUF", 14, 0x00338D, "KC", 21, 0xE31837, "CBS")
         .situation = 0x02;                       // red zone
       push("nhl", GS_LIVE,  "1st 18:44", "EDM", 1, 0xFF4C00, "CGY", 0, 0xC8102E, "SN");
