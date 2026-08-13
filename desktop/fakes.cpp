@@ -179,6 +179,53 @@ const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
   return &s_fakeDsc[idx];
 }
 
+#include "../firmware/ScoreDeck/src/ui/imgscale.h"
+
+// Scaled variants over the real blobs, mirroring the firmware store exactly.
+static struct { int slot; uint16_t size; uint8_t* data; lv_img_dsc_t dsc; } s_scal[96];
+static int s_scalN;
+
+const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t size) {
+  if (!abbr || !*abbr || !size) return nullptr;
+  const char* env = getenv("SDLOGO");
+  if (env && env[0] == '0') return nullptr;
+  const int r = realSlot(league, abbr);
+  if (r < 0 || s_realState[r] != 1) {
+    // The wedge fallback is 48 px too — without the old zoom it must also be
+    // pre-scaled, or fixture teams render an oversized pie over the tile.
+    const lv_img_dsc_t* fb = logoGet(league, abbr);
+    if (!fb || size == 48) return fb;
+    const int pseudo = -1 - (int)(fb - &s_fakeDsc[0]);
+    for (int i = 0; i < s_scalN; i++)
+      if (s_scal[i].slot == pseudo && s_scal[i].size == size) return &s_scal[i].dsc;
+    if (s_scalN >= 96) return fb;
+    uint8_t* buf = (uint8_t*)malloc((size_t)size * size * 3);
+    imgScaleRgb565A8((const uint8_t*)fb->data, 48, 48, buf, size, size);
+    auto& v = s_scal[s_scalN++];
+    v.slot = pseudo; v.size = size; v.data = buf;
+    v.dsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+    v.dsc.header.always_zero = 0;
+    v.dsc.header.w = size; v.dsc.header.h = size;
+    v.dsc.data_size = (uint32_t)size * size * 3;
+    v.dsc.data = buf;
+    return &v.dsc;
+  }
+  if (size == 48) return &s_realDsc[r];
+  for (int i = 0; i < s_scalN; i++)
+    if (s_scal[i].slot == r && s_scal[i].size == size) return &s_scal[i].dsc;
+  if (s_scalN >= 96) return &s_realDsc[r];
+  uint8_t* buf = (uint8_t*)malloc((size_t)size * size * 3);
+  imgScaleRgb565A8(s_realData[r] + 4, 48, 48, buf, size, size);
+  auto& v = s_scal[s_scalN++];
+  v.slot = r; v.size = size; v.data = buf;
+  v.dsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+  v.dsc.header.always_zero = 0;
+  v.dsc.header.w = size; v.dsc.header.h = size;
+  v.dsc.data_size = (uint32_t)size * size * 3;
+  v.dsc.data = buf;
+  return &v.dsc;
+}
+
 LogoChip logoChip(const char* league, const char* abbr) {
   LogoChip none = { 0, 0 };
   if (!abbr || !*abbr) return none;

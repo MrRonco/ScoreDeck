@@ -9,6 +9,11 @@ extern volatile bool g_logoArrived;
 
 /** Cached logo for a team, or nullptr — draw the colour badge instead. */
 const lv_img_dsc_t* logoGet(const char* league, const char* abbr);
+/** The logo pre-scaled to `size` px, or nullptr. NEVER draw a logo through
+ *  lv_img_set_zoom — the transform's draw geometry is broken in ways the
+ *  calibration spike (desktop mock 12) measures; see imgscale.cpp. Scaled
+ *  variants are cached per slot and freed with it. */
+const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t size);
 /** The ground this mark should be drawn on, solved once at decode time.
  *  opa 0 means "none needed" — see chipSolve() in theme.h. */
 LogoChip logoChip(const char* league, const char* abbr);

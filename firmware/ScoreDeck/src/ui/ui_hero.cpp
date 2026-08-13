@@ -154,11 +154,8 @@ void uiHeroInit(lv_obj_t* parent) {
 
     // See the grid's note: never set an explicit size on an lv_img in 8.3 —
     // that CLIPS rather than scales. Zoom plus SIZE_MODE_REAL and a 0,0 pivot.
+    // Pre-scaled pixels, no transform — see imgscale.cpp.
     s_logo[k] = lv_img_create(s_root);
-    lv_img_set_antialias(s_logo[k], true);
-    lv_img_set_zoom(s_logo[k], (uint16_t)((256 * 52) / 48));
-    lv_img_set_pivot(s_logo[k], 0, 0);
-    lv_img_set_size_mode(s_logo[k], LV_IMG_SIZE_MODE_REAL);
     lv_obj_set_pos(s_logo[k], HERO_PAD, y);
     lv_obj_add_flag(s_logo[k], LV_OBJ_FLAG_HIDDEN);
 
@@ -335,7 +332,7 @@ void uiHeroShow(int8_t gameIdx) {
 
     // Keyed on the TEAM, not the descriptor pointer: logo slots are a static
     // array, so evicting one and refilling it hands back the same pointer.
-    const lv_img_dsc_t* img = logoGet(g.league, side[k]->abbr);
+    const lv_img_dsc_t* img = logoGetScaled(g.league, side[k]->abbr, 52);
     char lkey[10];
     snprintf(lkey, sizeof lkey, "%s%s", img ? "" : "-", side[k]->abbr);
     if (strncmp(c_logoKey[k], lkey, sizeof c_logoKey[k] - 1) != 0) {

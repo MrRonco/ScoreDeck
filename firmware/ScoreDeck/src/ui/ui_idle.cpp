@@ -204,11 +204,8 @@ void uiIdleInit(lv_obj_t* parent) {
   // in LVGL 8.3 that CLIPS the source instead of scaling it. SIZE_MODE_REAL
   // plus a 0,0 pivot lands it exactly where the badge would be.
   auto logoAt = [&](int x, int y) {
+    // Pre-scaled pixels, no transform — see imgscale.cpp.
     lv_obj_t* im = lv_img_create(nextCard);
-    lv_img_set_antialias(im, true);
-    lv_img_set_zoom(im, (uint16_t)((256 * 34) / 48));
-    lv_img_set_pivot(im, 0, 0);
-    lv_img_set_size_mode(im, LV_IMG_SIZE_MODE_REAL);
     lv_obj_set_pos(im, x, y);
     lv_obj_add_flag(im, LV_OBJ_FLAG_HIDDEN);
     return im;
@@ -396,8 +393,8 @@ void uiIdleTick() {
   // belongs to, so gating this on "the game changed" left the badge showing
   // until the next fixture came round.
   {
-    const lv_img_dsc_t* la = logoGet(nx->league, nx->away.abbr);
-    const lv_img_dsc_t* lh = logoGet(nx->league, nx->home.abbr);
+    const lv_img_dsc_t* la = logoGetScaled(nx->league, nx->away.abbr, 34);
+    const lv_img_dsc_t* lh = logoGetScaled(nx->league, nx->home.abbr, 34);
     if (la) { lv_img_set_src(s_nextLogoA, la); lv_obj_clear_flag(s_nextLogoA, LV_OBJ_FLAG_HIDDEN); }
     else    { lv_obj_add_flag(s_nextLogoA, LV_OBJ_FLAG_HIDDEN); }
     if (lh) { lv_img_set_src(s_nextLogoH, lh); lv_obj_clear_flag(s_nextLogoH, LV_OBJ_FLAG_HIDDEN); }

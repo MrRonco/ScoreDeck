@@ -11,6 +11,7 @@
 // what every install sees until the user runs the logo build. See
 // docs/OPEN_SOURCE.md §1 for why the artwork is never shipped.
 #include "logos.h"
+#include "../ui/imgscale.h"
 
 // Cache hit rate answers "why are my tiles letter badges", which is almost
 // always because the logo build was never run.
@@ -46,6 +47,14 @@ struct Slot {
   // 2,300-op scan is free against the HTTP round trip that precedes it. Doing
   // it at draw time would repeat it on every repaint of every tile.
   LogoChip    chip;
+  // Pre-scaled variants (badge 26/30/38, idle 34, hero 52 — at most three
+  // distinct sizes are ever live at once). Freed when the slot is evicted;
+  // never freed mid-tenancy, so a hidden consumer's src pointer stays valid
+  // for exactly as long as the slot itself does — the same lifetime the
+  // 48 px dsc already has.
+  struct Scaled { uint16_t size; uint8_t* data; lv_img_dsc_t dsc; };
+  Scaled      sc[3];
+  uint8_t     scN;
 };
 
 static Slot s_slot[LOGO_SLOTS];
@@ -82,6 +91,37 @@ const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
   const bool got = !(s->miss || !s->data);
   got ? (void)s_hits++ : (void)s_misses++;
   return got ? &s->dsc : nullptr;
+}
+
+const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t size) {
+  if (!abbr || !*abbr || !size) return nullptr;
+  char key[16];
+  snprintf(key, sizeof key, "%s:%s", league, abbr);
+  Slot* s = find(key);
+  if (!s || s->miss || !s->data) return nullptr;
+  s->lastUse = ++s_tick;
+  if (size == LOGO_SIZE) return &s->dsc;
+  for (uint8_t i = 0; i < s->scN; i++)
+    if (s->sc[i].size == size) return &s->sc[i].dsc;
+  if (s->scN >= 3) {
+    // A fourth concurrent size would mean a design change; refuse loudly in
+    // the log rather than silently evicting a variant something may hold.
+    Serial.printf("[logo] %s: >3 scaled sizes requested (%u)\n", key, size);
+    return &s->dsc;
+  }
+  uint8_t* buf = (uint8_t*)heap_caps_malloc((size_t)size * size * 3, MALLOC_CAP_SPIRAM);
+  if (!buf) return &s->dsc;
+  imgScaleRgb565A8(s->data + 4, LOGO_SIZE, LOGO_SIZE, buf, size, size);
+  Slot::Scaled& v = s->sc[s->scN++];
+  v.size = size;
+  v.data = buf;
+  v.dsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+  v.dsc.header.always_zero = 0;
+  v.dsc.header.w = size;
+  v.dsc.header.h = size;
+  v.dsc.data_size = (uint32_t)size * size * 3;
+  v.dsc.data = buf;
+  return &v.dsc;
 }
 
 LogoChip logoChip(const char* league, const char* abbr) {
@@ -153,6 +193,9 @@ static void logoTask(void*) {
   bool ok = false;
   if (s->data) ok = fetchOnce(s_url, s_token, s->data, &status);
 
+  // The slot is being re-tenanted: the old team's scaled variants die here.
+  for (uint8_t vi = 0; vi < s->scN; vi++) heap_caps_free(s->sc[vi].data);
+  s->scN = 0;
   strncpy(s->key, s_want, sizeof s->key - 1);
   s->key[sizeof s->key - 1] = '\0';
   s->lastUse = ++s_tick;

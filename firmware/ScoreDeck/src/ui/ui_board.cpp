@@ -335,11 +335,10 @@ static void buildTile(TileUI& t, int idx) {
     // SIZE_MODE_REAL makes the object take the zoomed size, and a 0,0 pivot
     // scales from the top-left into that box, so it lands exactly where the
     // colour badge would.
+    // Plain image, exact pixels — logoGetScaled() pre-scales at decode.
+    // The old zoom/pivot/SIZE_MODE_REAL stack drew the mark clipped and
+    // misplaced; the calibration spike (desktop mock 12) has the numbers.
     t.logo[i] = lv_img_create(t.root);
-    lv_img_set_antialias(t.logo[i], true);
-    lv_img_set_zoom(t.logo[i], (uint16_t)((256 * d.badge) / 48));
-    lv_img_set_pivot(t.logo[i], 0, 0);
-    lv_img_set_size_mode(t.logo[i], LV_IMG_SIZE_MODE_REAL);
     lv_obj_set_pos(t.logo[i], TILE_PAD_X, mid - d.badge / 2);
     lv_obj_add_flag(t.logo[i], LV_OBJ_FLAG_HIDDEN);
     t.cLogoKey[i][0] = '\0';
@@ -1188,7 +1187,7 @@ void uiBoardRefresh() {
       // array, so evicting one and refilling it with another club hands back
       // the same pointer — a pointer-keyed cache would call that "unchanged"
       // and leave one team's logo sitting beside another team's name.
-      const lv_img_dsc_t* img = logoGet(g.league, side[k]->abbr);
+      const lv_img_dsc_t* img = logoGetScaled(g.league, side[k]->abbr, d.badge);
       char lkey[10];
       snprintf(lkey, sizeof lkey, "%s%s", img ? "" : "-", side[k]->abbr);
       if (strncmp(t.cLogoKey[k], lkey, sizeof t.cLogoKey[k] - 1) != 0) {

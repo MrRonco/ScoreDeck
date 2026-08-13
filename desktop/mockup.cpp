@@ -1057,6 +1057,46 @@ static void railGrid(lv_obj_t* p) {
   }
 }
 
+
+/** SPIKE — the lv_img zoom draw-offset law. A solid 48x48 at four zooms,
+ *  pivot(0,0) + SIZE_MODE_REAL, each at a known position beside a reference
+ *  rect. Whatever offset the draw applies, the measurement reads it exactly:
+ *  no artwork inset, no antialias ambiguity beyond one edge pixel. */
+static void spikeZoom(lv_obj_t* p) {
+  static uint8_t solid[48 * 48 * 3];
+  static bool init;
+  if (!init) {
+    init = true;
+    for (int i = 0; i < 48 * 48; i++) {
+      // magenta in RGB565 little-endian + full alpha
+      const uint16_t px = (uint16_t)(31 << 11) | (uint16_t)31;
+      solid[i * 3] = (uint8_t)(px & 0xFF);
+      solid[i * 3 + 1] = (uint8_t)(px >> 8);
+      solid[i * 3 + 2] = 0xFF;
+    }
+  }
+  static lv_img_dsc_t dsc;
+  dsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+  dsc.header.always_zero = 0;
+  dsc.header.w = 48; dsc.header.h = 48;
+  dsc.data_size = 48 * 48 * 3;
+  dsc.data = solid;
+
+  const int zooms[4] = { 138, 160, 203, 277 };   // 26, 30, 38, 52 px nominal
+  for (int i = 0; i < 4; i++) {
+    const int x = 60 + i * 160, y = 100;
+    rect(p, x - 1, y - 1, 60, 1, lv_color_hex(0x00FF00));   // reference row
+    rect(p, x - 1, y - 1, 1, 60, lv_color_hex(0x00FF00));   // reference col
+    lv_obj_t* im = lv_img_create(p);
+    lv_img_set_src(im, &dsc);
+    lv_img_set_antialias(im, true);
+    lv_img_set_zoom(im, (uint16_t)zooms[i]);
+    lv_img_set_pivot(im, 0, 0);
+    lv_img_set_size_mode(im, LV_IMG_SIZE_MODE_REAL);
+    lv_obj_set_pos(im, x, y);
+  }
+}
+
 // ── entry ──────────────────────────────────────────────────────────────────
 void mockupApply(int n) {
   lv_obj_t* scr = lv_scr_act();
@@ -1073,6 +1113,7 @@ void mockupApply(int n) {
     case 9: refreshFeature(s_root); break;
     case 10: refreshGrid(s_root);   break;
     case 11: railGrid(s_root);      break;
+    case 12: spikeZoom(s_root);     break;
     case 1: mockIdle(s_root);   break;
     case 2: mockBusy(s_root);   break;
     default: mockTokens(s_root); break;
@@ -1091,6 +1132,7 @@ const char* mockupName(int n) {
     case 9:  return "refresh — FEATURE board, new header";
     case 10: return "refresh — dense grid, new header";
     case 11: return "refresh — rail open, 3x3 at 204";
+    case 12: return "SPIKE: lv_img zoom draw-offset law";
     case 1:  return "proposed idle — clock as the hero";
     case 2:  return "proposed board — busy night, grid unchanged";
     default: return "tokens — surfaces, accent, teamInk";
