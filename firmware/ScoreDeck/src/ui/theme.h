@@ -233,6 +233,7 @@ extern const lv_font_t* F_SCORE;      // tabular, Standard/Dense density
 extern const lv_font_t* F_SCORE_BIG;  // tabular, Roomy density
 extern const lv_font_t* F_DISPLAY;    // the alert verb, and nothing smaller
 extern const lv_font_t* F_ABBR;
+extern const lv_font_t* F_TITLE;     // 20 px cond bold CAPS+digits — tile team names
 extern const lv_font_t* F_BODY;
 extern const lv_font_t* F_NUM;
 extern const lv_font_t* F_MICRO;

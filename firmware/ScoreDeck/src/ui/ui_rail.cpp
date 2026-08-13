@@ -42,7 +42,6 @@ static lv_obj_t* s_rowBg[RAIL_MAX_ROWS];
 static lv_obj_t* s_rowTab[RAIL_MAX_ROWS];
 static lv_obj_t* s_rowName[RAIL_MAX_ROWS];
 static lv_obj_t* s_rowCount[RAIL_MAX_ROWS];
-static lv_obj_t* s_rowUnder[RAIL_MAX_ROWS];
 
 // The frozen order: captured at open, so rows never re-rank under a finger.
 // Row 0 is ALL; rows 1.. map to these league indices.
@@ -59,7 +58,10 @@ bool uiRailOpen() { return s_open; }
 // ── the sliver ─────────────────────────────────────────────────────────────
 static void sliverPaint() {
   if (!s_sliver || !s_cbuf) return;
-  lv_canvas_fill_bg(s_sliver, C_SURF_1, LV_OPA_COVER);
+  // C_PLATE, not C_SURF_1 — the sliver shared the scheduled-tile fill and
+  // touched the first column, reading as 16 px of extra tile. On the plate
+  // with segments at x=0 there are 8 px of ground between spine and cards.
+  lv_canvas_fill_bg(s_sliver, C_PLATE, LV_OPA_COVER);
 
   // Total games across leagues with any game tonight.
   uint16_t total = 0;
@@ -85,7 +87,7 @@ static void sliverPaint() {
     int h = usable * n / total - 2;
     if (h < 6) h = 6;
     seg.bg_color = g_leagues[i].live ? C_LIVE : C_EDGE_HI;
-    lv_canvas_draw_rect(s_sliver, 4, y, 8, h, &seg);
+    lv_canvas_draw_rect(s_sliver, 0, y, 8, h, &seg);
     // The white tab: which league the FILTER currently is.
     if (g_leagueFilter == (int8_t)i) {
       lv_draw_rect_dsc_t tab;
@@ -157,20 +159,25 @@ static void rowApply(uint8_t r) {
       }
   }
 
+  // Selected fill is C_SURF_2 — the raised rung — not C_EDGE_HI, which is a
+  // border token and sat 17 L* above every surface on the panel. Selection is
+  // carried by the tab and the ink step, not by an off-ladder luminance.
+  lv_obj_set_style_bg_color(s_rowBg[r], C_SURF_2, 0);
   lv_obj_set_style_bg_opa(s_rowBg[r], sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
   sel ? lv_obj_clear_flag(s_rowTab[r], LV_OBJ_FLAG_HIDDEN)
       : lv_obj_add_flag(s_rowTab[r], LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_style_text_color(s_rowName[r],
-      sel ? C_INK : (live ? C_INK2 : kStateInk[GS_PRE].ink3), 0);
+      sel ? C_INK : (live ? C_INK2 : C_INK3), 0);
 
-  char buf[12];
-  if (total) snprintf(buf, sizeof buf, "%u /%u", live, total);
-  else       snprintf(buf, sizeof buf, "-");
+  // "2/8", numerator in the accent — the same treatment as the header's
+  // "1 / 11", which styled the identical datum a second different way.
+  char buf[24];
+  if (total && live) snprintf(buf, sizeof buf, "#3be0c0 %u#/%u", live, total);
+  else if (total)    snprintf(buf, sizeof buf, "%u/%u", live, total);
+  else               snprintf(buf, sizeof buf, "-");
   lv_label_set_text(s_rowCount[r], buf);
   lv_obj_set_style_text_color(s_rowCount[r],
-      live ? C_LIVE : (total ? kStateInk[GS_PRE].ink3 : lv_color_hex(0x4A5666)), 0);
-  (live && !sel) ? lv_obj_clear_flag(s_rowUnder[r], LV_OBJ_FLAG_HIDDEN)
-                 : lv_obj_add_flag(s_rowUnder[r], LV_OBJ_FLAG_HIDDEN);
+      total ? C_INK3 : lv_color_hex(0x4A5666), 0);
 }
 
 void uiRailInit(lv_obj_t* parent) {
@@ -245,13 +252,16 @@ void uiRailInit(lv_obj_t* parent) {
     s_rowTab[r] = lv_obj_create(s_root);
     lv_obj_remove_style_all(s_rowTab[r]);
     lv_obj_set_pos(s_rowTab[r], 0, y - 3);
-    lv_obj_set_size(s_rowTab[r], 3, 26);
+    lv_obj_set_size(s_rowTab[r], 6, 26);   // butts the pill at x=6 — no canyon
     lv_obj_set_style_bg_color(s_rowTab[r], lv_color_white(), 0);
     lv_obj_set_style_bg_opa(s_rowTab[r], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_rowTab[r], LV_OBJ_FLAG_HIDDEN);
 
     s_rowName[r] = lv_label_create(s_root);
-    lv_obj_set_pos(s_rowName[r], 14, y);
+    // (26 - line height) / 2 below the pill's top — the label sat 3 px high
+    // in its own selection pill. Insets 12/12 (were 8 left, 3 right).
+    lv_obj_set_pos(s_rowName[r], 18,
+                   y - 3 + (26 - (int)lv_font_get_line_height(F_MICRO)) / 2);
     lv_obj_set_style_text_font(s_rowName[r], F_MICRO, 0);
     lv_obj_set_style_text_letter_space(s_rowName[r], 1, 0);
     if (r == 0) {
@@ -267,19 +277,12 @@ void uiRailInit(lv_obj_t* parent) {
 
     s_rowCount[r] = lv_label_create(s_root);
     lv_obj_set_style_text_font(s_rowCount[r], F_MICRO, 0);
+    lv_label_set_recolor(s_rowCount[r], true);
     lv_obj_set_width(s_rowCount[r], 54);
     lv_obj_set_style_text_align(s_rowCount[r], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_pos(s_rowCount[r], 76, y);
+    lv_obj_set_pos(s_rowCount[r], 68,
+                   y - 3 + (26 - (int)lv_font_get_line_height(F_MICRO)) / 2);
     lv_label_set_text(s_rowCount[r], "");
-
-    s_rowUnder[r] = lv_obj_create(s_root);
-    lv_obj_remove_style_all(s_rowUnder[r]);
-    lv_obj_set_pos(s_rowUnder[r], 14, y + 15);
-    lv_obj_set_size(s_rowUnder[r], 30, 2);
-    lv_obj_set_style_radius(s_rowUnder[r], R_XS, 0);
-    lv_obj_set_style_bg_color(s_rowUnder[r], C_LIVE, 0);
-    lv_obj_set_style_bg_opa(s_rowUnder[r], LV_OPA_COVER, 0);
-    lv_obj_add_flag(s_rowUnder[r], LV_OBJ_FLAG_HIDDEN);
 
     rowApply(r);
   }

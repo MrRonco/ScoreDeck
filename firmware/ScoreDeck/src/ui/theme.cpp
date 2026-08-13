@@ -18,6 +18,7 @@ LV_FONT_DECLARE(font_score46)
 LV_FONT_DECLARE(font_score38)
 LV_FONT_DECLARE(font_display30)
 LV_FONT_DECLARE(font_abbr17)
+LV_FONT_DECLARE(font_title20)
 LV_FONT_DECLARE(font_body15)
 LV_FONT_DECLARE(font_micro11)
 LV_FONT_DECLARE(font_micro13)
@@ -34,6 +35,7 @@ const lv_font_t* F_HERO  = &font_hero72;
 const lv_font_t* F_CLOCK = &font_clock96;
 const lv_font_t* F_DISPLAY = &font_display30;
 const lv_font_t* F_ABBR  = &font_abbr17;
+const lv_font_t* F_TITLE = &font_title20;
 const lv_font_t* F_BODY  = &font_body15;
 const lv_font_t* F_NUM   = &font_num15;
 const lv_font_t* F_MICRO = &font_micro13;
@@ -202,34 +204,21 @@ LogoChip chipSolve(const uint8_t* px, int w, int h, uint32_t against) {
   // outline around a light field, which is most crests — is worst against a
   // mid grey and better at both ends, so the ramp has an interior maximum.
   // Scan all of it: 33 candidates against 64 bins is 2,112 comparisons.
+  // §19 of the polish pass: exactly TWO treatments on the board — no chip,
+  // or the ONE light rung. The continuous ramp solved each mark independently
+  // and the board showed a scatter of chip brightnesses; two adjacent chips
+  // in one tile at different greys read as inconsistent ARTWORK, not as
+  // considered normalisation (Gestalt similarity: same-role must look
+  // same-role). Because ink loss is non-monotonic (above), the rung is
+  // EVALUATED against the mark's bins, never rounded to — a mark the rung
+  // would make worse simply stays chipless.
   const float kAccept = 0.05f;                 // ink we tolerate losing
-  float bestLoss = base;                       // fallback: min loss anywhere
-  uint32_t bestColor = 0;
-  float dimLoss = 0.0f;                        // first ground clearing kAccept
-  uint32_t dimColor = 0;
-
-  for (int step = 0; step <= 32; step++) {
-    const uint32_t k = (uint32_t)(step * 255 / 32);
-    // Cool-biased neutral, so the chip belongs to the same family as the
-    // surfaces around it rather than reading as a foreign grey.
-    const uint32_t r = k;
-    const uint32_t g = k + (k < 240 ? 6 : 0);
-    const uint32_t b = k + (k < 226 ? 14 : 0);
-    const uint32_t c = (r << 16) | (g << 8) | b;
-    const float l = inkLost(binColor, binCount, total, c);
-
-    if (!dimColor && l <= kAccept) { dimColor = c; dimLoss = l; }
-    if (l < bestLoss) { bestLoss = l; bestColor = c; }
+  if (base > kAccept) {
+    const uint32_t kRung = 0xDCE4EE;           // the light rung — one value
+    const float l = inkLost(binColor, binCount, total, kRung);
+    // Same "only spend an object if it buys >= 2%" rule as before.
+    if (base - l > 0.02f) { out.color = kRung; out.opa = LV_OPA_COVER; }
   }
-  // Prefer the DIMMEST acceptable ground over the outright best one — the
-  // difference between a chip that sits in the surface family and a white
-  // puck. Fall back to min-loss only when nothing clears the threshold.
-  if (dimColor) { bestColor = dimColor; bestLoss = dimLoss; }
-
-  // Only spend an object if it actually buys something. Without this a third
-  // of the set gains a chip to recover ~1% of ink, which is visual noise
-  // bought with nothing.
-  if (bestColor && base - bestLoss > 0.02f) { out.color = bestColor; out.opa = LV_OPA_COVER; }
   return out;
 }
 

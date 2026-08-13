@@ -46,13 +46,14 @@ static int s_pillX = 148;      // the pill's computed x — lv_obj_get_x is stal
 static uint8_t s_dotsShown;    // visible page dots — so zone A can re-clamp them
 static lv_obj_t* s_pill;       // zone B: names the filter, opens the rail
 static lv_obj_t* s_pillLbl;
-static lv_obj_t* s_pillUnder;  // C_LIVE_SD underline when the filter has live
+static lv_obj_t* s_pillChev;   // the disclosure chevron, pinned to the pill's edge
+static int s_pillW = 224;      // measured content width — the dots clamp past it
 static lv_obj_t* s_zc;         // zone C slot: clock / "+N NEW" / trouble
 static lv_obj_t* s_zcLbl;
 static lv_obj_t* s_navNewsDot;
 static char      s_clockStr[12] = "";   // "12:35 AM" is 8 chars + NUL — 8 truncated it
 static char      s_zcCache[52] = "\x01"; // zone C's change cache; reset by buildBar
-static char      c_zaCount[6], c_zaTotal[10], c_pill[30];
+static char      c_zaCount[6], c_zaTotal[10], c_pill[44];  // holds recolor tags
 // The delta ledger: scores that changed while you were not looking.
 static uint32_t  s_lastTouchMs;
 static uint8_t   s_deltaCount;
@@ -122,6 +123,7 @@ struct TileUI {
   char     cAbbr[2][20];   // holds an abbreviation OR a tennis name
   char     cRec[2][10];
   int32_t  cScore[2];
+  bool     cScoreVis[2]; // §15: PRE hides the score labels entirely
   uint32_t cColor[2];
   char     cStatus[16];
   char     cBcast[13];
@@ -225,6 +227,20 @@ static DensitySpec spec() {
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
+// §4 of the polish pass: the ink box of a digits/caps face, measured from the
+// font's own glyph metrics. Positioning from POINT SIZES left a 7.5 px spread
+// of optical centres inside one 42 px tile row — every row element now derives
+// its y from where the ink actually lands. '0' stands in for the whole face:
+// these faces carry caps and digits only, so cap height IS the ink height.
+struct InkBox { int top; int h; };   // ink offset below label y, ink height
+static InkBox inkBox(const lv_font_t* f) {
+  lv_font_glyph_dsc_t g;
+  if (!lv_font_get_glyph_dsc(f, &g, '0', 0))
+    return { 0, (int)lv_font_get_line_height(f) };
+  const int baseline = (int)lv_font_get_line_height(f) - (int)f->base_line;
+  return { baseline - (int)g.box_h - (int)g.ofs_y, (int)g.box_h };
+}
+
 static void setTextCached(lv_obj_t* o, char* cache, size_t cap, const char* v) {
   if (strncmp(cache, v, cap - 1) == 0) return;
   strncpy(cache, v, cap - 1);
@@ -313,10 +329,14 @@ static void buildTile(TileUI& t, int idx) {
   lv_obj_add_flag(t.edge, LV_OBJ_FLAG_HIDDEN);
 
   const int rowH = (d.tileH - 2 * TILE_PAD_Y - STATUS_H) / 2;
-  // Everything in a row hangs off one midline. Sizes here must track the font
-  // scale in theme.cpp: the score face is 38 px, and positioning it as if it
-  // were 28 left it riding high against the badge.
-  const int scoreH = 38, abbrH = 17, recH = 11, textH = abbrH + 3 + recH;
+  // Everything in a row shares ONE optical centre, derived from measured
+  // glyph ink — never from point sizes (which put the badge at 133.5, the
+  // name block at 136.5 and the score at 129.0 in the same 42 px band).
+  const InkBox ibT = inkBox(F_TITLE);
+  const InkBox ibR = inkBox(F_NUM);
+  const InkBox ibS = inkBox(d.scoreFont == 0 ? F_SCORE_BIG : F_SCORE);
+  const int vGap = 4;                              // name ink -> record ink
+  const int blockInk = ibT.h + vGap + ibR.h;
   for (int i = 0; i < 2; i++) {
     const int ry  = TILE_PAD_Y + i * rowH;
     const int mid = ry + rowH / 2;
@@ -370,15 +390,17 @@ static void buildTile(TileUI& t, int idx) {
     lv_obj_center(t.badgeLbl[i]);
 
     const int tx = TILE_PAD_X + d.badge + 10;
-    t.abbr[i] = microLabel(t.root, tx, mid - textH / 2, C_INK, F_ABBR);
-    t.rec[i]  = microLabel(t.root, tx, mid - textH / 2 + abbrH + 3, C_INK3, F_NUM);
+    t.abbr[i] = microLabel(t.root, tx, mid - blockInk / 2 - ibT.top, C_INK, F_TITLE);
+    t.rec[i]  = microLabel(t.root, tx, mid - blockInk / 2 + ibT.h + vGap - ibR.top,
+                           C_INK3, F_NUM);
 
     t.score[i] = lv_label_create(t.root);
     lv_obj_set_style_text_font(t.score[i], d.scoreFont == 0 ? F_SCORE_BIG : F_SCORE, 0);
     lv_obj_set_style_text_color(t.score[i], C_INK, 0);
     lv_obj_set_style_text_align(t.score[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_width(t.score[i], 74);
-    lv_obj_set_pos(t.score[i], d.tileW - TILE_PAD_X - 74, mid - scoreH / 2);
+    lv_obj_set_pos(t.score[i], d.tileW - TILE_PAD_X - 74,
+                   mid - ibS.top - ibS.h / 2);
     lv_label_set_text(t.score[i], "");
   }
 
@@ -411,7 +433,7 @@ static void buildTile(TileUI& t, int idx) {
   const int nameX = TILE_PAD_X + (posW ? posW + 4 : 0);
   const int nameW = d.tileW - TILE_PAD_X - valW - 6 - nameX;
   for (int i = 0; i < 3; i++) {
-    const int y = TILE_PAD_Y + 24 + i * 19;
+    const int y = TILE_PAD_Y + 28 + i * 19;   // +4: optical centre of the block
     // NOT hidden when posW is 0 — the refresh's fieldOnly[] loop clears the
     // hidden flag on every field object, so a flag set here would not survive.
     // The refresh writes an empty string instead.
@@ -530,6 +552,7 @@ static void buildTile(TileUI& t, int idx) {
   t.cBadgeVis[0] = t.cBadgeVis[1] = true;
   t.cLogoVis[0] = t.cLogoVis[1] = false;
   t.cScore[0] = t.cScore[1] = -1;
+  t.cScoreVis[0] = t.cScoreVis[1] = true;
   t.cBig = -1;
   t.cColor[0] = t.cColor[1] = 0xFFFFFFFF;
   t.cEdge = 0xFFFFFFFF;
@@ -553,28 +576,48 @@ static void buildTile(TileUI& t, int idx) {
   t.cUsed = true;
 }
 
-/** A 54x32 nav pill. Filled LIGHTER than the bar — that is the affordance
- *  the old bordered-darker boxes got backwards: the touchable thing should
- *  look raised, not recessed. Words, not abbreviations: TBL needed decoding.
- *  Shared with the idle screen via uiNavPill(). */
-lv_obj_t* uiNavPill(lv_obj_t* bar, int x, int barH, const char* text, lv_event_cb_t cb) {
-  lv_obj_t* b = lv_btn_create(bar);
-  lv_obj_set_size(b, 54, 32);
-  lv_obj_set_pos(b, x, (barH - 32) / 2);
-  lv_obj_set_style_bg_color(b, C_SURF_1, 0);
-  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_color(b, C_EDGE, 0);
-  lv_obj_set_style_border_width(b, 1, 0);
-  lv_obj_set_style_radius(b, R_MD, 0);
-  uiPressable(b);
-  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* l = lv_label_create(b);
-  lv_label_set_text(l, text);
-  lv_obj_set_style_text_font(l, F_MICRO, 0);
-  lv_obj_set_style_text_letter_space(l, 1, 0);
-  lv_obj_set_style_text_color(l, C_INK2, 0);
-  lv_obj_center(l);
-  return b;
+/** The nav trio: ONE segmented control, not three bordered chips 4 px apart
+ *  (border, 2 px canyon, border — the classic double-hairline tell). Fixed
+ *  labels TABLE / NEWS / SETUP; returns the container. Shared with idle. */
+lv_obj_t* uiNavTrio(lv_obj_t* bar, int x, int barH,
+                    lv_event_cb_t t1, lv_event_cb_t t2, lv_event_cb_t t3) {
+  static const char* kLbl[3] = { "TABLE", "NEWS", "SETUP" };
+  lv_obj_t* c = lv_obj_create(bar);
+  lv_obj_remove_style_all(c);
+  lv_obj_set_pos(c, x, (barH - 32) / 2);
+  lv_obj_set_size(c, 174, 32);
+  lv_obj_set_style_radius(c, R_MD, 0);
+  lv_obj_set_style_border_color(c, C_LINE, 0);
+  lv_obj_set_style_border_opa(c, OPA_EDGE, 0);
+  lv_obj_set_style_border_width(c, 1, 0);
+  lv_obj_set_style_bg_color(c, C_SURF_1, 0);
+  lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+  const lv_event_cb_t cbs[3] = { t1, t2, t3 };
+  for (int i = 0; i < 3; i++) {
+    lv_obj_t* z = lv_btn_create(c);
+    lv_obj_remove_style_all(z);
+    lv_obj_set_size(z, 58, 32);
+    lv_obj_set_pos(z, i * 58, 0);
+    lv_obj_set_style_radius(z, R_MD, 0);
+    uiPressable(z);
+    lv_obj_add_event_cb(z, cbs[i], LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* l = lv_label_create(z);
+    lv_label_set_text(l, kLbl[i]);
+    lv_obj_set_style_text_font(l, F_MICRO, 0);
+    lv_obj_set_style_text_letter_space(l, 1, 0);
+    lv_obj_set_style_text_color(l, C_INK2, 0);
+    lv_obj_center(l);
+    if (i) {
+      lv_obj_t* dv = lv_obj_create(c);
+      lv_obj_remove_style_all(dv);
+      lv_obj_set_pos(dv, i * 58, 6);
+      lv_obj_set_size(dv, 1, 20);
+      lv_obj_set_style_bg_color(dv, C_LINE, 0);
+      lv_obj_set_style_bg_opa(dv, OPA_HAIR, 0);
+    }
+  }
+  return c;
 }
 
 static void onTableBtn(lv_event_t*) {
@@ -652,19 +695,30 @@ static void buildBar() {
   lv_obj_set_style_radius(s_pill, R_MD, 0);
   uiPressable(s_pill);
   lv_obj_add_event_cb(s_pill, onPill, LV_EVENT_CLICKED, nullptr);
+  // Chevron pinned to the left edge, text hanging after it — centred text
+  // with an inline chevron floated mid-string reads as a text field. The
+  // underline is gone with it: a bar inside a filled rounded rect is the
+  // signature of an INPUT, and the label already carries "· N LIVE" (in the
+  // accent, via recolor — the accent lands on the datum, not on furniture).
+  // Content-sized: LVGL owns the pill's width (pads 12/16 around chevron +
+  // text). Hand arithmetic disagreed with the renderer's tracking treatment
+  // and clipped the last glyph.
+  lv_obj_set_width(s_pill, LV_SIZE_CONTENT);
+  lv_obj_set_style_min_width(s_pill, 160, 0);
+  lv_obj_set_style_pad_left(s_pill, 12, 0);
+  lv_obj_set_style_pad_right(s_pill, 16, 0);
+  s_pillChev = lv_label_create(s_pill);
+  lv_obj_set_style_text_font(s_pillChev, F_MICRO, 0);
+  lv_obj_set_style_text_color(s_pillChev, C_INK3, 0);
+  lv_label_set_text(s_pillChev, "<");
+  lv_obj_align(s_pillChev, LV_ALIGN_LEFT_MID, 0, 0);
   s_pillLbl = lv_label_create(s_pill);
   lv_obj_set_style_text_font(s_pillLbl, F_MICRO, 0);
   lv_obj_set_style_text_letter_space(s_pillLbl, 1, 0);
   lv_obj_set_style_text_color(s_pillLbl, C_INK2, 0);
+  lv_label_set_recolor(s_pillLbl, true);
   lv_label_set_text(s_pillLbl, "");
-  lv_obj_center(s_pillLbl);
-  s_pillUnder = lv_obj_create(s_bar);
-  lv_obj_remove_style_all(s_pillUnder);
-  lv_obj_set_size(s_pillUnder, 212, 2);
-  lv_obj_set_pos(s_pillUnder, 154, (barH - 30) / 2 + 28);
-  lv_obj_set_style_bg_color(s_pillUnder, C_LIVE_SD, 0);
-  lv_obj_set_style_bg_opa(s_pillUnder, LV_OPA_COVER, 0);
-  lv_obj_add_flag(s_pillUnder, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_align(s_pillLbl, LV_ALIGN_LEFT_MID, 14, 0);
 
   // Zone C — one slot with a precedence, not three labels fighting for the
   // same pixels. Trouble > delta > clock; the three are mutually exclusive
@@ -684,16 +738,16 @@ static void buildBar() {
   lv_label_set_text(s_zcLbl, "");
   lv_obj_align(s_zcLbl, LV_ALIGN_RIGHT_MID, -4, 0);
 
-  uiNavPill(s_bar, 606, barH, "TABLE", [](lv_event_t*){ onNavTouch(); onTableBtn(nullptr); });
-  lv_obj_t* news = uiNavPill(s_bar, 606 + 62, barH, "NEWS",
-                             [](lv_event_t*){ onNavTouch(); g_newsUnread = false;
-                                              if (s_navNewsDot) lv_obj_add_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN);
-                                              onNewsBtn(nullptr); });
-  uiNavPill(s_bar, 606 + 124, barH, "SETUP", [](lv_event_t*){ onNavTouch(); onSettingsBtn(nullptr); });
+  uiNavTrio(s_bar, 610, barH,
+            [](lv_event_t*){ onNavTouch(); onTableBtn(nullptr); },
+            [](lv_event_t*){ onNavTouch(); g_newsUnread = false;
+                             if (s_navNewsDot) lv_obj_add_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN);
+                             onNewsBtn(nullptr); },
+            [](lv_event_t*){ onNavTouch(); onSettingsBtn(nullptr); });
   s_navNewsDot = lv_obj_create(s_bar);
   lv_obj_remove_style_all(s_navNewsDot);
   lv_obj_set_size(s_navNewsDot, 7, 7);
-  lv_obj_set_pos(s_navNewsDot, lv_obj_get_x(news) + 47, (barH - 32) / 2 - 2);
+  lv_obj_set_pos(s_navNewsDot, 610 + 58 + 47, (barH - 32) / 2 - 2);
   lv_obj_set_style_radius(s_navNewsDot, 4, 0);
   lv_obj_set_style_bg_color(s_navNewsDot, C_LIVE, 0);
   lv_obj_set_style_bg_opa(s_navNewsDot, LV_OPA_COVER, 0);
@@ -1066,7 +1120,10 @@ void uiBoardRefresh() {
       }
       // Live status reads AS live from across the desk — the family's solved
       // body tint, not a grey. Finals and pre stay in the state ink.
-      lv_obj_set_style_text_color(t.status, g.state == GS_LIVE ? C_LIVE_TX : si.ink2, 0);
+      // ink2, not C_LIVE_TX: the pulsing dot beside it already says "live";
+      // the text saying it again in the accent was the redundancy that turned
+      // one accent into fifteen (§11).
+      lv_obj_set_style_text_color(t.status, si.ink2, 0);
       lv_obj_set_style_text_color(t.bcast,  si.ink3, 0);
       lv_obj_set_style_text_color(t.fldTitle, si.ink, 0);
       // The score-ink cache stores a team colour or a "use si.ink2" sentinel,
@@ -1102,6 +1159,9 @@ void uiBoardRefresh() {
                                      t.rec[0], t.rec[1], t.score[0], t.score[1] };
       for (lv_obj_t* o : twoSided)
         isField ? lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+      // The raw flag writes above bypass the score-visibility cache — sync it,
+      // or a PRE tile arriving after a shape swap keeps its stale "hidden".
+      t.cScoreVis[0] = t.cScoreVis[1] = !isField;
       lv_obj_t* const fieldOnly[] = { t.fldTitle, t.fldPos[0], t.fldPos[1], t.fldPos[2],
                                       t.fldName[0], t.fldName[1], t.fldName[2],
                                       t.fldVal[0], t.fldVal[1], t.fldVal[2] };
@@ -1133,7 +1193,9 @@ void uiBoardRefresh() {
       setHiddenCached(t.sit,   &t.cSitVis,   true);
       setHiddenCached(t.bcast, &t.cBcastVis, false);
       setHiddenCached(t.edge, &t.cEdgeVis, true);
-      setHiddenCached(t.dot,  &t.cDotVis, g.state != GS_LIVE);
+      // A dot never appears without a string 8 px to its right (§C.7) — on a
+      // field tile with an empty status it floated alone in the tile foot.
+      setHiddenCached(t.dot,  &t.cDotVis, g.state != GS_LIVE || !g.status[0]);
       // The tennis set boxes. They are hidden in the two-sided path below,
       // which this branch never reaches — so a tile that held a tennis match
       // and then became a golf leaderboard kept them, printing set scores
@@ -1155,7 +1217,7 @@ void uiBoardRefresh() {
       // lines above it. Round 2 engineering, blocker 2.
       if (t.cSetMode != (int8_t)isSet) {
         if (k == 1) t.cSetMode = (int8_t)isSet;      // after both sides ran
-        lv_obj_set_style_text_font(t.abbr[k], isSet ? F_BODY : F_ABBR, 0);
+        lv_obj_set_style_text_font(t.abbr[k], isSet ? F_BODY : F_TITLE, 0);
         if (isSet) {
           // Tennis names are prose and must not run into the score column —
           // "N. Budkov Kjaer" touched the digits at 186 px on the real
@@ -1172,8 +1234,13 @@ void uiBoardRefresh() {
                     isSet ? side[k]->name : side[k]->abbr);
       setTextCached(t.rec[k],  t.cRec[k],  sizeof t.cRec[k],  side[k]->rec);
       if (g.state == GS_PRE) {
-        if (t.cScore[k] != -2) { t.cScore[k] = -2; lv_label_set_text(t.score[k], "-"); }
+        // No placeholder: the start time already says the game hasn't begun,
+        // and twenty floating dashes read as damage at a glance (§15). The
+        // sentinel write stays — the delta ledger keys off cScore >= 0.
+        if (t.cScore[k] != -2) { t.cScore[k] = -2; lv_label_set_text(t.score[k], ""); }
+        setHiddenCached(t.score[k], &t.cScoreVis[k], true);
       } else {
+        setHiddenCached(t.score[k], &t.cScoreVis[k], false);
         // The delta ledger counts scores that changed in a slot still holding
         // the SAME game — a page flip reassigns slots and must not count.
         if (sameGame && g.state == GS_LIVE &&
@@ -1194,8 +1261,15 @@ void uiBoardRefresh() {
           t.cBig = big;
           const lv_font_t* f =
               (big || d.scoreFont == 0) ? F_SCORE_BIG : F_SCORE;
-          lv_obj_set_style_text_font(t.score[0], f, 0);
-          lv_obj_set_style_text_font(t.score[1], f, 0);
+          // Re-centre on the row from the NEW face's measured ink — swapping
+          // 38 -> 46 without repositioning left the digits 4 px low.
+          const InkBox ib = inkBox(f);
+          const int rH = (d.tileH - 2 * TILE_PAD_Y - STATUS_H) / 2;
+          for (int j = 0; j < 2; j++) {
+            lv_obj_set_style_text_font(t.score[j], f, 0);
+            lv_obj_set_y(t.score[j],
+                         TILE_PAD_Y + j * rH + rH / 2 - ib.top - ib.h / 2);
+          }
         }
       }
       // The leading score is drawn in the LEADING TEAM'S OWN COLOUR, lifted
@@ -1414,7 +1488,7 @@ void uiBoardRefresh() {
 
 static void zaDotsLayout() {
   const int dotsW = s_dotsShown ? s_dotsShown * 14 - 8 : 0;
-  const int pEnd = s_pillX + 224;
+  const int pEnd = s_pillX + s_pillW;
   int x0 = 410 - dotsW / 2;
   if (x0 < pEnd + 12) x0 = pEnd + 12;
   for (uint8_t p = 0; p < s_dotsShown; p++) lv_obj_set_x(s_dot[p], x0 + p * 14);
@@ -1463,6 +1537,14 @@ static void zoneCApply() {
   if (s_zcLbl) {
     lv_label_set_text(s_zcLbl, buf);
     lv_obj_set_style_text_color(s_zcLbl, ink, 0);
+    // Role, not size: the clock is DATA (F_NUM, untracked); the warn and
+    // delta strings are LABELS (F_MICRO, tracked caps). The clock was
+    // byte-identically styled to the nav buttons 12 px away — a datum and
+    // three controls in the same voice.
+    const bool data = (ink.full == C_INK2.full && buf[0] >= '0' && buf[0] <= '9');
+    lv_obj_set_style_text_font(s_zcLbl, data ? F_NUM : F_MICRO, 0);
+    lv_obj_set_style_text_letter_space(s_zcLbl, data ? 0 : 1, 0);
+    if (data) lv_obj_set_style_text_color(s_zcLbl, C_INK3, 0);
   }
 }
 
@@ -1492,7 +1574,6 @@ void uiSetStatus() {
     lv_obj_set_x(s_zaDiv, 78 + cw + 8 + tw + 12);
     s_pillX = 78 + cw + 8 + tw + 25;
     lv_obj_set_x(s_pill, s_pillX);
-    lv_obj_set_x(s_pillUnder, s_pillX + 6);
     lv_obj_clear_flag(s_zaTotal, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(s_zaLive, "LIVE");
     lv_obj_set_style_text_color(s_zaLive, C_LIVE_SD, 0);
@@ -1510,7 +1591,6 @@ void uiSetStatus() {
     lv_obj_set_x(s_zaDiv, 32 + nw + 12);
     s_pillX = 32 + nw + 25;
     lv_obj_set_x(s_pill, s_pillX);
-    lv_obj_set_x(s_pillUnder, s_pillX + 6);
     c_zaCount[0] = '\0';
   }
 
@@ -1527,12 +1607,25 @@ void uiSetStatus() {
   } else {
     strcpy(name, "ALL LEAGUES");
   }
-  char pill[30];
-  if (fLive) snprintf(pill, sizeof pill, "< %s · %u LIVE", name, fLive);
-  else       snprintf(pill, sizeof pill, "< %s", name);
+  // Tagged for display, plain for measurement — recolor tags must not count
+  // toward the pill's content width.
+  char pill[44], plain[30];
+  if (fLive) {
+    snprintf(pill, sizeof pill, "%s · #3be0c0 %u LIVE#", name, fLive);
+    snprintf(plain, sizeof plain, "%s · %u LIVE", name, fLive);
+  } else {
+    snprintf(pill, sizeof pill, "%s", name);
+    snprintf(plain, sizeof plain, "%s", name);
+  }
   setTextCached(s_pillLbl, c_pill, sizeof c_pill, pill);
-  fLive ? lv_obj_clear_flag(s_pillUnder, LV_OBJ_FLAG_HIDDEN)
-        : lv_obj_add_flag(s_pillUnder, LV_OBJ_FLAG_HIDDEN);
+  {
+    // The pill is content-sized; read back what LVGL decided so the page
+    // dots can clamp past it. Filter changes are user actions — the forced
+    // layout is off the poll path.
+    (void)plain;
+    lv_obj_update_layout(s_pill);
+    s_pillW = (int)lv_obj_get_width(s_pill);
+  }
 
   if (s_navNewsDot)
     g_newsUnread ? lv_obj_clear_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN)

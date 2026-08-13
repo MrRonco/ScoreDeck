@@ -160,16 +160,16 @@ void uiIdleInit(lv_obj_t* parent) {
   // The clock is the subject, so it is drawn at 96 px directly on the plate
   // with nothing behind it. Dark ground goes 12.9% -> 48.0% and single-colour
   // dominance 80.5% -> 47.8%, entirely from taking things AWAY.
-  s_clock   = lbl(s_root, 44, 68, C_INK, F_CLOCK);
+  s_clock   = lbl(s_root, 44, 68, C_INK, F_CLOCK);   // x re-hung per-minute, see §17 note
   // Sat at (300,150) — below the digits' baseline and adrift to their right,
   // with the gap between reading as a hole rather than as spacing. A meridiem
   // is a suffix: it belongs on the same baseline, one space away. Measured
   // from the rendered glyphs rather than derived, because F_CLOCK's 96 px
   // digits do not fill their line box.
   s_ampm    = lbl(s_root, 0, 0, C_INK3, F_DISPLAY);
-  s_date    = lbl(s_root, 48, 232, C_INK3, F_MICRO);
+  s_date    = lbl(s_root, 44, 232, C_INK3, F_MICRO);   // one left edge with the clock ink
   lv_obj_set_style_text_letter_space(s_date, 1, 0);
-  s_summary = lbl(s_root, 48, 258, C_INK3, F_NUM);
+  s_summary = lbl(s_root, 44, 258, C_INK3, F_NUM);
 
   // ── next up ──────────────────────────────────────────────────────────────
   // The ONLY card on the screen, which is what makes it read as the one thing
@@ -191,9 +191,7 @@ void uiIdleInit(lv_obj_t* parent) {
   // The idle bar speaks the same language as the board's: word pills, and
   // the poll heartbeat along its bottom edge. Zone A's job is done here by
   // the brand — idle IS the "no games live" state, saying it twice is noise.
-  uiNavPill(bar, 606, BAR_H, "TABLE", onIdleTable);
-  uiNavPill(bar, 606 + 62, BAR_H, "NEWS", onIdleNews);
-  uiNavPill(bar, 606 + 124, BAR_H, "SETUP", onIdleSettings);
+  uiNavTrio(bar, 610, BAR_H, onIdleTable, onIdleNews, onIdleSettings);
   {
     lv_obj_t* ht = lv_obj_create(s_root);
     lv_obj_remove_style_all(ht);
@@ -350,6 +348,24 @@ void uiIdleTick() {
   char buf[64];
   strftime(buf, sizeof buf, "%l:%M", &lt);
   setCached(s_clock, s_cClock, sizeof s_cClock, buf[0] == ' ' ? buf + 1 : buf);
+  {
+    // Optical hang (§17): x=44 was a constant correction applied to a
+    // VARIABLE — F_CLOCK is tabular, so a leading '1' starts its ink far
+    // further into the advance than an '8'. At 96 px that difference is
+    // ~10 px, and the clock visibly indented against the date below it for
+    // whole hours at a time. Hang the INK at 44, not the advance box:
+    // subtract the leading glyph's own bearing, re-measured only when the
+    // leading digit actually changes.
+    static char lastLead = 0;
+    const char lead = s_cClock[0];
+    if (lead && lead != lastLead) {
+      lastLead = lead;
+      lv_font_glyph_dsc_t g;
+      const int ofs = lv_font_get_glyph_dsc(F_CLOCK, &g, (uint32_t)lead, 0)
+                        ? g.ofs_x : 0;
+      lv_obj_set_x(s_clock, 44 - ofs);
+    }
+  }
   // Placed from the CLOCK's rendered width, every time it changes — "9:14" and
   // "11:37" are not the same width, so a fixed x is wrong for half the day.
   // Baselines are aligned through each face's own metrics rather than by eye:

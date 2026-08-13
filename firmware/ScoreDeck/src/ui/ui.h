@@ -42,7 +42,8 @@ void uiHeartbeatSet(uint8_t pct, bool overdue);
 /** Register another bar's heartbeat line (the idle screen has its own). */
 void uiHeartbeatAdd(lv_obj_t* line);
 /** The nav pill primitive, shared by the board and idle bars. */
-lv_obj_t* uiNavPill(lv_obj_t* bar, int x, int barH, const char* text, lv_event_cb_t cb);
+lv_obj_t* uiNavTrio(lv_obj_t* bar, int x, int barH,
+                    lv_event_cb_t t1, lv_event_cb_t t2, lv_event_cb_t t3);
 
 // ── the left rail ──────────────────────────────────────────────────────────
 // Day-to-day league FILTERING (what the header chips used to do), as a
