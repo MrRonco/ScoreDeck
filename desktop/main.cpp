@@ -147,6 +147,7 @@ int main(int argc, char** argv) {
   bool spike = false;
   int  mock = -1;
   int  density = -1;
+  bool railOpen = false;
   for (int i = 1; i < argc; i++) {
     if      (!strcmp(argv[i], "--shot") && i + 1 < argc)     shot = argv[++i];
     else if (!strcmp(argv[i], "--scenario") && i + 1 < argc) s_scenario = atoi(argv[++i]);
@@ -158,6 +159,7 @@ int main(int argc, char** argv) {
     // live, which is most evenings — so the three grid densities became hard
     // to reach from a scenario alone. 0=roomy 1=standard 2=dense 3=auto.
     else if (!strcmp(argv[i], "--density") && i + 1 < argc)  density = atoi(argv[++i]);
+    else if (!strcmp(argv[i], "--rail"))                     railOpen = true;
     else if (!strcmp(argv[i], "--help")) { help(); return 0; }
   }
   if (s_scenario < 0 || s_scenario >= SCN_COUNT) s_scenario = SCN_TYPICAL;
@@ -199,6 +201,7 @@ int main(int argc, char** argv) {
   // exists to catch.
   if (density >= 0 && density < DEN_COUNT) g_set.density = (uint8_t)density;
   themeInit();
+  if (railOpen) uiRailToggle();     // before uiInit builds the first layout
   plateInit();      // behind every screen; must precede uiInit()
   bloomInit();
   uiInit();

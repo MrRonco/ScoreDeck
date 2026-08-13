@@ -40,6 +40,7 @@ volatile bool g_playerReady = false;
 volatile bool g_playerInFlight = false;
 
 NewsFeed      g_news;
+bool          g_newsUnread = false;
 volatile bool g_newsReady = false;
 volatile bool g_newsInFlight = false;
 

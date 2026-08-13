@@ -176,6 +176,7 @@ static void serialConsole() {
     settingsSave();
   }
   else if (cmd == "poll")   { s_nextPollMs = 0; Serial.println("[cli] poll queued"); return; }
+  else if (cmd == "rail")   { uiRailToggle(); Serial.println("[cli] rail toggled"); return; }
   else if (cmd == "reboot") { Serial.println("[cli] rebooting"); delay(50); ESP.restart(); }
   else if (cmd == "shot")   { dumpScreen(); return; }
   else if (cmd == "games")  { dumpGames(); return; }
@@ -238,6 +239,7 @@ static void applyLineup() {
 static void applyNews() {
   if (!g_newsReady) return;
   g_newsReady = false;
+  g_newsUnread = true;
   if (uiNewsIsOpen()) uiNewsRender();
 }
 
@@ -277,6 +279,23 @@ static void tickClock() {
   clockFormat(lt, hhmm, sizeof hhmm);
   strftime(date, sizeof date, "%a %b %e", &lt);
   uiSetClock(hhmm, date);
+
+  // The poll heartbeat: how far through the interval we are. Overdue means
+  // the deadline passed and the poll has not fired (gate shut, task busy) —
+  // the bar turns C_WARN instead of silently freezing at full.
+  {
+    const uint32_t nowMs = millis();
+    const uint32_t gapMs = (uint32_t)s_pollGapS * 1000UL;
+    uint8_t pct = 100;
+    bool overdue = false;
+    if (s_nextPollMs > nowMs) {
+      const uint32_t remain = s_nextPollMs - nowMs;
+      pct = remain >= gapMs ? 0 : (uint8_t)(100 - remain * 100 / gapMs);
+    } else if (nowMs - s_nextPollMs > 5000) {
+      overdue = true;
+    }
+    uiHeartbeatSet(pct, overdue);
+  }
   uiIdleTick();
 }
 

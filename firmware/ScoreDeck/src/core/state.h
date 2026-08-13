@@ -87,6 +87,9 @@ extern volatile bool g_playerReady;
 extern volatile bool g_playerInFlight;
 
 extern NewsFeed      g_news;
+/** Set when a news fetch lands, cleared when the user opens NEWS — drives the
+ *  unread dot on the nav pill. */
+extern bool          g_newsUnread;
 extern volatile bool g_newsReady;
 extern volatile bool g_newsInFlight;
 

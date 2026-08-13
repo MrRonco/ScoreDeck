@@ -23,15 +23,40 @@ static bool passesFilter(const Game& g);
 // refresh walked into six tiles that had never been created. Null root,
 // LoadProhibited, panic.
 static uint8_t s_builtDensity = 0xFF;
+static bool    s_builtRail;      // rail state the tile array was built for
 
 static lv_obj_t* s_board;      // page root
 static lv_obj_t* s_bar;
-static lv_obj_t* s_lblClock;
-static lv_obj_t* s_lblDate;
-static lv_obj_t* s_lblStatus;
 static lv_obj_t* s_lblPage;
 static lv_obj_t* s_dot[8];
 static uint8_t   s_dotCount;
+
+// ── the refreshed header ───────────────────────────────────────────────────
+// Three zones with jobs (refresh-spec.md §2): the live organ, the filter
+// pill (the rail's opener), and the state+nav zone. The old header spent its
+// best real estate on the clock, never showed the accent, and carried a
+// status label that could print over chip 4 — all three retired here.
+static lv_obj_t* s_zaDot;      // pulse-registered
+static lv_obj_t* s_zaLive;     // "LIVE" / "NO GAMES LIVE"
+static lv_obj_t* s_zaCount;    // the first bright thing on the panel
+static lv_obj_t* s_zaTotal;    // "/ 9" — the denominator
+static lv_obj_t* s_pill;       // zone B: names the filter, opens the rail
+static lv_obj_t* s_pillLbl;
+static lv_obj_t* s_pillUnder;  // C_LIVE_SD underline when the filter has live
+static lv_obj_t* s_zc;         // zone C slot: clock / "+N NEW" / trouble
+static lv_obj_t* s_zcLbl;
+static lv_obj_t* s_navNewsDot;
+static char      s_clockStr[8] = "";
+static char      c_zaCount[6], c_zaTotal[10], c_pill[30];
+// The delta ledger: scores that changed while you were not looking.
+static uint32_t  s_lastTouchMs;
+static uint8_t   s_deltaCount;
+static uint32_t  s_deltaUntil;
+// The poll heartbeat can live on more than one bar (board + idle).
+static lv_obj_t* s_heart[2];
+static uint8_t   s_heartN;
+static int       c_heartW = -1;
+static bool      c_heartWarn;
 // Whole empty grid rows carry content rather than nothing. A bordered empty
 // region reads as "failed to load", not as "nothing to show" — and on a board
 // that is usually only part full, that is most nights.
@@ -57,10 +82,7 @@ static lv_obj_t* s_toast;
 static lv_obj_t* s_toastLbl;
 static uint32_t  s_toastUntil;
 
-#define CHIP_MAX (MAX_LEAGUES + 1)     // +1 for ALL
-static lv_obj_t* s_chip[CHIP_MAX];
-static lv_obj_t* s_chipLbl[CHIP_MAX];
-static uint8_t   s_chipCount;
+
 
 struct TileUI {
   lv_obj_t* root;
@@ -137,8 +159,34 @@ static uint8_t effectiveDensity() {
   if (n <= 9)  return DEN_STANDARD;
   return DEN_DENSE;
 }
-static bool isFeature() { return effectiveDensity() == LAY_FEATURE; }
-static const DensitySpec& spec() { return kDensity[effectiveDensity()]; }
+// FEATURE is suppressed while the rail is open: this iteration ships the
+// rail-open state as the 3-column grid only (the narrowed-hero variant is
+// iteration 2, per the approved scope split).
+static bool isFeature() { return effectiveDensity() == LAY_FEATURE && !uiRailOpen(); }
+
+/**
+ * The layout in force — BY VALUE, because the rail rewrites geometry that
+ * kDensity's rows cannot carry. Two overrides:
+ *
+ *   * closed rail: the left margin clamps to 16 so the sliver's own strip
+ *     (0..16) never underlaps a tile;
+ *   * open rail:   cols' = min(cols, 3), W' = (632 − 10·(cols'−1)) / cols'
+ *     = 204 px at 3 columns — WIDER than Dense's 186, so nothing degrades —
+ *     with the grid origin moved past the rail.
+ */
+static DensitySpec spec() {
+  const uint8_t e = effectiveDensity();
+  DensitySpec d = kDensity[(e == LAY_FEATURE && uiRailOpen()) ? DEN_STANDARD : e];
+  if (uiRailOpen()) {
+    d.cols = d.cols < 3 ? d.cols : 3;
+    d.gut  = 10;
+    d.tileW = (uint16_t)((632 - 10 * (d.cols - 1)) / d.cols);
+    d.marg = 156;                       // 140 rail + 16 gap
+  } else if (d.marg < 16) {
+    d.marg = 16;                        // clear the sliver
+  }
+  return d;
+}
 
 // ── helpers ────────────────────────────────────────────────────────────────
 static void setTextCached(lv_obj_t* o, char* cache, size_t cap, const char* v) {
@@ -444,78 +492,17 @@ static void buildTile(TileUI& t, int idx) {
   t.cUsed = true;
 }
 
-static void onChip(lv_event_t* e) {
-  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
-  g_leagueFilter = (int8_t)(idx - 1);      // slot 0 is ALL
-  g_page = 0;
-  uiBoardRefresh();
-}
-
-/**
- * League strip. Chips carry a live count so the board tells you where the
- * action is before you filter to it. Tapping one filters; ALL clears.
- */
-static void buildChips(lv_obj_t* bar) {
-  int x = 250;
-  for (uint8_t i = 0; i < CHIP_MAX; i++) {
-    s_chip[i] = lv_obj_create(bar);
-    lv_obj_remove_style_all(s_chip[i]);
-    lv_obj_set_size(s_chip[i], 66, 28);
-    lv_obj_set_pos(s_chip[i], x, (spec().barH - 28) / 2);
-    lv_obj_set_style_radius(s_chip[i], 7, 0);
-    lv_obj_set_style_bg_opa(s_chip[i], LV_OPA_TRANSP, 0);
-    lv_obj_clear_flag(s_chip[i], LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_chip[i], LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_chip[i], onChip, LV_EVENT_CLICKED, (void*)(intptr_t)i);
-    s_chipLbl[i] = lv_label_create(s_chip[i]);
-    lv_obj_set_style_text_font(s_chipLbl[i], F_MICRO, 0);
-    lv_obj_set_style_text_color(s_chipLbl[i], C_INK3, 0);
-    lv_label_set_text(s_chipLbl[i], "");
-    lv_obj_center(s_chipLbl[i]);
-    lv_obj_add_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN);
-    x += 70;
-  }
-}
-
-static void refreshChips() {
-  s_chipCount = (uint8_t)min<int>(CHIP_MAX, g_leagueCount + 1);
-  for (uint8_t i = 0; i < CHIP_MAX; i++) {
-    if (i >= s_chipCount) { lv_obj_add_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN); continue; }
-    lv_obj_clear_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN);
-
-    char txt[20];
-    if (i == 0) {
-      uint8_t live = 0;
-      for (uint8_t k = 0; k < g_gameCount; k++) if (g_board[k].state == GS_LIVE) live++;
-      if (live) snprintf(txt, sizeof txt, "ALL %u", live);
-      else      snprintf(txt, sizeof txt, "ALL");
-    } else {
-      const LeagueCount& lc = g_leagues[i - 1];
-      char up[8];
-      strncpy(up, lc.slug, sizeof up - 1); up[sizeof up - 1] = '\0';
-      for (char* p = up; *p; p++) *p = toupper((unsigned char)*p);
-      if (lc.live) snprintf(txt, sizeof txt, "%s %u", up, lc.live);
-      else         snprintf(txt, sizeof txt, "%s", up);
-    }
-    lv_label_set_text(s_chipLbl[i], txt);
-
-    const bool sel = (g_leagueFilter + 1) == (int)i;
-    lv_obj_set_style_bg_opa(s_chip[i], sel ? 40 : LV_OPA_TRANSP, 0);
-    lv_obj_set_style_bg_color(s_chip[i], C_EDGE_HI, 0);
-    lv_obj_set_style_text_color(s_chipLbl[i], sel ? C_INK : C_INK3, 0);
-  }
-}
-
-/** A 44x36 bar button. Small enough to fit beside the chips, big enough to
- *  hit — the ISO 9241-411 floor is 9 mm, which is 47 px on this panel, and
- *  these sit at 44 so the label stays legible. */
-static lv_obj_t* barButton(lv_obj_t* bar, int x, const char* text, lv_event_cb_t cb) {
+/** A 54x32 nav pill. Filled LIGHTER than the bar — that is the affordance
+ *  the old bordered-darker boxes got backwards: the touchable thing should
+ *  look raised, not recessed. Words, not abbreviations: TBL needed decoding.
+ *  Shared with the idle screen via uiNavPill(). */
+lv_obj_t* uiNavPill(lv_obj_t* bar, int x, int barH, const char* text, lv_event_cb_t cb) {
   lv_obj_t* b = lv_btn_create(bar);
-  lv_obj_set_size(b, 44, 36);
-  lv_obj_set_pos(b, x, (spec().barH - 36) / 2);
-  lv_obj_set_style_bg_color(b, C_EDGE, 0);
+  lv_obj_set_size(b, 54, 32);
+  lv_obj_set_pos(b, x, (barH - 32) / 2);
+  lv_obj_set_style_bg_color(b, C_SURF_1, 0);
   lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_color(b, C_EDGE_HI, 0);
+  lv_obj_set_style_border_color(b, C_EDGE, 0);
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_radius(b, 8, 0);
   lv_obj_set_style_bg_color(b, C_EDGE_HI, LV_STATE_PRESSED);
@@ -523,6 +510,7 @@ static lv_obj_t* barButton(lv_obj_t* bar, int x, const char* text, lv_event_cb_t
   lv_obj_t* l = lv_label_create(b);
   lv_label_set_text(l, text);
   lv_obj_set_style_text_font(l, F_MICRO, 0);
+  lv_obj_set_style_text_letter_space(l, 1, 0);
   lv_obj_set_style_text_color(l, C_INK2, 0);
   lv_obj_center(l);
   return b;
@@ -534,41 +522,109 @@ static void onTableBtn(lv_event_t*) {
 static void onNewsBtn(lv_event_t*) { uiNewsOpen(); }
 static void onSettingsBtn(lv_event_t*) { uiSettingsOpen(); }
 
+static void onPill(lv_event_t*) { s_lastTouchMs = millis(); uiRailToggle(); }
+static void onNavTouch() { s_lastTouchMs = millis(); }
+
+static void zoneCApply();
+
 static void buildBar() {
   const int barH = spec().barH;
-  // One optical midline for everything in the bar. Each label is placed from
-  // its OWN line height, because a 17 px face and an 11 px face centred on the
-  // same y are not centred together.
   auto midY = [barH](const lv_font_t* f) {
     return (barH - (int)lv_font_get_line_height(f)) / 2;
   };
   s_bar = glassPanel(s_board, 0, 0, SCR_W, barH, 0);
-  s_lblClock = microLabel(s_bar, 18, midY(F_ABBR), C_INK, F_ABBR);
-  s_lblDate  = microLabel(s_bar, 84, midY(F_MICRO), C_INK2, F_MICRO);
 
-  // Standings and news were built, tested, and reachable only from a serial
-  // command and the desktop harness — two finished screens shipping dark.
-  barButton(s_bar, SCR_W - 18 - 44, "SET",  onSettingsBtn);
-  barButton(s_bar, SCR_W - 18 - 96, "NEWS", onNewsBtn);
-  barButton(s_bar, SCR_W - 18 - 148, "TBL", onTableBtn);
+  // Zone A — the live organ. The first fixation point on the panel now says
+  // the one thing this product exists to say. The count is display-size: at
+  // chip size it read as a superscript (caught in the LVGL mockup pass).
+  s_zaDot = lv_obj_create(s_bar);
+  lv_obj_remove_style_all(s_zaDot);
+  lv_obj_set_size(s_zaDot, 9, 9);
+  lv_obj_set_pos(s_zaDot, 14, (barH - 9) / 2);
+  lv_obj_set_style_radius(s_zaDot, 5, 0);
+  lv_obj_set_style_bg_color(s_zaDot, C_LIVE, 0);
+  lv_obj_set_style_bg_opa(s_zaDot, LV_OPA_COVER, 0);
+  pulseRegister(s_zaDot);
+  s_zaLive  = microLabel(s_bar, 30, midY(F_MICRO), C_LIVE_SD, F_MICRO);
+  lv_obj_set_style_text_letter_space(s_zaLive, 2, 0);
+  lv_label_set_text(s_zaLive, "LIVE");
+  s_zaCount = microLabel(s_bar, 72, (barH - 30) / 2, C_LIVE, F_DISPLAY);
+  s_zaTotal = microLabel(s_bar, 96, midY(F_MICRO), C_INK3, F_MICRO);
+  lv_obj_t* div = lv_obj_create(s_bar);
+  lv_obj_remove_style_all(div);
+  lv_obj_set_size(div, 1, 20);
+  lv_obj_set_pos(div, 134, (barH - 20) / 2);
+  lv_obj_set_style_bg_color(div, C_EDGE, 0);
+  lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
 
-  s_lblStatus = lv_label_create(s_bar);
-  lv_obj_set_style_text_font(s_lblStatus, F_MICRO, 0);
-  lv_obj_set_style_text_color(s_lblStatus, C_INK2, 0);
-  lv_obj_set_style_text_align(s_lblStatus, LV_TEXT_ALIGN_RIGHT, 0);
-  // Was 190 wide at x = SCR_W-208, which the stale-upstream string overran and
-  // wrapped out of the bar. Narrower, and it now only carries network state —
-  // the live/game counts already live in the ALL chip.
-  lv_obj_set_width(s_lblStatus, 150);
-  lv_obj_set_pos(s_lblStatus, SCR_W - 174 - 150, midY(F_MICRO));
-  lv_label_set_text(s_lblStatus, "starting");
+  // Zone B — the filter pill. Names the current filter in words and is the
+  // rail's PRIMARY opener: a 16 px sliver is an undiscoverable Fitts target,
+  // and hidden nav with only a hairline affordance is how drawers fail.
+  s_pill = lv_btn_create(s_bar);
+  lv_obj_set_size(s_pill, 224, 30);
+  lv_obj_set_pos(s_pill, 148, (barH - 30) / 2);
+  lv_obj_set_style_bg_color(s_pill, C_SURF_1, 0);
+  lv_obj_set_style_bg_opa(s_pill, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(s_pill, 0, 0);
+  lv_obj_set_style_radius(s_pill, 7, 0);
+  lv_obj_set_style_bg_color(s_pill, C_EDGE_HI, LV_STATE_PRESSED);
+  lv_obj_add_event_cb(s_pill, onPill, LV_EVENT_CLICKED, nullptr);
+  s_pillLbl = lv_label_create(s_pill);
+  lv_obj_set_style_text_font(s_pillLbl, F_MICRO, 0);
+  lv_obj_set_style_text_letter_space(s_pillLbl, 1, 0);
+  lv_obj_set_style_text_color(s_pillLbl, C_INK2, 0);
+  lv_label_set_text(s_pillLbl, "");
+  lv_obj_center(s_pillLbl);
+  s_pillUnder = lv_obj_create(s_bar);
+  lv_obj_remove_style_all(s_pillUnder);
+  lv_obj_set_size(s_pillUnder, 212, 2);
+  lv_obj_set_pos(s_pillUnder, 154, (barH - 30) / 2 + 28);
+  lv_obj_set_style_bg_color(s_pillUnder, C_LIVE_SD, 0);
+  lv_obj_set_style_bg_opa(s_pillUnder, LV_OPA_COVER, 0);
+  lv_obj_add_flag(s_pillUnder, LV_OBJ_FLAG_HIDDEN);
 
-  buildChips(s_bar);
+  // Zone C — one slot with a precedence, not three labels fighting for the
+  // same pixels. Trouble > delta > clock; the three are mutually exclusive
+  // (if the feed is broken, "since you looked" is a lie), which is what
+  // retires s_lblStatus and its chip-collision bug by deletion.
+  s_zc = lv_obj_create(s_bar);
+  lv_obj_remove_style_all(s_zc);
+  lv_obj_set_size(s_zc, 150, 24);
+  lv_obj_set_pos(s_zc, 460, (barH - 24) / 2);
+  lv_obj_set_style_radius(s_zc, 7, 0);
+  lv_obj_clear_flag(s_zc, LV_OBJ_FLAG_SCROLLABLE);
+  s_zcLbl = lv_label_create(s_zc);
+  lv_obj_set_style_text_font(s_zcLbl, F_MICRO, 0);
+  lv_obj_set_style_text_letter_space(s_zcLbl, 1, 0);
+  lv_obj_set_style_text_color(s_zcLbl, C_INK2, 0);
+  lv_label_set_text(s_zcLbl, "");
+  lv_obj_align(s_zcLbl, LV_ALIGN_RIGHT_MID, -4, 0);
 
-  // Page indicator: real dots, in the bar. It used to be "*  -  -  -" in a
-  // mono face, sitting in a 12 px sliver at the foot of the screen where the
-  // bottom margin breaks the grid's 16 px rhythm — ASCII punctuation pressed
-  // into service as a widget.
+  uiNavPill(s_bar, 622, barH, "TABLE", [](lv_event_t*){ onNavTouch(); onTableBtn(nullptr); });
+  lv_obj_t* news = uiNavPill(s_bar, 622 + 58, barH, "NEWS",
+                             [](lv_event_t*){ onNavTouch(); g_newsUnread = false;
+                                              if (s_navNewsDot) lv_obj_add_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN);
+                                              onNewsBtn(nullptr); });
+  uiNavPill(s_bar, 622 + 116, barH, "SETUP", [](lv_event_t*){ onNavTouch(); onSettingsBtn(nullptr); });
+  s_navNewsDot = lv_obj_create(s_bar);
+  lv_obj_remove_style_all(s_navNewsDot);
+  lv_obj_set_size(s_navNewsDot, 7, 7);
+  lv_obj_set_pos(s_navNewsDot, lv_obj_get_x(news) + 47, (barH - 32) / 2 - 2);
+  lv_obj_set_style_radius(s_navNewsDot, 4, 0);
+  lv_obj_set_style_bg_color(s_navNewsDot, C_LIVE, 0);
+  lv_obj_set_style_bg_opa(s_navNewsDot, LV_OPA_COVER, 0);
+  lv_obj_add_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN);
+
+  // The signature: the poll heartbeat, along the bar's bottom edge.
+  lv_obj_t* hb = lv_obj_create(s_board);
+  lv_obj_remove_style_all(hb);
+  lv_obj_set_size(hb, 1, 2);
+  lv_obj_set_pos(hb, 0, barH - 2);
+  lv_obj_set_style_bg_color(hb, C_LIVE_SD, 0);
+  lv_obj_set_style_bg_opa(hb, LV_OPA_COVER, 0);
+  if (s_heartN < 2) s_heart[s_heartN++] = hb;
+
+  // Page dots, relocated past the pill (the chips they used to dodge are gone).
   for (uint8_t i = 0; i < 8; i++) {
     s_dot[i] = lv_obj_create(s_bar);
     lv_obj_remove_style_all(s_dot[i]);
@@ -578,6 +634,7 @@ static void buildBar() {
     lv_obj_add_flag(s_dot[i], LV_OBJ_FLAG_HIDDEN);
   }
   s_lblPage = nullptr;
+  c_zaCount[0] = c_zaTotal[0] = c_pill[0] = '\0';
 
   // The filler. Two columns: what has finished, and what is next.
   s_fill = glassPanel(s_board, 0, 0, 10, 10, 12);
@@ -700,6 +757,9 @@ static void buildOrder() {
 }
 
 bool uiBoardPage(int delta) {
+  // Clamped while the rail is open: the rail is a mode, and paging under it
+  // would re-rank the very tiles the overlay is protecting from taps.
+  if (uiRailOpen()) return false;
   // FEATURE has exactly one page — the ledger absorbs whatever does not fit,
   // so there is never anything on a second one.
   if (isFeature()) return false;
@@ -732,6 +792,8 @@ static void onTileEvent(lv_event_t* e) {
 
   if (code == LV_EVENT_PRESSED) {
     lv_indev_get_point(lv_indev_get_act(), &s_pressPt);
+    s_lastTouchMs = millis();
+    if (s_deltaCount) { s_deltaCount = 0; s_deltaUntil = 0; zoneCApply(); }
     return;
   }
 
@@ -838,7 +900,7 @@ void uiBoardRefresh() {
   // Rebuild BEFORE touching any tile if the layout the array was built for is
   // no longer the layout we want. uiInit() does not call back into here, so
   // this cannot recurse.
-  if (s_builtDensity != effectiveDensity()) { uiInit(); }
+  if (s_builtDensity != effectiveDensity() || s_builtRail != uiRailOpen()) { uiInit(); }
 
   const DensitySpec& d = spec();
   const bool feature = isFeature();
@@ -878,6 +940,7 @@ void uiBoardRefresh() {
     if (seen++ < g_page * per) continue;
 
     TileUI& t = s_tile[slot];
+    const bool sameGame = t.gameIdx == (int8_t)i;
     t.gameIdx = (int8_t)i;
     setHiddenCached(t.root, &t.cUsed, false);
 
@@ -980,6 +1043,15 @@ void uiBoardRefresh() {
       if (g.state == GS_PRE) {
         if (t.cScore[k] != -2) { t.cScore[k] = -2; lv_label_set_text(t.score[k], "-"); }
       } else {
+        // The delta ledger counts scores that changed in a slot still holding
+        // the SAME game — a page flip reassigns slots and must not count.
+        if (sameGame && g.state == GS_LIVE &&
+            t.cScore[k] >= 0 && t.cScore[k] != (int32_t)side[k]->score &&
+            millis() - s_lastTouchMs > 5000) {
+          s_deltaCount++;
+          s_deltaUntil = millis() + 60000;
+          zoneCApply();
+        }
         setNumCached(t.score[k], &t.cScore[k], side[k]->score);
       }
       // The leading score is drawn in the LEADING TEAM'S OWN COLOUR, lifted
@@ -1146,66 +1218,141 @@ void uiBoardRefresh() {
     layoutFiller(d, filled, per);
   }
 
-  // Dots read as "there is more" far better than "1 / 3" does.
-  const uint8_t shown = pages > 1 ? (pages < 8 ? pages : 8) : 0;
+  // Dots read as "there is more" far better than "1 / 3" does. Hidden while
+  // the rail is open: paging is clamped there, and an affordance for a
+  // disabled gesture is worse than none.
+  const uint8_t shown = (pages > 1 && !uiRailOpen()) ? (pages < 8 ? pages : 8) : 0;
   const int dotsW = shown ? shown * 14 - 8 : 0;
   for (uint8_t p = 0; p < 8; p++) {
     if (p >= shown) { lv_obj_add_flag(s_dot[p], LV_OBJ_FLAG_HIDDEN); continue; }
     lv_obj_clear_flag(s_dot[p], LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_pos(s_dot[p], 196 - dotsW / 2 + p * 14, (spec().barH - 6) / 2);
+    lv_obj_set_pos(s_dot[p], 410 - dotsW / 2 + p * 14, (spec().barH - 6) / 2);
     lv_obj_set_style_bg_color(s_dot[p], p == g_page ? C_INK : C_EDGE_HI, 0);
   }
-  refreshChips();
   uiSetStatus();
+  uiRailRefresh();
 }
 
 void uiSetClock(const char* hhmm, const char* date) {
-  lv_label_set_text(s_lblClock, hhmm);
-  lv_label_set_text(s_lblDate, date);
+  (void)date;                     // the header no longer spends pixels on it
+  strncpy(s_clockStr, hhmm, sizeof s_clockStr - 1);
+  s_clockStr[sizeof s_clockStr - 1] = '\0';
+  zoneCApply();
+}
+
+/**
+ * Zone C's precedence: trouble > delta > clock. One label, three voices, and
+ * the three can never be true at once — a broken feed makes "since you
+ * looked" a lie, and a fresh delta is more useful than the time.
+ */
+static void zoneCApply() {
+  static char last[52] = "\x01";
+  char buf[52];
+  lv_color_t ink = C_INK2;
+
+  switch (g_net) {
+    case NET_NOWIFI:  snprintf(buf, sizeof buf, "NO WI-FI"); ink = C_WARN; break;
+    case NET_NOPROXY: snprintf(buf, sizeof buf, "NO PROXY"); ink = C_WARN; break;
+    case NET_ERR:     snprintf(buf, sizeof buf, "PROXY UNREACHABLE"); ink = C_WARN; break;
+    case NET_STALE: {
+      const char* t = lastGoodClock();
+      if (t[0]) snprintf(buf, sizeof buf, "AS OF %s", t);
+      else      snprintf(buf, sizeof buf, "UPSTREAM STALE");
+      ink = C_WARN;
+      break;
+    }
+    case NET_BOOT:    snprintf(buf, sizeof buf, "STARTING"); break;
+    default:
+      if (s_deltaCount && millis() < s_deltaUntil) {
+        snprintf(buf, sizeof buf, "+%u NEW", (unsigned)s_deltaCount);
+        ink = C_LIVE;
+      } else {
+        s_deltaCount = 0;
+        snprintf(buf, sizeof buf, "%s", s_clockStr);
+      }
+      break;
+  }
+  if (strcmp(last, buf) == 0) return;
+  strncpy(last, buf, sizeof last - 1);
+  if (s_zcLbl) {
+    lv_label_set_text(s_zcLbl, buf);
+    lv_obj_set_style_text_color(s_zcLbl, ink, 0);
+  }
 }
 
 void uiSetStatus() {
-  // NOT "" — the healthy state now IS the empty string, so an empty cache
-  // matched it on the very first call and the "starting" placeholder that
-  // buildBar() wrote was never cleared.
-  static char last[96] = "\x01";
+  // Zone A: the whole night's count, never the filter's — the filter has the
+  // pill, and a zone that changes meaning with the filter cannot be learned
+  // peripherally.
   uint8_t live = 0;
   for (uint8_t i = 0; i < g_gameCount; i++) if (g_board[i].state == GS_LIVE) live++;
-
-  // Network state ONLY. The live and game counts are already in the ALL chip,
-  // and carrying them here is what overran the label on the stale path.
-  //
-  // A hyphen between two numbers reads as a score on a scoreboard, so the
-  // separator throughout is a middle dot.
-  char buf[96];
-  switch (g_net) {
-    case NET_NOWIFI:  snprintf(buf, sizeof buf, "no wi-fi"); break;
-    case NET_NOPROXY: snprintf(buf, sizeof buf, "no proxy configured"); break;
-    case NET_ERR:     snprintf(buf, sizeof buf, "%s", g_netDetail[0] ? g_netDetail : "proxy unreachable"); break;
-    // "stale" is a state; a time is actionable. Say when the data is from.
-    case NET_STALE: {
-      const char* t = lastGoodClock();
-      if (t[0]) snprintf(buf, sizeof buf, "as of %s", t);
-      else      snprintf(buf, sizeof buf, "upstream stale");
-      break;
-    }
-    case NET_BOOT:    snprintf(buf, sizeof buf, "starting"); break;
-    default:          buf[0] = '\0'; break;
+  char buf[8];
+  if (live) {
+    snprintf(buf, sizeof buf, "%u", live);
+    setTextCached(s_zaCount, c_zaCount, sizeof c_zaCount, buf);
+    lv_obj_clear_flag(s_zaCount, LV_OBJ_FLAG_HIDDEN);
+    char tot[10];
+    snprintf(tot, sizeof tot, "/ %u", (unsigned)g_gameCount);
+    // x tracks the count's MEASURED width — a guessed step rendered
+    // "LIVE12 /12" with the denominator shaved against a two-digit count.
+    const int cw = (int)lv_txt_get_width(buf, (uint32_t)strlen(buf),
+                                         F_DISPLAY, 0, LV_TEXT_FLAG_NONE);
+    lv_obj_set_x(s_zaTotal, 72 + cw + 8);
+    setTextCached(s_zaTotal, c_zaTotal, sizeof c_zaTotal, tot);
+    lv_obj_clear_flag(s_zaTotal, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(s_zaLive, "LIVE");
+    lv_obj_set_style_text_color(s_zaLive, C_LIVE_SD, 0);
+    lv_obj_set_style_bg_color(s_zaDot, C_LIVE, 0);
+  } else {
+    lv_obj_add_flag(s_zaCount, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_zaTotal, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(s_zaLive, g_gameCount ? "NO GAMES LIVE" : "NO GAMES");
+    lv_obj_set_style_text_color(s_zaLive, C_INK3, 0);
+    lv_obj_set_style_bg_color(s_zaDot, C_EDGE_HI, 0);
+    c_zaCount[0] = '\0';
   }
-  (void)live;
-  if (strcmp(last, buf) == 0) return;
-  strncpy(last, buf, sizeof last - 1);
-  lv_label_set_text(s_lblStatus, buf);
 
-  // The status and the league chips share the right of the bar, and with five
-  // leagues they collided — "MLB" and "starting" printed over each other.
-  // They are never both worth reading: if the network is down, the live counts
-  // are stale by definition. So the status takes the space when it has
-  // something to say, and gives it back when it does not.
-  const bool quiet = (buf[0] == '\0');
-  for (uint8_t i = 0; i < s_chipCount; i++)
-    quiet ? lv_obj_clear_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN)
-          : lv_obj_add_flag(s_chip[i], LV_OBJ_FLAG_HIDDEN);
+  // Zone B: name the filter, count ITS live games, underline when nonzero.
+  uint8_t fLive = 0;
+  for (uint8_t i = 0; i < g_gameCount; i++)
+    if (g_board[i].state == GS_LIVE && passesFilter(g_board[i])) fLive++;
+  char name[12];
+  if (g_leagueFilter >= 0 && g_leagueFilter < g_leagueCount) {
+    size_t j = 0;
+    for (; g_leagues[g_leagueFilter].slug[j] && j < sizeof name - 1; j++)
+      name[j] = (char)toupper((unsigned char)g_leagues[g_leagueFilter].slug[j]);
+    name[j] = '\0';
+  } else {
+    strcpy(name, "ALL LEAGUES");
+  }
+  char pill[30];
+  if (fLive) snprintf(pill, sizeof pill, "< %s · %u LIVE", name, fLive);
+  else       snprintf(pill, sizeof pill, "< %s", name);
+  setTextCached(s_pillLbl, c_pill, sizeof c_pill, pill);
+  fLive ? lv_obj_clear_flag(s_pillUnder, LV_OBJ_FLAG_HIDDEN)
+        : lv_obj_add_flag(s_pillUnder, LV_OBJ_FLAG_HIDDEN);
+
+  if (s_navNewsDot)
+    g_newsUnread ? lv_obj_clear_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN)
+                 : lv_obj_add_flag(s_navNewsDot, LV_OBJ_FLAG_HIDDEN);
+  zoneCApply();
+}
+
+void uiHeartbeatSet(uint8_t pct, bool overdue) {
+  if (pct > 100) pct = 100;
+  const int w = SCR_W * pct / 100;
+  if (w == c_heartW && overdue == c_heartWarn) return;
+  c_heartW = w;
+  c_heartWarn = overdue;
+  for (uint8_t i = 0; i < s_heartN; i++) {
+    if (!s_heart[i]) continue;
+    lv_obj_set_width(s_heart[i], w < 1 ? 1 : w);
+    lv_obj_set_style_bg_color(s_heart[i], overdue ? C_WARN : C_LIVE_SD, 0);
+  }
+}
+
+void uiHeartbeatAdd(lv_obj_t* line) {
+  if (s_heartN < 2) s_heart[s_heartN++] = line;
 }
 
 bool uiShouldIdle() {
@@ -1245,9 +1392,13 @@ void uiShow(Screen s) {
 Screen uiCurrent() { return s_screen; }
 
 void uiInit() {
-  // Every tile is about to be deleted; drop the pulse timer's pointers first.
+  // Every tile is about to be deleted; drop the pulse timer's pointers first,
+  // and the heartbeat lines with them — both hold raw object pointers.
   pulseForget();
+  s_heartN = 0;
+  c_heartW = -1;
   s_builtDensity = effectiveDensity();
+  s_builtRail = uiRailOpen();
   s_gridYOff = 0;                 // tiles are about to be rebuilt at their base y
   lv_obj_t* scr = lv_scr_act();
   if (s_board) { lv_obj_del(s_board); s_board = nullptr; }
@@ -1289,5 +1440,7 @@ void uiInit() {
       s_tile[i].cUsed = false;
     }
   }
+  // LAST, so the rail and its outside-tap overlay sit above every tile.
+  uiRailInit(s_board);
   uiShow(s_screen);
 }

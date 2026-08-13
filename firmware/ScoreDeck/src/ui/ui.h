@@ -36,6 +36,23 @@ Screen uiCurrent();
 // Top bar
 void uiSetClock(const char* hhmm, const char* date);
 void uiSetStatus();
+/** The poll heartbeat: pct of the interval elapsed; C_WARN when overdue.
+ *  Fed once a second from loop(); writes are change-cached. */
+void uiHeartbeatSet(uint8_t pct, bool overdue);
+/** Register another bar's heartbeat line (the idle screen has its own). */
+void uiHeartbeatAdd(lv_obj_t* line);
+/** The nav pill primitive, shared by the board and idle bars. */
+lv_obj_t* uiNavPill(lv_obj_t* bar, int x, int barH, const char* text, lv_event_cb_t cb);
+
+// ── the left rail ──────────────────────────────────────────────────────────
+// Day-to-day league FILTERING (what the header chips used to do), as a
+// hideable 140 px rail with a 16 px collapsed activity sliver. Enabling and
+// disabling leagues stays in settings — see refresh-spec.md §9.
+void uiRailInit(lv_obj_t* parent);
+void uiRailToggle();
+bool uiRailOpen();
+void uiRailRefresh();          // on new data, while open: counts only (frozen order)
+lv_obj_t* uiRailRoot();
 
 // Setup / onboarding
 void uiSetupInit(lv_obj_t* parent);

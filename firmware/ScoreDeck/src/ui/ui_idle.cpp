@@ -131,7 +131,7 @@ void uiIdleInit(lv_obj_t* parent) {
   lv_obj_t* brand = lbl(bar, 18, hdrY, C_INK2, F_MICRO);
   lv_label_set_text(brand, "SCOREDECK");
   // Stops short of the three buttons at the right — they end at SCR_W-18-148.
-  s_hdrStatus = lbl(bar, SCR_W - 174 - 260, hdrY, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 260);
+  s_hdrStatus = lbl(bar, 612 - 240, hdrY, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 240);
 
   // ── clock ────────────────────────────────────────────────────────────────
   //
@@ -172,26 +172,21 @@ void uiIdleInit(lv_obj_t* parent) {
   // Standings, news and settings were reachable only from the board — and the
   // board is not what is on screen for most of the day. The same three buttons
   // belong here.
-  auto navBtn = [&](int x, const char* text, lv_event_cb_t cb) {
-    lv_obj_t* b = lv_btn_create(s_root);
-    lv_obj_set_size(b, 44, 36);
-    lv_obj_set_pos(b, x, 6);
-    lv_obj_set_style_bg_color(b, C_EDGE, 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(b, C_EDGE_HI, 0);
-    lv_obj_set_style_border_width(b, 1, 0);
-    lv_obj_set_style_radius(b, 8, 0);
-    lv_obj_set_style_bg_color(b, C_EDGE_HI, LV_STATE_PRESSED);
-    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* l = lv_label_create(b);
-    lv_label_set_text(l, text);
-    lv_obj_set_style_text_font(l, F_MICRO, 0);
-    lv_obj_set_style_text_color(l, C_INK2, 0);
-    lv_obj_center(l);
-  };
-  navBtn(SCR_W - 18 - 44,  "SET",  onIdleSettings);
-  navBtn(SCR_W - 18 - 96,  "NEWS", onIdleNews);
-  navBtn(SCR_W - 18 - 148, "TBL",  onIdleTable);
+  // The idle bar speaks the same language as the board's: word pills, and
+  // the poll heartbeat along its bottom edge. Zone A's job is done here by
+  // the brand — idle IS the "no games live" state, saying it twice is noise.
+  uiNavPill(bar, 622, BAR_H, "TABLE", onIdleTable);
+  uiNavPill(bar, 622 + 58, BAR_H, "NEWS", onIdleNews);
+  uiNavPill(bar, 622 + 116, BAR_H, "SETUP", onIdleSettings);
+  {
+    lv_obj_t* hb = lv_obj_create(s_root);
+    lv_obj_remove_style_all(hb);
+    lv_obj_set_size(hb, 1, 2);
+    lv_obj_set_pos(hb, 0, BAR_H - 2);
+    lv_obj_set_style_bg_color(hb, C_LIVE_SD, 0);
+    lv_obj_set_style_bg_opa(hb, LV_OPA_COVER, 0);
+    uiHeartbeatAdd(hb);
+  }
 
   lv_obj_t* nextHdr = lbl(nextCard, 24, 22, C_INK3, F_MICRO);
   lv_obj_set_style_text_letter_space(nextHdr, 1, 0);
