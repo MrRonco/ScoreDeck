@@ -603,14 +603,22 @@ static bool catalogOnce(const char* url, const char* token) {
   if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
   if (http.GET() != 200) { http.end(); return false; }
 
+  // getString(), NEVER getStream(): the proxy answers Transfer-Encoding:
+  // chunked, and getStream() hands the parser the raw chunk framing — the
+  // first bytes are a hex chunk length, not '{', so the parse failed on
+  // every attempt while curl (which decodes chunking) said the endpoint was
+  // fine. This was the one fetch in the file reading the stream directly;
+  // see the pollOnce comment that already warns about exactly this.
+  const String body = http.getString();
+  http.end();
+  if (body.length() < 8) return false;
+
   // ~1.3 KB payload; 6 KB of document is generous headroom.
   DynamicJsonDocument doc(6144);
   StaticJsonDocument<192> filter;
   JsonObject e = filter["leagues"].createNestedObject();
   e["slug"] = true; e["label"] = true; e["family"] = true;
-  const auto err = deserializeJson(doc, http.getStream(),
-                                   DeserializationOption::Filter(filter));
-  http.end();
+  const auto err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
   if (err) return false;
 
   uint8_t n = 0;
