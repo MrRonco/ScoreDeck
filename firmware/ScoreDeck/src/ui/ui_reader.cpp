@@ -184,9 +184,15 @@ static void pageStep(bool fwd) {
 
 static void onTap(lv_event_t*) { pageStep(true); }
 static void onGesture(lv_event_t*) {
-  const lv_dir_t d = lv_indev_get_gesture_dir(lv_indev_get_act());
-  if (d == LV_DIR_TOP)         pageStep(true);    // swipe up: read on
-  else if (d == LV_DIR_BOTTOM) pageStep(false);   // swipe down: back up
+  lv_indev_t* in = lv_indev_get_act();
+  const lv_dir_t d = lv_indev_get_gesture_dir(in);
+  if (d != LV_DIR_TOP && d != LV_DIR_BOTTOM) return;
+  // A gesture does NOT cancel the press in LVGL — without this, the release
+  // still fired SHORT_CLICKED, so every swipe down paged back and instantly
+  // paged forward again ("it keeps going down"). Swallow the rest of the
+  // press the moment the swipe is recognised.
+  lv_indev_wait_release(in);
+  pageStep(d == LV_DIR_TOP);   // up: read on · down: back up
 }
 
 // ── lifecycle ──────────────────────────────────────────────────────────────
