@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Install ScoreDeck</title>
+<!-- ESP Web Tools: flashes ESP32-S3 straight from Chrome/Edge over Web Serial -->
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root{--plate:#04070e;--surf:#16202e;--surf2:#1b2636;--ink:#f3f7fb;--ink2:#acbcce;--ink3:#8696a8;
+    --live:#3be0c0;--live-sd:#2a9e8c;--warn:#f2b441;--line:rgba(180,205,230,.16);
+    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+    --mono:"SF Mono",ui-monospace,Menlo,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:radial-gradient(120% 100% at 50% -10%,#0a1220,var(--plate) 60%);color:var(--ink);
+    font-family:var(--sans);min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:40px 20px;-webkit-font-smoothing:antialiased;}
+  .card{max-width:470px;width:100%;text-align:center;}
+  .logo{display:inline-flex;align-items:center;gap:10px;margin-bottom:26px;}
+  .logo .dot{width:10px;height:10px;border-radius:50%;background:var(--live);box-shadow:0 0 14px var(--live);}
+  .logo b{font-size:24px;font-weight:350;letter-spacing:.02em;}
+  h1{font-size:34px;font-weight:250;letter-spacing:-.02em;margin-bottom:14px;line-height:1.1;}
+  p{color:var(--ink2);font-weight:300;line-height:1.65;margin-bottom:10px;font-size:15px;}
+  .sub{color:var(--ink3);font-size:13px;}
+  .btnwrap{margin:34px 0 24px;}
+  .fallback{display:inline-block;background:var(--live);color:#04251d;font-weight:600;font-size:15px;
+    padding:14px 30px;border-radius:12px;box-shadow:0 10px 30px -12px var(--live);}
+  .steps{text-align:left;background:rgba(22,32,46,.5);border:1px solid var(--line);border-radius:14px;
+    padding:20px 24px;margin-top:26px;}
+  .steps ol{margin:0;padding-left:20px;} .steps li{color:var(--ink2);font-weight:300;font-size:14px;margin:8px 0;}
+  .warn{text-align:left;background:rgba(242,180,65,.07);border:1px solid rgba(242,180,65,.3);
+    border-radius:12px;padding:14px 18px;margin:22px 0 0;}
+  .warn b{color:var(--warn);font-family:var(--mono);font-size:11px;letter-spacing:.09em;
+    text-transform:uppercase;display:block;margin-bottom:6px;}
+  .warn p{font-size:13.5px;margin:0;color:var(--ink2);}
+  .foot{margin-top:26px;font-family:var(--mono);font-size:11px;color:var(--ink3);letter-spacing:.05em;}
+  .foot a{color:var(--live-sd);text-decoration:none;}
+  code{font-family:var(--mono);font-size:.85em;background:#0d141d;padding:2px 6px;border-radius:5px;color:var(--ink);}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo"><span class="dot"></span><b>ScoreDeck</b></div>
+    <h1>Install in one click</h1>
+    <p>Flash ScoreDeck to your Waveshare ESP32-S3-Touch-LCD-7 directly from this
+    page — no IDE, no drivers to fight.</p>
+    <p class="sub">Requires desktop <b>Chrome</b> or <b>Edge</b>. Connect the board by USB-C first.</p>
+
+    <div class="btnwrap">
+      <esp-web-install-button manifest="manifest.json">
+        <button class="fallback" slot="activate">Install ScoreDeck</button>
+        <span class="unsupported" slot="unsupported">This browser can't flash over USB —
+          use desktop Chrome or Edge.</span>
+      </esp-web-install-button>
+    </div>
+
+    <div class="steps">
+      <ol>
+        <li>Plug the panel in over <b>USB-C</b> and hit <b>Install</b> above.</li>
+        <li>If it reports <i>"No serial data received"</i>, flip the board's
+            <b>UART slide switch</b> and try again — it catches everyone once.</li>
+        <li>When it reboots, the panel scans for <b>Wi-Fi</b>; type the password
+            on the touch keyboard.</li>
+        <li>Point it at your proxy (URL + token from <code>install.sh</code>),
+            pick your leagues and favourites — on the panel or at
+            <code>http://scoredeck.local/</code>.</li>
+      </ol>
+    </div>
+
+    <div class="warn">
+      <b>Updating an existing panel?</b>
+      <p>This is a <b>first-install</b> image — it erases every setting,
+      including the Wi-Fi password. To update a panel that's already set up,
+      use OTA instead: <code>curl -F "update=@scoredeck-ota.bin"
+      http://scoredeck.local/update</code></p>
+    </div>
+
+    <p class="foot"><a href="https://github.com/MrRonco/ScoreDeck">github.com/MrRonco/ScoreDeck</a>
+      · firmware v0.2.0 · GPL-3.0</p>
+  </div>
+</body>
+</html>

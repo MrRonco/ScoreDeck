@@ -104,6 +104,15 @@ Two caveats worth knowing:
 
 Install **Compose Manager** from Community Applications, then add a stack:
 
+The quickest path on any Docker host (including Unraid's terminal) is the
+launcher, which does all of the below and prints the panel's URL + token:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MrRonco/ScoreDeck/main/install.sh | bash
+```
+
+Or by hand:
+
 ```bash
 # on Unraid, via terminal
 mkdir -p /mnt/user/appdata/scoredeck && cd /mnt/user/appdata/scoredeck
@@ -131,9 +140,8 @@ Add the template from `unraid/scoredeck-proxy.xml`, or fill it in by hand:
 | Variable | `SD_TOKEN` = your token |
 | Variable | `TZ` = e.g. `America/Toronto` |
 
-> While the repository is private the image is private too, so Unraid needs a
-> one-off `docker login ghcr.io` with a GitHub personal access token that has
-> `read:packages`. Option 1 avoids that entirely by building locally.
+> The image is public — no registry login needed. It is rebuilt for amd64 and
+> arm64 by CI on every release (`.github/workflows/image.yml`).
 
 The container declares a `HEALTHCHECK`, so Unraid's health dot reflects whether
 the proxy is actually answering rather than just running.

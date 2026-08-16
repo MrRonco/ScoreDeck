@@ -4,7 +4,7 @@
 #pragma once
 #include <stdint.h>
 
-#define SD_VERSION "0.1.0-alpha.1"
+#define SD_VERSION "0.2.0"
 
 // ── panel ───────────────────────────────────────────────────────────────────
 #define SCR_W 800

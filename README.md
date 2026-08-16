@@ -1,137 +1,245 @@
+<div align="center">
+
 # ScoreDeck
 
-Live scores for the teams you follow, on a 7-inch glass panel on your desk —
-with rosters, stats, a news feed, and a screen that takes over the moment they
-score.
+**Live scores for the teams you follow, on a 7-inch glass panel on your desk.**
 
-Runs on the **Waveshare ESP32-S3-Touch-LCD-7** (800×480 RGB565, GT911 touch,
-16 MB flash / 8 MB OPI PSRAM) — the same board as
-[AirRadar](https://github.com/MrRonco/AirRadar).
+Twenty-six leagues, real team logos, a hero card for the game that matters,
+score alerts, standings, lineups, a news reader — and when nothing is on, a
+clock with a countdown to first pitch. No cloud account. No subscription.
+One small proxy you run yourself.
 
-> **Status: early but working.** The board renders live games on real hardware,
-> score alerts fire, and the panel falls back to an idle countdown when nothing
-> is on. Game detail, standings, lineups and the browser setup portal are not
-> built yet. See [Roadmap](#roadmap).
+[![firmware](https://img.shields.io/badge/firmware-v0.2.0-3be0c0?style=flat-square)](docs/PLAN.md) [![platform](https://img.shields.io/badge/ESP32--S3-16MB%20%2F%208MB%20PSRAM-9b8ce0?style=flat-square)](docs/HARDWARE.md) [![ui](https://img.shields.io/badge/LVGL-8.3-ffc061?style=flat-square)](https://lvgl.io) [![proxy](https://img.shields.io/badge/proxy-Node%20%2B%20Hono%20%7C%20Docker-6fc7d8?style=flat-square)](docs/DEPLOY.md) [![install](https://img.shields.io/badge/install-one--click%20web%20flasher-9b8ce0?style=flat-square)](https://mrronco.github.io/ScoreDeck/flasher/) [![license](https://img.shields.io/badge/license-GPL--3.0--or--later-ffc061?style=flat-square)](LICENSE)
+
+<img src="docs/img/panel-board.png" width="820" alt="ScoreDeck live: the Mariners–Astros game promoted to a hero card with team logos, a glowing teal leading score, Top 2nd with the live pitch-by-pitch line, and a ledger of finished games below; the header carries the live count, filter pill, clock and nav">
+
+<sub>Live capture off the device via <code>GET /screen.bmp</code> — the actual framebuffer on a
+Saturday evening, not a mockup. One game live, so the board promotes it to the <b>hero card</b>:
+logos, records, the leading score in the team's own colour under a soft bloom, the count of outs,
+and the live pitch line (<code>Pitch 6 : Strike 2 Foul</code>) straight off the wire. Finished
+games drop into the ledger below. The green dot on <code>NEWS</code> means unread stories; the
+teal thread at the left edge is the league rail's collapsed spine.</sub>
+
+</div>
+
+---
+
+## What it does
+
+ScoreDeck turns a Waveshare 7-inch ESP32-S3 touch panel into a standalone
+scoreboard for **your** teams. A small proxy (Docker, one command) does the
+heavy lifting against ESPN's public feeds; the panel polls it for a ~3 KB
+payload and spends its silicon on rendering.
+
+| | |
+|---|---|
+| **Follows your teams** | Favourites get a gold ring, sort first, tighten the poll while they play, and fire a takeover alert when they score. |
+| **Five score models, 26 leagues** | Two-sided, sets, leaderboard, grid and race — so golf, tennis and F1 render properly instead of as fake head-to-heads. Adding a league is a registry row, not a firmware change. |
+| **A hero when it's earned** | One live game worth watching becomes a half-screen card with logos, win probability, and the last play. Twelve games become a dense grid. The board chooses. |
+| **Real logos, solved chips** | Team marks are fetched once, pre-scaled on-device, and drawn on a ground *measured* to preserve their ink — a dark crest never disappears into a dark tile. |
+| **Colour is semantics** | One teal accent means "live, or touch this" — nothing else. Team colours carry identity, luminance carries game state, amber means something is at stake right now. |
+| **Reads the news** | Headlines for your teams, and tapping one opens the full article on the panel — paged like a book, with a progress rail. Video-only and premium items honestly fall back to their summary. |
+| **A deliberate idle** | Most hours have no games. The panel becomes a 96 px clock, a countdown to the next fixture, and last night's results — not a grid of dimmed finals. |
+| **Configurable from the couch** | League picker, favourites, density and quiet hours live in on-device settings *and* in a browser portal at `http://scoredeck.local/`. Both write the same store. |
+| **Says what it knows** | A stale feed reads `AS OF 7:41`, a missing record shows nothing, a capped list says so. The heartbeat under the header is the poll cycle made visible. |
+
+---
+
+## Screens
+
+<div align="center">
+
+<img src="docs/img/panel-rail.png" width="700" alt="The league rail open over the hero layout: ALL, NCAAM and NFL rows with live-over-total counts, the hero card narrowed beside it">
+
+<sub><b>The league rail.</b> Collapsed it is a 16 px spine whose segments show each league's share
+of tonight's board (teal = live now); open, it is a filter — <code>2/3</code> means two of three
+games live. The layouts on the right <b>re-solve for the remaining width</b> rather than sliding
+away: the hero narrows from 508 to 430 px and re-measures which team names still fit. Tap a
+league to filter, tap EDIT SPORTS to choose which leagues are on the board at all.</sub>
+
+<img src="docs/img/panel-reader.png" width="700" alt="The article reader: headline, byline, story text in a centred column, page counter reading 1/5, a progress thumb on the right edge and a first-page hint">
+
+<sub><b>The news reader.</b> Stories are typeset in a centred 560 px column — ~70 characters a
+line, book measure — and paged, because this panel repaints a page in one crisp ~230 ms pass but
+redraws continuous scrolling at a jank nobody should read through (it was built, measured, and
+rejected). Tap anywhere or swipe up for the next page, swipe down to go back; the <code>1/5</code>
+counter and the right-edge thumb answer "how much is left" before you commit. Page breaks are found
+by binary-searching LVGL's own text layout, so the paginator and the renderer cannot disagree.</sub>
+
+<img src="docs/img/panel-idle.png" width="700" alt="The idle screen: a 96 px clock, the date, a NEXT UP card with the coming game's logos and a countdown, today's schedule and last night's results">
+
+<sub><b>The idle screen.</b> Up for more hours than any other. The clock hangs from its ink, not
+its glyph box — a leading <code>1</code> and a leading <code>8</code> start their ink ~10 px apart
+in a tabular face, and the panel corrects for it — with the next fixture counting down beside it
+and yesterday's finals below. The same three nav buttons as the board, because idle is where you
+actually are when you want the standings.</sub>
+
+</div>
+
+The rest — standings tables, game detail with box score, lineups with player
+sheets, on-device settings, first-boot Wi-Fi onboarding — are on the panel;
+the design system behind them (surface ladder, state inks, the contrast
+solver, the motion budget) is documented in [`docs/UI.md`](docs/UI.md).
 
 ---
 
 ## How it works
 
 ```
-ESP32-S3 panel  ──one TLS call per poll──▶  your proxy  ──▶  ESPN
-   9-up board                               ~3 KB JSON        ~1.2 MB JSON
+ESP32-S3 panel  ──one HTTP call per poll──▶  your proxy  ──▶  ESPN public feeds
+   the board                                 ~3 KB JSON        up to ~1.2 MB JSON
 ```
 
-The device has roughly **17–40 KB of free internal heap** and mbedTLS needs a
-~16.4 KB contiguous block for a single handshake. ESPN's golf scoreboard alone
-is **1.2 MB**. So a small proxy does the aggregating, normalising and
-score-diffing, and hands the panel one compact payload.
+The device has tens of KB of free heap; ESPN's golf scoreboard alone is
+1.2 MB. So a small proxy aggregates the leagues you follow, normalises five
+sports' worth of shapes into one wire format, diffs scores to detect events,
+and hands the panel something it can parse in milliseconds. Logos are built
+once by the proxy tooling and served as pre-decoded RGB565 blobs.
 
-**You run your own proxy.** There is no shared instance and the firmware ships
-with an empty proxy URL — a free Cloudflare Worker serves one device
-comfortably and a shared one would not. See
-[`docs/OPEN_SOURCE.md`](docs/OPEN_SOURCE.md) §2.
-
-### Three ideas hold the design together
-
-1. **Glass is baked, never blurred.** LVGL 8.3 has no backdrop-filter and the
-   RGB panel's DMA already eats ~32 MB/s of PSRAM bandwidth. Chrome composites
-   into the background once at boot; data is flat objects on top. Nothing
-   frosted ever moves.
-2. **ScoreDeck has no accent colour.** ~3,000 team colours already arrive as
-   content, so the chrome stays neutral and every saturated pixel belongs to a
-   team.
-3. **Luminance encodes state, colour encodes team.** Live 100%, scheduled 72%,
-   final 55% — you read the board before you read a number.
-
-The signature is the **edge light**: a 3 px strip on the *leading* team's side
-of a live tile that swaps ends when the lead changes.
+**You run your own proxy.** There is no shared instance and the firmware
+ships with an empty proxy URL — this keeps you inside ESPN's public-facing
+rate expectations and keeps your viewing habits on your own hardware. A
+Docker container on any always-on box is the recommended shape; a free
+Cloudflare Worker also works. See [`docs/DEPLOY.md`](docs/DEPLOY.md) and
+[`docs/OPEN_SOURCE.md`](docs/OPEN_SOURCE.md).
 
 ---
 
-## Leagues
+## Hardware
 
-25 in the registry today — NFL, NBA, WNBA, NHL, MLB, the NCAA men's and women's
-sports, and eleven soccer competitions including NWSL and the Women's Champions
-League. Adding one is a row in `proxy/src/registry.ts` plus a logo build: **no
-firmware change**, because the device implements five *score models*, not thirty
-leagues.
+One board, nothing to solder: the **Waveshare ESP32-S3-Touch-LCD-7** —
+the same panel as [AirRadar](https://github.com/MrRonco/AirRadar), so the two
+projects share a bill of materials and a pile of hard-won board knowledge.
 
-| Model | Renders as | Status |
-|---|---|---|
-| `CLOCK` | period + running clock | shipped |
-| `INNING` | inning, bases, outs | shipped |
-| `SET` | per-set boxes, sets won | shipped |
-| `LEADERBOARD` | to-par, position, thru | shipped |
-| `GRID` | position, gap, lap | shipped |
-
-## Broadcast is regional
-
-ESPN's broadcast data is **US-only and its API ignores a region parameter** —
-verified: `?region=ca` and `?region=gb` return byte-identical responses, and a
-Toronto home game comes back as being on *NESN*, the Boston regional feed.
-
-So the proxy resolves rather than passes through: ESPN's per-game data for
-`us`, and `proxy/src/rights.json` for everywhere else, with per-team overrides
-where regional splits are real. **Adding your region is a ten-line pull request
-to a data file** — no code, no firmware.
-
----
-
-## Getting started
-
-1. **Deploy the proxy** — a Pi, a NAS, or a free Cloudflare Worker. Full
-   walkthrough in [`docs/DEPLOY.md`](docs/DEPLOY.md).
-2. **Flash the firmware** — see [`firmware/BUILD.md`](firmware/BUILD.md).
-3. **First boot** asks for Wi-Fi on the panel, because there is no network yet
-   to serve a browser over. If you are coming from AirRadar it reads your
-   existing credentials out of NVS and skips that step.
-4. **Everything else in the browser** — `http://scoredeck.local/` for proxy URL
-   and token, favourites, leagues, region, density, alerts, quiet hours and
-   firmware updates.
-
----
-
-## Repository
-
-| Path | What |
+| | |
 |---|---|
-| `firmware/ScoreDeck/` | LVGL 8.3 application |
-| `proxy/` | TypeScript + Hono, runs on Workers, Node, or a Pi |
-| `docs/PLAN.md` | Architecture and phases |
-| `docs/UI.md` | Screen geometry, tokens, interaction |
-| `docs/DEPLOY.md` | Running the proxy — Pi, Workers, or laptop |
-| `docs/INHERITED_RULES.md` | 22 hardware lessons AirRadar paid for — **read before touching the renderer** |
-| `docs/OPEN_SOURCE.md` | Licensing, deploy-your-own, what may not be committed |
+| **MCU** | ESP32-S3-WROOM-1-N16R8 — dual-core LX7 @ 240 MHz, Wi-Fi |
+| **Flash / PSRAM** | 16 MB QIO / **8 MB OPI** — the framebuffer lives in PSRAM |
+| **Display** | 7" IPS, 800×480, RGB565 parallel, GT911 five-point touch |
+| **Power** | USB-C, ~500 mA |
 
-## Roadmap
+> [!IMPORTANT]
+> The Arduino **PSRAM setting must be OPI PSRAM**. Set wrong, the framebuffer
+> fails to allocate and you get a black screen or a boot loop.
 
-- [x] Panel, touch, LVGL, Wi-Fi bring-up
-- [x] Proxy: registry, `CLOCK`/`INNING`, score diffing, regional broadcast
-- [x] Board screen at 9-up, live data on hardware
-- [x] Alert takeover, with the sequence held back until a card is actually seen
-- [x] Idle screen — the face the panel wears most of the day
-- [x] Self-hosted container: Unraid template, multi-arch image, VLAN placement
-- [x] Game detail on tap, with linescore, scoring plays and win probability
-- [x] Standings — generic table, labelled cut lines
-- [x] League filter chips with live counts
-- [x] Browser setup portal + OTA — no cable needed to configure or update
+The board's quirks — the UART slide switch that gates flashing, the GT911
+address lottery, the macOS CH343 driver — are the same as AirRadar's and are
+documented honestly in its
+[hardware notes](https://github.com/MrRonco/AirRadar#quirks-worth-knowing-before-you-buy)
+and in [`docs/HARDWARE.md`](docs/HARDWARE.md).
 
-- [x] News feed
-- [x] Team logos — build pipeline, proxy route, PSRAM cache
-- [ ] Team page · lineups · player cards
+---
 
-- [x] Tennis, golf and F1 — all five score models shipped
+## Install
 
-## Licence
+Two pieces: the **proxy** on any always-on box, then the **panel**.
 
-Firmware **GPL-3.0-or-later**; proxy **AGPL-3.0-or-later** (`proxy/LICENSE`).
+### 1 · The proxy — one command
 
-Team names, logos and player likenesses are the property of their respective
-owners. **No logo or headshot assets are included in this repository or in any
-release binary** — the build tools fetch them onto your own machine for personal
-use. See [`docs/OPEN_SOURCE.md`](docs/OPEN_SOURCE.md) §1.
+On any machine with Docker (a NAS, a Pi, a home server):
 
-Not affiliated with or endorsed by ESPN or any league. ESPN's endpoints are
-undocumented and unofficial: there is no SLA, and a breaking change is a
-Saturday afternoon.
+```bash
+curl -fsSL https://raw.githubusercontent.com/MrRonco/ScoreDeck/main/install.sh | bash
+```
+
+The launcher checks for Docker, fetches the proxy, generates an auth token,
+builds the container and starts it — then prints the URL and token the panel
+needs. Re-running it updates in place; your token and settings survive.
+
+<details>
+<summary><b>Manual / compose, Unraid VLANs, Cloudflare Workers…</b></summary>
+
+```bash
+git clone https://github.com/MrRonco/ScoreDeck.git
+cd ScoreDeck/proxy
+echo "SD_TOKEN=$(openssl rand -hex 24)" > .env
+docker compose up -d --build
+```
+
+- **Unraid with an isolated IoT VLAN**: `docker-compose.unraid.yml` puts the
+  container directly on the panel's VLAN with its own IP — no firewall holes.
+  A boot script and a Docker-tab template ship in [`unraid/`](unraid/).
+- **Cloudflare Workers**: `proxy/wrangler.toml` deploys the same code to the
+  free tier with a cache-warming cron.
+- Full walkthrough, including how to *measure* whether your panel can reach a
+  candidate host before building anything: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+</details>
+
+### 2 · The panel — one click
+
+Open the **[web flasher](https://mrronco.github.io/ScoreDeck/flasher/)** in
+desktop Chrome or Edge, plug the board in over USB-C, hit **Install**.
+
+> [!TIP]
+> *"No serial data received"* → flip the **UART slide switch** on the board.
+> It catches everyone once.
+
+Then, on first boot: the panel scans for Wi-Fi and takes the password on a
+touch keyboard; enter the proxy URL and token (or do it from the browser
+portal it announces); pick your leagues and favourites. Done.
+
+To **update** a panel that is already set up, use OTA from the portal instead
+of re-flashing — settings live in NVS and a merged-image flash erases them.
+
+### From source
+
+```bash
+FQBN='esp32:esp32:esp32s3:PSRAM=opi,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,USBMode=hwcdc'
+arduino-cli compile --fqbn "$FQBN" firmware/ScoreDeck
+arduino-cli upload  --fqbn "$FQBN" -p /dev/cu.wchusbserial* firmware/ScoreDeck
+```
+
+Or `tools/restore-panel.sh --build <port>`, which is what development uses.
+Pinned, load-bearing versions: esp32 core 3.3.10, LVGL 8.3.x, ArduinoJson
+6.21.x. `firmware/lv_conf.h` must sit beside the LVGL library folder.
+
+The desktop harness (`cd desktop && make`) renders every screen against the
+real firmware code with fixture data — most of the UI in this repo was
+verified there, pixel-measured, before ever touching the panel.
+
+---
+
+## The browser portal & API
+
+`http://scoredeck.local/` serves a setup portal — Wi-Fi, proxy, leagues,
+favourites, density, quiet hours — that writes the same settings store as the
+on-device screens.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/config` · `POST` | Read or write every setting |
+| `GET /api/state` | The board as JSON |
+| `GET /api/diag` | Heap, largest block, RSSI, poll age/latency, reset reason |
+| `GET /api/probe?url=` | Device-side fetch test — "is it my firewall or the firmware?" |
+| `GET /screen.bmp` | The live 800×480 framebuffer |
+| `POST /api/reboot` · `/api/forget` · `/api/reset` | Lifecycle |
+
+Every screenshot in this README labelled "live capture" came from
+`/screen.bmp`. The diagnostics exist because this board's USB serial is
+awkward once deployed — the device reports on itself over HTTP.
+
+---
+
+## Data, trademarks, licence
+
+- **Scores and news** come from ESPN's public, keyless site feeds via *your*
+  proxy. This project is not affiliated with or endorsed by ESPN or any
+  league. Be a good citizen: the proxy caches aggressively and the panel
+  polls once a minute (12 s when a followed team is live).
+- **Team logos and player photos are trademarks and likenesses.** They are
+  **never** in this repository or its images — the proxy tooling builds them
+  on your machine, for your own device. [`docs/OPEN_SOURCE.md`](docs/OPEN_SOURCE.md)
+  is the full reasoning.
+- **Fonts**: Archivo, IBM Plex Sans/Mono (OFL), with two glyphs from Noto
+  Sans Symbols 2 (OFL). Regeneration is scripted in `tools/build-fonts.sh`;
+  licence texts in [`LICENSES/`](LICENSES) and
+  [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+- **Code**: GPL-3.0-or-later. [`LICENSE`](LICENSE).
+
+---
+
+<div align="center">
+<sub>Built with a desktop LVGL harness, a three-way design/engineering review
+loop, and a panel that got reflashed more times than it deserved.</sub>
+</div>
