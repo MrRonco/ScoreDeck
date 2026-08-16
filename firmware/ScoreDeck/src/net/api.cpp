@@ -678,6 +678,7 @@ static bool newsOnce(const char* url, const char* token) {
     if (n.count >= NEWS_MAX) break;
     NewsItem& o = n.items[n.count];
     memset(&o, 0, sizeof o);
+    copyStr(o.id,       sizeof o.id,       it["id"]);
     copyStr(o.headline, sizeof o.headline, it["h"]);
     copyStr(o.desc,     sizeof o.desc,     it["d"]);
     copyStr(o.abbr,     sizeof o.abbr,     it["a"]);
@@ -688,6 +689,56 @@ static bool newsOnce(const char* url, const char* token) {
   n.loading = false;
   g_newsReady = true;
   return true;
+}
+
+// ── one article's body ─────────────────────────────────────────────────────
+static char s_stUrl[340];
+static char s_stToken[80];
+
+static bool storyOnce(const char* url, const char* token) {
+  WiFiClient plain; WiFiClientSecure secure;
+  const bool https = strncmp(url, "https:", 6) == 0;
+  if (https) secure.setInsecure();
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setConnectTimeout(HTTP_TIMEOUT_MS);
+  http.setReuse(false);
+  if (!(https ? http.begin(secure, url) : http.begin(plain, url))) return false;
+  http.setUserAgent("ScoreDeck/" SD_VERSION);
+  if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
+  if (http.GET() != 200) { http.end(); return false; }
+  const String body = http.getString();   // decodes chunked — see pollOnce
+  http.end();
+  if (body.length() < 8) return false;
+
+  // Body is ~6 KB of text inside ~6.2 KB of JSON; 10 KB of document copes
+  // with the escaping overhead.
+  DynamicJsonDocument doc(10 * 1024);
+  if (deserializeJson(doc, body)) return false;
+  copyStr(g_story.headline, sizeof g_story.headline, doc["h"]);
+  copyStr(g_story.body,     sizeof g_story.body,     doc["body"]);
+  return g_story.body[0] != '\0';
+}
+
+static void storyTask(void*) {
+  g_story.ok = storyOnce(s_stUrl, s_stToken);
+  Serial.printf("[net] story %s len=%u\n", g_story.ok ? "ok" : "FAIL",
+                (unsigned)strlen(g_story.body));
+  g_storyReady = true;
+  g_storyInFlight = false;
+  vTaskDelete(nullptr);
+}
+
+bool apiStoryStart(const char* id) {
+  if (!id || !id[0]) return false;
+  g_story.ok = false;
+  g_story.headline[0] = g_story.body[0] = '\0';
+  strncpy(g_story.id, id, sizeof g_story.id - 1);
+  g_story.id[sizeof g_story.id - 1] = '\0';
+  char p[40];
+  snprintf(p, sizeof p, "/v1/story/%s", id);
+  return startSimple(p, s_stUrl, s_stToken, sizeof s_stUrl,
+                     &g_storyInFlight, storyTask, "sdStory");
 }
 
 static void newsTask(void*) {

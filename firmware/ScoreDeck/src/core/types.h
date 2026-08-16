@@ -197,6 +197,7 @@ struct PlayerCard {
 #define NEWS_MAX 10
 
 struct NewsItem {
+  char     id[14];      // ESPN article id — empty when no readable body exists
   char     headline[91];
   char     desc[241];
   uint32_t when;
@@ -208,6 +209,14 @@ struct NewsFeed {
   bool     loading;
   uint8_t  count;
   NewsItem items[NEWS_MAX];
+};
+
+/** One fetched article body, plain text with \n\n paragraph breaks. */
+struct Story {
+  char id[14];
+  char headline[91];
+  char body[6144];
+  bool ok;             // fetch/parse succeeded
 };
 
 #define CAT_MAX 32

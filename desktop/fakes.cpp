@@ -16,6 +16,7 @@
 // Every api*Start() returns false: scenarios write g_board and friends
 // directly, so a fetch would only overwrite what the scenario is trying to
 // show.
+#include <string>
 #include <cstdarg>
 #include <cstdio>
 #include <chrono>
@@ -247,6 +248,25 @@ bool webUp()    { return false; }
 
 
 // ── catalog + poll fakes ───────────────────────────────────────────────────
+bool apiStoryStart(const char* id) {
+  // Instant sample story so the reader can be screenshotted deterministically.
+  strncpy(g_story.id, id ? id : "", sizeof g_story.id - 1);
+  snprintf(g_story.headline, sizeof g_story.headline,
+           "DeLauter exits with hamstring tightness as Guardians hold on");
+  std::string b;
+  for (int p = 0; p < 9; p++)
+    b += "CLEVELAND -- Guardians rookie outfielder Chase DeLauter was taken out "
+         "before the third inning of Sunday's game against the San Diego Padres "
+         "because of mild left hamstring tightness, the club announced. "
+         "He popped out to shortstop in the first inning but also made a pair of "
+         "sliding catches in right field that had the dugout on its feet.\n\n";
+  strncpy(g_story.body, b.c_str(), sizeof g_story.body - 1);
+  g_story.body[sizeof g_story.body - 1] = '\0';
+  g_story.ok = true;
+  g_storyReady = true;
+  return true;
+}
+
 bool apiCatalogStart() {
   static const struct { const char* s; const char* l; const char* f; } K[] = {
     { "nfl", "NFL", "football" },   { "ncaaf", "NCAAF", "football" },

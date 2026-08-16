@@ -158,6 +158,11 @@ lv_obj_t* uiStandingsRoot();
 
 // News — UI.md §5.4. Headlines plus the proxy's trimmed summary; no article body.
 void uiNewsInit(lv_obj_t* parent);
+void uiReaderInit(lv_obj_t* parent);
+void uiReaderOpen(const NewsItem& it);
+void uiReaderTick();
+void uiReaderHide();
+bool uiReaderIsOpen();
 void uiNewsOpen();
 void uiNewsRender();
 void uiNewsClose();

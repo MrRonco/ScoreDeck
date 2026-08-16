@@ -174,6 +174,9 @@ export interface GameDetail {
 
 /** GET /v1/news — headlines for the teams you follow. */
 export interface NewsItem {
+  /** ESPN article id — present only when a readable story body exists
+   *  (absent for video items and premium articles). */
+  id?: string;
   /** Headline, clamped. */
   h: string;
   /** Summary, clamped — the panel shows no article body and has no HTML parser. */
@@ -185,6 +188,14 @@ export interface NewsItem {
   /** That team's colour, 0xRRGGBB. */
   c?: number;
   l: string;
+}
+
+/** GET /v1/story/:id — one article's body, stripped to plain paragraphs. */
+export interface Story {
+  h: string;
+  t: number;
+  /** Plain text, paragraphs separated by \n\n, clamped to ~6 KB. */
+  body: string;
 }
 
 /** GET /v1/lineup/:league/:id */

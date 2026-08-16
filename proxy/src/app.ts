@@ -3,12 +3,12 @@ import { LEAGUES, league } from './registry.ts';
 import {
   fetchScoreboard, normalizeBoard, sortAndCap, fetchStandings, normalizeStandings,
   fetchTeams, normalizeTeams, fetchSummary, normalizeGame, fetchNews, normalizeNews,
-  normalizeLineup, fetchAthlete, normalizePlayer,
+  normalizeLineup, fetchAthlete, normalizePlayer, fetchStory, normalizeStory,
   normalizeTennis, normalizeGolf, normalizeF1,
 } from './espn.ts';
 import { diffBoard, nextPollSeconds } from './diff.ts';
 import { MemoryStore, loadDiff, saveDiff, type Store } from './store.ts';
-import { GS, SM, type Game, type ScoreEvent, type StateResponse, type NewsItem } from './types.ts';
+import { GS, SM, type Game, type ScoreEvent, type StateResponse, type NewsItem, type Story } from './types.ts';
 
 export interface Env {
   store: Store;
@@ -281,6 +281,24 @@ export function createApp(env: Env) {
     const unique = items.filter((i) => !seen.has(i.h) && seen.add(i.h));
     unique.sort((x, y) => (Number(!!y.a) - Number(!!x.a)) || (y.t - x.t));
     return c.json({ v: 1, items: unique.slice(0, 10) });
+  });
+
+  app.get('/v1/story/:id', async (c) => {
+    const id = c.req.param('id');
+    if (!/^\d{1,12}$/.test(id)) return c.json({ error: 'bad id' }, 400);
+    const key = `story:${id}`;
+    let got = await env.store.get<Story>(key);
+    if (!got) {
+      try {
+        const s = normalizeStory(await fetchStory(id, doFetch));
+        if (!s) return c.json({ error: 'no story body' }, 404);
+        got = s;
+        await env.store.put(key, got, 3600);   // stories do not change
+      } catch {
+        return c.json({ error: 'upstream failed' }, 502);
+      }
+    }
+    return c.json(got);
   });
 
   app.get('/v1/game/:league/:id', async (c) => {

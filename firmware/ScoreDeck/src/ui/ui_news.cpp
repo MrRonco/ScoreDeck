@@ -54,8 +54,10 @@ static void onBack(lv_event_t*) { uiNewsClose(); }
 static void onItem(lv_event_t* e) {
   const int row = (int)(intptr_t)lv_event_get_user_data(e);
   const int idx = s_scroll + row;
-  s_expanded = (s_expanded == idx) ? -1 : (int8_t)idx;
-  uiNewsRender();
+  if (idx >= g_news.count) return;
+  // Every headline opens the reader; with no readable body it shows the
+  // summary there instead — one gesture, one destination.
+  uiReaderOpen(g_news.items[idx]);
 }
 
 static void onGesture(lv_event_t*) {
@@ -185,5 +187,8 @@ void uiNewsOpen() {
   apiNewsStart();
 }
 
-void uiNewsClose() { uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD); }
+void uiNewsClose() {
+  uiReaderHide();
+  uiShow(uiShouldIdle() ? SCR_IDLE : SCR_BOARD);
+}
 bool uiNewsIsOpen() { return uiCurrent() == SCR_NEWS; }

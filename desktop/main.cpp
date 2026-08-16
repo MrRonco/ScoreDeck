@@ -116,6 +116,18 @@ static void showScreen(const char* name) {
   else if (!strcmp(name, "idle"))      uiShow(SCR_IDLE);
   else if (!strcmp(name, "standings")) uiStandingsOpen("nhl");
   else if (!strcmp(name, "news"))      uiNewsOpen();
+  else if (!strcmp(name, "reader")) {
+    uiNewsOpen();
+    static NewsItem it;
+    memset(&it, 0, sizeof it);
+    strcpy(it.id, "49632941");
+    strcpy(it.headline, "Guardians' DeLauter exits with left hamstring tightness");
+    strcpy(it.desc, "The rookie left Sunday's game in the third inning.");
+    strcpy(it.abbr, "CLE");
+    it.color = 0xE31937;
+    it.when = (uint32_t)time(nullptr) - 7200;
+    uiReaderOpen(it);
+  }
   else if (!strcmp(name, "lineup"))    uiLineupOpen("nhl", "900000");
   // The player sheet is an overlay on the lineup screen, not a screen of its
   // own — open the lineup underneath it or the sheet has nothing to sit on.
@@ -211,6 +223,7 @@ int main(int argc, char** argv) {
   uiGameInit(lv_scr_act());
   uiStandingsInit(lv_scr_act());
   uiNewsInit(lv_scr_act());
+  uiReaderInit(lv_scr_act());
   uiLineupInit(lv_scr_act());
   uiSetupInit(lv_scr_act());
   uiSettingsInit(lv_scr_act());
@@ -239,6 +252,7 @@ int main(int argc, char** argv) {
         showScreen(sc);
         scenarioReapply(s);
         uiIdleTick();
+    uiReaderTick();
         lv_refr_now(nullptr);
         char label[64];
         snprintf(label, sizeof label, "%-10s  %s", sc, scenarioName(s));
@@ -258,6 +272,7 @@ int main(int argc, char** argv) {
     // populated, then two refresh passes: the first lays out, the second
     // paints what the layout moved.
     uiIdleTick();
+    uiReaderTick();
     uiAlertTick();
     for (int i = 0; i < 2; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
     const bool ok = writeBmp(shot);
@@ -289,6 +304,7 @@ int main(int argc, char** argv) {
     lv_timer_handler();
     uiAlertTick();
     uiIdleTick();
+    uiReaderTick();
     if (s_ren) {
       SDL_RenderClear(s_ren);
       SDL_RenderCopy(s_ren, s_tex, nullptr, nullptr);

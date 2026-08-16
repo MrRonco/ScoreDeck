@@ -325,6 +325,7 @@ void setup() {
   uiGameInit(lv_scr_act());
   uiStandingsInit(lv_scr_act());
   uiNewsInit(lv_scr_act());
+  uiReaderInit(lv_scr_act());
   uiLineupInit(lv_scr_act());
   uiSettingsInit(lv_scr_act());
 
@@ -353,6 +354,7 @@ void loop() {
   tickClock();
   uiAlertTick();
   uiToastTick();
+  uiReaderTick();
   uiFocusTick();
   uiSettingsTick();
 
