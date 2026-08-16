@@ -692,8 +692,8 @@ static bool newsOnce(const char* url, const char* token) {
 }
 
 // ── one article's body ─────────────────────────────────────────────────────
-static char s_stUrl[340];
-static char s_stToken[80];
+static char s_syUrl[340];
+static char s_syToken[80];
 
 static bool storyOnce(const char* url, const char* token) {
   WiFiClient plain; WiFiClientSecure secure;
@@ -721,7 +721,7 @@ static bool storyOnce(const char* url, const char* token) {
 }
 
 static void storyTask(void*) {
-  g_story.ok = storyOnce(s_stUrl, s_stToken);
+  g_story.ok = storyOnce(s_syUrl, s_syToken);
   Serial.printf("[net] story %s len=%u\n", g_story.ok ? "ok" : "FAIL",
                 (unsigned)strlen(g_story.body));
   g_storyReady = true;
@@ -737,7 +737,7 @@ bool apiStoryStart(const char* id) {
   g_story.id[sizeof g_story.id - 1] = '\0';
   char p[40];
   snprintf(p, sizeof p, "/v1/story/%s", id);
-  return startSimple(p, s_stUrl, s_stToken, sizeof s_stUrl,
+  return startSimple(p, s_syUrl, s_syToken, sizeof s_syUrl,
                      &g_storyInFlight, storyTask, "sdStory");
 }
 
