@@ -117,6 +117,7 @@ static const DensitySpec kDensity[4] = {
 #define K_FOCUS_EN  "focus"
 #define K_CLK24     "clk24"
 #define K_TZ_IANA   "tzi"
+#define K_TLS_INSEC "tlsi"    // accept unverified TLS (self-signed LAN proxy)
 
 #define FAVS_MAX_LEN 240
 #define FAVS_MAX      20   // the proxy caps at 20 pairs too

@@ -107,6 +107,7 @@ void settingsLoad() {
   // available at first boot, and the user can override it either way.
   g_set.clock24   = p.getBool(K_CLK24, !(g_set.region == "us" || g_set.region == "ca"));
   g_set.quietOn   = p.getBool(K_QUIET_EN, false);
+  g_set.tlsInsecure = p.getBool(K_TLS_INSEC, false);
   g_set.quietFrom = p.getUShort(K_QUIET_FR, QUIET_DEFAULT_FROM);
   g_set.quietTo   = p.getUShort(K_QUIET_TO, QUIET_DEFAULT_TO);
   g_set.lastSeq   = p.getULong(K_SEQ, 0);
@@ -146,6 +147,7 @@ void settingsSave() {
   p.putBool(K_FOCUS_EN, g_set.focusOn);
   p.putBool(K_CLK24, g_set.clock24);
   p.putBool(K_QUIET_EN, g_set.quietOn);
+  p.putBool(K_TLS_INSEC, g_set.tlsInsecure);
   p.putUShort(K_QUIET_FR, g_set.quietFrom);
   p.putUShort(K_QUIET_TO, g_set.quietTo);
   p.putULong(K_SEQ, g_set.lastSeq);

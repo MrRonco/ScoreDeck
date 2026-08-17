@@ -41,6 +41,7 @@ struct Settings {
   bool    focusOn;
   bool    clock24;
   bool    quietOn;
+  bool    tlsInsecure;   // false = verify against the CA bundle (default)
   uint16_t quietFrom, quietTo;
   uint32_t lastSeq;
 };

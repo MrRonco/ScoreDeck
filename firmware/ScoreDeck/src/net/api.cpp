@@ -12,6 +12,26 @@
 #include "../core/state.h"
 #include "../config.h"
 
+// The ESP-IDF root-CA bundle, linked into the image (CONFIG_MBEDTLS_CERTIFICATE
+// _BUNDLE is on in this core). Verifying against it is the default; a user with
+// a self-signed LAN proxy sets tlsInsecure to accept it knowingly (review H2).
+extern const uint8_t caBundleStart[] asm("_binary_x509_crt_bundle_start");
+extern const uint8_t caBundleEnd[]   asm("_binary_x509_crt_bundle_end");
+
+static void applyTls(WiFiClientSecure& secure) {
+  if (g_set.tlsInsecure) { secure.setInsecure(); return; }
+  secure.setCACertBundle(caBundleStart, (size_t)(caBundleEnd - caBundleStart));
+}
+
+// Reject a response whose declared Content-Length is over the cap. Chunked
+// responses report -1 and pass (our proxy always chunks) — the trust boundary
+// there is the bearer token plus, now, a verified certificate (review M2).
+static bool sizeOk(HTTPClient& http, size_t cap) {
+  const int len = http.getSize();
+  return !(len >= 0 && (size_t)len > cap);
+}
+
+
 // Snapshotted in loop context before the spawn — a task never reads g_set.
 struct PollJob {
   char url[420];
@@ -92,7 +112,7 @@ static bool pollOnce(const PollJob& job) {
   WiFiClient plain;
   WiFiClientSecure secure;
   const bool https = strncmp(job.url, "https:", 6) == 0;
-  if (https) secure.setInsecure();   // TODO(P1): pin the proxy cert
+  if (https) applyTls(secure);
 
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
@@ -118,9 +138,8 @@ static bool pollOnce(const PollJob& job) {
   // encoding there, and deserializeJson() on the raw stream does not — it sees
   // the chunk-length framing and stops at the first token. Both the Node dev
   // server and Cloudflare send chunked, so this is not a tunnel artefact.
-  const int len = http.getSize();
-  if (len > 48 * 1024) {
-    snprintf(g_netDetail, sizeof g_netDetail, "body too large (%d)", len);
+  if (!sizeOk(http, 256 * 1024)) {
+    snprintf(g_netDetail, sizeof g_netDetail, "body too large");
     http.end();
     return false;
   }
@@ -275,7 +294,7 @@ static void gameFilter(JsonDocument& f) {
 static bool gameOnce(const char* url, const char* token) {
   WiFiClient plain; WiFiClientSecure secure;
   const bool https = strncmp(url, "https:", 6) == 0;
-  if (https) secure.setInsecure();
+  if (https) applyTls(secure);
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
@@ -284,6 +303,7 @@ static bool gameOnce(const char* url, const char* token) {
   http.setUserAgent("ScoreDeck/" SD_VERSION);
   if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
   if (http.GET() != 200) { http.end(); return false; }
+  if (!sizeOk(http, 256 * 1024)) { http.end(); return false; }
   const String body = http.getString();   // decodes chunked; see pollOnce
   http.end();
   if (body.length() < 8) return false;
@@ -359,7 +379,7 @@ static char s_stToken[80];
 static bool standingsOnce(const char* url, const char* token) {
   WiFiClient plain; WiFiClientSecure secure;
   const bool https = strncmp(url, "https:", 6) == 0;
-  if (https) secure.setInsecure();
+  if (https) applyTls(secure);
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
@@ -368,6 +388,7 @@ static bool standingsOnce(const char* url, const char* token) {
   http.setUserAgent("ScoreDeck/" SD_VERSION);
   if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
   if (http.GET() != 200) { http.end(); return false; }
+  if (!sizeOk(http, 256 * 1024)) { http.end(); return false; }
   const String body = http.getString();
   http.end();
   if (body.length() < 8) return false;
@@ -450,7 +471,7 @@ static char s_pcUrl[300], s_pcToken[80];
 static bool getJson(const char* url, const char* token, DynamicJsonDocument& doc) {
   WiFiClient plain; WiFiClientSecure secure;
   const bool https = strncmp(url, "https:", 6) == 0;
-  if (https) secure.setInsecure();
+  if (https) applyTls(secure);
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
@@ -459,6 +480,7 @@ static bool getJson(const char* url, const char* token, DynamicJsonDocument& doc
   http.setUserAgent("ScoreDeck/" SD_VERSION);
   if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
   if (http.GET() != 200) { http.end(); return false; }
+  if (!sizeOk(http, 256 * 1024)) { http.end(); return false; }
   const String body = http.getString();   // decodes chunked — see pollOnce
   http.end();
   return body.length() > 8 && !deserializeJson(doc, body);
@@ -593,7 +615,7 @@ static char s_catToken[80];
 static bool catalogOnce(const char* url, const char* token) {
   WiFiClient plain; WiFiClientSecure secure;
   const bool https = strncmp(url, "https:", 6) == 0;
-  if (https) secure.setInsecure();
+  if (https) applyTls(secure);
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
@@ -609,6 +631,7 @@ static bool catalogOnce(const char* url, const char* token) {
   // every attempt while curl (which decodes chunking) said the endpoint was
   // fine. This was the one fetch in the file reading the stream directly;
   // see the pollOnce comment that already warns about exactly this.
+  if (!sizeOk(http, 256 * 1024)) { http.end(); return false; }
   const String body = http.getString();
   http.end();
   if (body.length() < 8) return false;
@@ -656,7 +679,7 @@ static char s_nwToken[80];
 static bool newsOnce(const char* url, const char* token) {
   WiFiClient plain; WiFiClientSecure secure;
   const bool https = strncmp(url, "https:", 6) == 0;
-  if (https) secure.setInsecure();
+  if (https) applyTls(secure);
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
@@ -665,6 +688,7 @@ static bool newsOnce(const char* url, const char* token) {
   http.setUserAgent("ScoreDeck/" SD_VERSION);
   if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
   if (http.GET() != 200) { http.end(); return false; }
+  if (!sizeOk(http, 256 * 1024)) { http.end(); return false; }
   const String body = http.getString();
   http.end();
   if (body.length() < 8) return false;
@@ -698,7 +722,7 @@ static char s_syToken[80];
 static bool storyOnce(const char* url, const char* token) {
   WiFiClient plain; WiFiClientSecure secure;
   const bool https = strncmp(url, "https:", 6) == 0;
-  if (https) secure.setInsecure();
+  if (https) applyTls(secure);
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.setConnectTimeout(HTTP_TIMEOUT_MS);
@@ -707,6 +731,7 @@ static bool storyOnce(const char* url, const char* token) {
   http.setUserAgent("ScoreDeck/" SD_VERSION);
   if (token[0]) http.addHeader("Authorization", String("Bearer ") + token);
   if (http.GET() != 200) { http.end(); return false; }
+  if (!sizeOk(http, 256 * 1024)) { http.end(); return false; }
   const String body = http.getString();   // decodes chunked — see pollOnce
   http.end();
   if (body.length() < 8) return false;
@@ -838,11 +863,15 @@ int netProbeProxy(uint16_t* outMs) {
   if (!g_set.proxy.length() || WiFi.status() != WL_CONNECTED) return -1;
   if (!netGateOpen()) return -2;
 
+  WiFiClient plain;
+  WiFiClientSecure secure;
   HTTPClient http;
   String url = g_set.proxy;
   if (url.endsWith("/")) url.remove(url.length() - 1);
   url += "/v1/health";
-  if (!http.begin(url)) return -1;
+  const bool https = url.startsWith("https:");
+  if (https) applyTls(secure);
+  if (!(https ? http.begin(secure, url) : http.begin(plain, url))) return -1;
   http.setTimeout(4000);
   if (g_set.token.length()) http.addHeader("Authorization", "Bearer " + g_set.token);
   const uint32_t t0 = millis();
@@ -867,15 +896,19 @@ int netProbeProxy(uint16_t* outMs) {
  */
 int netRelayGet(const String& path, String& out) {
   if (!g_set.proxy.length() || WiFi.status() != WL_CONNECTED) return -1;
+  WiFiClient plain;
+  WiFiClientSecure secure;
   HTTPClient http;
   String url = g_set.proxy;
   if (url.endsWith("/")) url.remove(url.length() - 1);
   url += path;
-  if (!http.begin(url)) return -1;
+  const bool https = url.startsWith("https:");
+  if (https) applyTls(secure);
+  if (!(https ? http.begin(secure, url) : http.begin(plain, url))) return -1;
   http.setTimeout(HTTP_TIMEOUT_MS);
   if (g_set.token.length()) http.addHeader("Authorization", "Bearer " + g_set.token);
   const int code = http.GET();
-  if (code == 200) out = http.getString();
+  if (code == 200 && sizeOk(http, 256 * 1024)) out = http.getString();
   http.end();
   return code;
 }

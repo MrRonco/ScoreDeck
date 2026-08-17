@@ -40,6 +40,7 @@ static bool s_up = false;
 static bool s_otaAuthFailed = false;
 
 static String mdnsName() { return "scoredeck"; }
+static void fail(int code, const char* why);   // defined below; guardAdmin needs it
 
 // ── guards ─────────────────────────────────────────────────────────────────
 
@@ -72,14 +73,57 @@ static bool originAllowed() {
   return o.equalsIgnoreCase(want);
 }
 
+/** Reject browser cross-site requests. Sec-Fetch-Site is absent on non-browser
+ *  clients (curl, the device), so absence is allowed; a value of "cross-site"
+ *  is a drive-by from another origin and is refused. This is what stops an
+ *  arbitrary internet page from looping <img src=".../screen.bmp"> to freeze
+ *  the panel (review M5). */
+static bool secFetchOk() {
+  const String sfs = s_srv.header("Sec-Fetch-Site");
+  if (!sfs.length()) return true;
+  return sfs == "same-origin" || sfs == "same-site" || sfs == "none";
+}
+
+// Failure backoff: after too many bad passwords the panel stops answering the
+// challenge for a cooldown, so the single password protecting OTA cannot be
+// ground at line rate over the LAN (review M6).
+static uint8_t  s_authFails = 0;
+static uint32_t s_authLockUntil = 0;
+
+/** The password check: Digest (so the secret never crosses the wire in a
+ *  recoverable form), with lockout. Returns true when no password is set —
+ *  callers that must NOT run passwordless use guardAdmin(). */
+static bool authPassword() {
+  if (!g_set.panelPass.length()) return true;
+  if (s_authLockUntil && (int32_t)(millis() - s_authLockUntil) < 0) {
+    s_srv.send(429, "text/plain", "too many attempts - wait a minute");
+    return false;
+  }
+  if (s_srv.authenticate("admin", g_set.panelPass.c_str())) {
+    s_authFails = 0;
+    return true;
+  }
+  if (++s_authFails >= 8) { s_authLockUntil = millis() + 60000; s_authFails = 0; }
+  s_srv.requestAuthentication(DIGEST_AUTH, "ScoreDeck", "authentication required");
+  return false;
+}
+
 static bool guard() {
   if (!hostAllowed())   { s_srv.send(403, "text/plain", "bad host"); return false; }
   if (!originAllowed()) { s_srv.send(403, "text/plain", "bad origin"); return false; }
-  if (g_set.panelPass.length()) {
-    if (!s_srv.authenticate("admin", g_set.panelPass.c_str())) {
-      s_srv.requestAuthentication();
-      return false;
-    }
+  if (!secFetchOk())    { s_srv.send(403, "text/plain", "cross-site"); return false; }
+  return authPassword();
+}
+
+/** guard() PLUS a password must actually exist. Fronts every route that can
+ *  take the device over or leak its secrets — /update, /api/wifi, /api/reset,
+ *  /api/forget. A panel with no password refuses these and says how to fix it
+ *  rather than executing them for anyone on the LAN (review C1). */
+static bool guardAdmin() {
+  if (!guard()) return false;
+  if (!g_set.panelPass.length()) {
+    fail(403, "set a portal password first (Settings on the panel, or POST one to /api/config)");
+    return false;
   }
   return true;
 }
@@ -138,6 +182,13 @@ static bool jsonField(const String& body, const char* key, String& out) {
     const int end = body.indexOf('"', i + 1);
     if (end < 0) return false;
     out = body.substring(i + 1, end);
+    // No control byte survives into a setting or a response header. jstr()
+    // strips them on output; this strips them on input so no field can carry
+    // a CR/LF into sendHeader() (review M7).
+    String clean; clean.reserve(out.length());
+    for (size_t k = 0; k < out.length(); k++)
+      if ((unsigned char)out[k] >= 0x20) clean += out[k];
+    out = clean;
   } else {
     int end = i;
     while (end < (int)body.length() && body[end] != ',' && body[end] != '}') end++;
@@ -223,6 +274,24 @@ static void pageRoot() {
   }
 }
 
+/** Reject a proxy host that points back at the device or at cloud metadata —
+ *  loopback, link-local (incl. 169.254.169.254), and the unspecified address.
+ *  Private LAN ranges ARE allowed: the proxy is normally 192.168/10./172.16.
+ *  Combined with the /api/probe + /api/relay reachability tools this closes
+ *  the SSRF-to-self primitive (review L8). */
+static bool proxyHostSafe(const String& url) {
+  int i = url.indexOf("://");
+  if (i < 0) return false;
+  String host = url.substring(i + 3);
+  const int slash = host.indexOf('/');  if (slash >= 0) host = host.substring(0, slash);
+  const int colon = host.indexOf(':');  if (colon >= 0) host = host.substring(0, colon);
+  host.toLowerCase();
+  if (host == "localhost" || host.startsWith("127.") || host == "0.0.0.0" ||
+      host.startsWith("169.254.") || host == "::1" || host == "[::1]")
+    return false;
+  return host.length() > 0;
+}
+
 static void apiConfigGet() {
   if (!guard()) return;
   String j = "{";
@@ -255,13 +324,15 @@ static void apiConfigGet() {
   j += ",\"qen\":" + String(g_set.quietOn ? 1 : 0);
   j += ",\"qfr\":" + String(g_set.quietFrom);
   j += ",\"qto\":" + String(g_set.quietTo);
+  j += ",\"tlsi\":" + String(g_set.tlsInsecure ? 1 : 0);
   j += ",\"now\":" + jstr(localClockNow());
   const esp_partition_t* nxt = esp_ota_get_next_update_partition(nullptr);
   j += ",\"slot\":" + String(nxt ? (unsigned)nxt->size : 0u);
-  // The portal needs the bearer to fetch the catalog from the proxy. Worth
-  // stating plainly rather than hiding: anything that can read this endpoint
-  // can already flash arbitrary firmware, so the token is not a new exposure.
-  j += ",\"token\":" + jstr(g_set.token);
+  // The portal needs the bearer to fetch the catalog directly from the proxy.
+  // It is echoed ONLY when a portal password gates this endpoint — on a
+  // passwordless panel returning it would hand the token to any LAN client
+  // (review C1). Without it the portal falls back to /api/relay.
+  if (g_set.panelPass.length()) j += ",\"token\":" + jstr(g_set.token);
   j += "}";
   sendJson(j);
 }
@@ -280,6 +351,16 @@ static void apiConfigPost() {
     if (sProxy.length() && !sProxy.startsWith("http://") && !sProxy.startsWith("https://"))
       return fail(400, "proxy must start with http:// or https://");
     if (sProxy.length() > 96) return fail(400, "proxy url too long");
+    // No whitespace or header/CSP metacharacters: g_set.proxy is interpolated
+    // into the Content-Security-Policy header (review M7), so a stray ';' or
+    // CR would rewrite the policy or split the response.
+    for (size_t k = 0; k < sProxy.length(); k++) {
+      const unsigned char ch = sProxy[k];
+      if (ch < 0x21 || ch > 0x7E || ch == ';' || ch == '\'' || ch == '"' || ch == '<' || ch == '>')
+        return fail(400, "proxy url contains an illegal character");
+    }
+    if (sProxy.length() && !proxyHostSafe(sProxy))
+      return fail(400, "proxy host not allowed");
   }
   if (jsonField(body, "rgn", sRgn)) {
     if (sRgn.length() != 2) return fail(400, "region must be a two-letter code");
@@ -297,8 +378,11 @@ static void apiConfigPost() {
   jsonInt(body, "qto", qto);
   if (qfr < 0 || qfr > 1439 || qto < 0 || qto > 1439)
     return fail(400, "quiet hours must be within a day");
+  long tlsi = g_set.tlsInsecure;
+  jsonInt(body, "tlsi", tlsi);
   jsonField(body, "token", sToken);
-  jsonField(body, "ppass", sPass);
+  if (jsonField(body, "ppass", sPass) && sPass.length() && sPass != "-" && sPass.length() < 8)
+    return fail(400, "portal password must be at least 8 characters");
 
   // ── apply ────────────────────────────────────────────────────────────────
   if (sProxy.length() || jsonField(body, "proxy", why)) g_set.proxy = sProxy;
@@ -311,6 +395,7 @@ static void apiConfigPost() {
   g_set.quietOn  = qen != 0;
   g_set.quietFrom = (uint16_t)qfr;
   g_set.quietTo   = (uint16_t)qto;
+  g_set.tlsInsecure = tlsi != 0;
   applySecret(g_set.token, sToken);
   applySecret(g_set.panelPass, sPass);
 
@@ -455,10 +540,19 @@ static void apiProbe() {
  */
 static void apiRelay() {
   if (!guard()) return;
-  const String p = s_srv.arg("p");
+  const String p = s_srv.arg("p");   // NOTE: percent-DECODED by the server
+  auto teamsPath = [](const String& s) {
+    if (!s.startsWith("/v1/teams/")) return false;
+    const String slug = s.substring(10);
+    if (slug.length() < 2 || slug.length() > 8) return false;
+    for (size_t k = 0; k < slug.length(); k++) {
+      const char c = slug[k];
+      if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.')) return false;
+    }
+    return true;
+  };
   const bool ok = p == "/v1/catalog" || p == "/v1/catalog?teams=1" ||
-                  p == "/v1/health" ||
-                  (p.startsWith("/v1/teams/") && p.length() <= 20);
+                  p == "/v1/health" || teamsPath(p);
   if (!ok) return fail(400, "path not allowed");
   if (!g_set.proxy.length()) return fail(503, "no proxy configured");
   // Scores outrank setup: never compete with a poll for the TLS buffer.
@@ -472,7 +566,7 @@ static void apiRelay() {
 }
 
 static void apiWifi() {
-  if (!guard()) return;
+  if (!guardAdmin()) return;
   const String body = bodyOf();
   String ssid, pass;
   if (!jsonField(body, "ssid", ssid) || !ssid.length()) return fail(400, "network name required");
@@ -488,7 +582,7 @@ static void apiWifi() {
 static void apiReboot() { if (!guard()) return; sendJson("{\"ok\":true}"); delay(250); ESP.restart(); }
 
 static void apiForget() {
-  if (!guard()) return;
+  if (!guardAdmin()) return;
   g_set.ssid = ""; g_set.pass = "";
   settingsSave();
   sendJson("{\"ok\":true}");
@@ -497,7 +591,7 @@ static void apiForget() {
 }
 
 static void apiReset() {
-  if (!guard()) return;
+  if (!guardAdmin()) return;
   settingsFactoryReset();
   sendJson("{\"ok\":true}");
   delay(250);
@@ -575,8 +669,13 @@ static void pageUpload() {
   HTTPUpload& up = s_srv.upload();
   if (up.status == UPLOAD_FILE_START) {
     s_otaAuthFailed = false;
-    if (!hostAllowed() || !originAllowed() ||
-        (g_set.panelPass.length() && !s_srv.authenticate("admin", g_set.panelPass.c_str()))) {
+    // A firmware flash is the highest-privilege action on the device, so it
+    // requires a password to EXIST (not merely to match if present) — an
+    // unauthenticated flash is full takeover (review C1). Digest + backoff via
+    // authPassword(); host/origin/sec-fetch via the same predicates as guard().
+    if (!hostAllowed() || !originAllowed() || !secFetchOk() ||
+        !g_set.panelPass.length() ||
+        !s_srv.authenticate("admin", g_set.panelPass.c_str())) {
       // Flag AND abort. Simply returning let the whole unauthorised upload
       // stream to completion before anything reported a problem.
       s_otaAuthFailed = true;
@@ -610,8 +709,8 @@ static void pageUpload() {
 void webBegin() {
   if (s_up) return;
   if (MDNS.begin(mdnsName().c_str())) MDNS.addService("http", "tcp", 80);
-  const char* wanted[] = { "Origin" };
-  s_srv.collectHeaders(wanted, 1);
+  const char* wanted[] = { "Origin", "Sec-Fetch-Site" };
+  s_srv.collectHeaders(wanted, 2);
 
   s_srv.on("/", HTTP_GET, pageRoot);
   s_srv.on("/api/config", HTTP_GET, apiConfigGet);
