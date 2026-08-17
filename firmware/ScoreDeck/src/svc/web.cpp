@@ -24,6 +24,7 @@
 //     hangs off.
 #include "web.h"
 #include "portal.h"
+#include "portal_csp.h"
 #include <WebServer.h>
 #include <Update.h>
 #include <WiFi.h>
@@ -253,7 +254,12 @@ static void pageRoot() {
   noStore();
   // Neutralises any upstream string that ever escapes escaping, and stops the
   // page reaching anything but this device and the configured proxy.
-  String csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+  // script-src pins the one inline block by hash — NOT 'unsafe-inline' — so an
+  // injected inline handler cannot run even if a string escaped escaping
+  // (review H1). style-src stays permissive: the page uses inline style
+  // attributes and style injection cannot execute code.
+  String csp = "default-src 'none'; style-src 'unsafe-inline'; "
+               "script-src '" PORTAL_SCRIPT_CSP_HASH "'; "
                "img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; "
                "connect-src 'self'";
   if (g_set.proxy.length()) { csp += " "; csp += g_set.proxy; }

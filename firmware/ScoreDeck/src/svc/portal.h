@@ -7,7 +7,7 @@
 // Served straight from flash with sendContent_P, so it costs no heap. That
 // matters more than it looks: the web server runs inside the same loop() that
 // drives the display, so response time IS panel stall time, and building this
-// page into a String first would put 31.6 KB through the allocator on
+// page into a String first would put 32.6 KB through the allocator on
 // every request.
 #pragma once
 #include <pgmspace.h>
@@ -347,15 +347,17 @@ function renderLeagues() {
   const box = document.getElementById('lgList');
   if (!CAT || !CAT.leagues) return;
   const on = new Set((CFG.leagues || '').split(',').filter(Boolean));
-  box.innerHTML = '';
+  box.textContent = '';
   for (const l of CAT.leagues) {
-    const row = document.createElement('label');
-    row.className = 'row';
-    row.style.cursor = 'pointer';
-    row.innerHTML = '<div class="k"><input type="checkbox" data-slug="' + l.slug +
-      '"' + (on.has(l.slug) ? ' checked' : '') + '> ' + l.label +
-      ' <small>' + l.slug + '</small></div>';
-    box.appendChild(row);
+    const row = el('label', 'row'); row.style.cursor = 'pointer';
+    const k = el('div', 'k');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.dataset.slug = l.slug; cb.checked = on.has(l.slug);
+    // Built with textContent/dataset, never innerHTML — l.slug and l.label are
+    // upstream strings and this is the one place they reach the DOM (review H1).
+    k.append(cb, document.createTextNode(' ' + l.label + ' '), el('small', '', l.slug));
+    row.append(k);
+    box.append(row);
   }
   countLeagues();
   box.addEventListener('change', countLeagues);
@@ -512,9 +514,22 @@ function renderFavs() {
   });
 }
 
+// Accept only well-formed catalog entries. slug/label are upstream strings;
+// the device itself enforces this exact slug shape (apiLeaguesPost), so the
+// portal agreeing keeps a hostile or corrupt catalog from ever reaching the
+// DOM or localStorage (review H1).
+function cleanCatalog(cat) {
+  if (!cat || !Array.isArray(cat.leagues)) return null;
+  const okSlug = /^[a-z0-9.]{2,8}$/;
+  cat.leagues = cat.leagues.filter(l => l && okSlug.test(l.slug) &&
+    typeof l.label === 'string' && l.label.length <= 24);
+  for (const l of cat.leagues) l.label = l.label.replace(/[\u0000-\u001f<>]/g, '');
+  return cat;
+}
+const CAT_KEY = 'sd.cat.v2';   // bumped: any pre-validation cache is discarded
 async function loadCatalog() {
-  const cached = localStorage.getItem('sd.cat');
-  if (cached) { try { CAT = JSON.parse(cached); } catch {} }
+  const cached = localStorage.getItem(CAT_KEY);
+  if (cached) { try { CAT = cleanCatalog(JSON.parse(cached)); } catch {} }
   if (CAT) { $('#catInfo').textContent = catInfoText(); renderFavs(); renderLeagues(); return; }
   if (!CFG.proxy) { toast('No proxy configured — search needs one.', true); return; }
   $('#catInfo').textContent = 'Loading…';
@@ -523,16 +538,17 @@ async function loadCatalog() {
   try {
     const r = await fetch(url, { headers, credentials: 'omit' });
     if (!r.ok) throw new Error(r.status);
-    CAT = await r.json();
+    CAT = cleanCatalog(await r.json());
   } catch {
     // The browser may simply be on a different network than the proxy, which
     // is not the same as the proxy being down — say so, and try the device.
     $('#catInfo').textContent = 'Direct fetch failed — trying via the panel…';
-    try { CAT = await api('/api/relay?p=' + encodeURIComponent('/v1/catalog?teams=1')); }
+    try { CAT = cleanCatalog(await api('/api/relay?p=' + encodeURIComponent('/v1/catalog?teams=1'))); }
     catch { $('#catInfo').textContent = 'Could not reach the proxy from here or from the panel.';
             return; }
   }
-  try { localStorage.setItem('sd.cat', JSON.stringify(CAT)); } catch {}
+  if (!CAT) { $('#catInfo').textContent = 'Catalog was malformed — ignored.'; return; }
+  try { localStorage.setItem(CAT_KEY, JSON.stringify(CAT)); } catch {}
   $('#catInfo').textContent = catInfoText();
   renderFavs();
   renderLeagues();
