@@ -217,7 +217,7 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
 
     <h2>Proxy</h2>
     <div class="card">
-      <div class="row"><div class="k"><label>URL<input id="proxy" data-mono placeholder="http://192.168.20.11:8787"></label></div></div>
+      <div class="row"><div class="k"><label>URL<input id="proxy" data-mono placeholder="http://192.168.1.50:8787"></label></div></div>
       <div class="row"><div class="k"><label>Token<input id="token" data-mono placeholder="unchanged">
         <small>Blank keeps the stored one. A single “-” clears it.</small></label></div></div>
       <div class="row"><div class="k">Reachability
