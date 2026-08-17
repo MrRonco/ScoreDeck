@@ -41,6 +41,8 @@ else
 fi
 
 cd "$DIR/proxy"
+umask 077                      # any file we create (notably .env) is owner-only
+chmod 700 "$DIR" 2>/dev/null || true
 
 # ── token ───────────────────────────────────────────────────────────────────
 if [ -f .env ] && grep -q '^SD_TOKEN=..*' .env; then
@@ -49,6 +51,7 @@ else
   TOKEN="$( (command -v openssl >/dev/null && openssl rand -hex 24) \
             || head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   printf 'SD_TOKEN=%s\nTZ=%s\n' "$TOKEN" "$(cat /etc/timezone 2>/dev/null || echo UTC)" > .env
+  chmod 600 .env
   say "Generated a new auth token in proxy/.env"
 fi
 
@@ -60,8 +63,10 @@ docker compose up -d --build
 TOKEN="$(grep '^SD_TOKEN=' .env | cut -d= -f2)"
 say "Waiting for the proxy to answer…"
 for _ in $(seq 1 30); do
-  if curl -fsS -m 3 -H "Authorization: Bearer $TOKEN" \
-       http://localhost:8787/v1/health >/dev/null 2>&1; then
+  # Token via a --config file on stdin, never on the argv (which is world-
+  # readable in /proc/*/cmdline while curl runs).
+  if printf 'header = "Authorization: Bearer %s"\nurl = "http://localhost:8787/v1/health"\n' "$TOKEN" \
+       | curl -fsS -m 3 --config - >/dev/null 2>&1; then
     OK=1; break
   fi
   sleep 1

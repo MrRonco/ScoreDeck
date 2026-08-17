@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'">
 <title>Install ScoreDeck</title>
 <!-- ESP Web Tools: flashes ESP32-S3 straight from Chrome/Edge over Web Serial -->
-<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<!-- esp-web-tools 10.4.0, VENDORED and bundled self-contained (flasher/vendor). No CDN. -->
+<script type="module" src="vendor/esp-web-tools-10.4.0.min.js" integrity="sha384-cgBPA/j+TUSZhSa2tGDZm8AhVY3kE08llt3YF+PB8yCJQIGPhXPxrA+nCkLmYy5P" crossorigin="anonymous"></script>
 <style>
   :root{--plate:#04070e;--surf:#16202e;--surf2:#1b2636;--ink:#f3f7fb;--ink2:#acbcce;--ink3:#8696a8;
     --live:#3be0c0;--live-sd:#2a9e8c;--warn:#f2b441;--line:rgba(180,205,230,.16);
@@ -71,8 +73,7 @@
       <b>Updating an existing panel?</b>
       <p>This is a <b>first-install</b> image — it erases every setting,
       including the Wi-Fi password. To update a panel that's already set up,
-      use OTA instead: <code>curl -F "update=@scoredeck-ota.bin"
-      http://scoredeck.local/update</code></p>
+      use OTA instead: <code>curl --digest -u admin:PASSWORD -F "update=@scoredeck-ota.bin" http://scoredeck.local/update</code> (set a portal password on the panel first)</p>
     </div>
 
     <p class="foot"><a href="https://github.com/MrRonco/ScoreDeck">github.com/MrRonco/ScoreDeck</a>
