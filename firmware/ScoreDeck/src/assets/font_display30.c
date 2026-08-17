@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 30 px
  * Bpp: 4
- * Opts: --font Archivo-CondBold.ttf -r 0x20,0x27,0x2E,0x30-0x39,0x41-0x5A --size 30 --bpp 4 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_display30.c --force-fast-kern-format
+ * Opts: --font Archivo-CondBold.ttf -r 0x20,0x27,0x2E,0x30-0x39,0x41-0x5A --size 30 --bpp 4 --no-compress --format lvgl -o firmware/ScoreDeck/src/assets/font_display30.c --force-fast-kern-format
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 72 px
  * Bpp: 2
- * Opts: --font Archivo-CondBold.ttf -r 0x20,0x2D,0x30-0x3A,0x48,0x4D --size 72 --bpp 2 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_hero72.c --force-fast-kern-format
+ * Opts: --font Archivo-CondBold.ttf -r 0x20,0x2D,0x30-0x3A,0x48,0x4D --size 72 --bpp 2 --no-compress --format lvgl -o firmware/ScoreDeck/src/assets/font_hero72.c --force-fast-kern-format
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

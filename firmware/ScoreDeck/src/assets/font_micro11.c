@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 11 px
  * Bpp: 4
- * Opts: --font PlexMono-tnum.ttf -r 0x20-0x7E,0xB0,0xB7 --size 11 --bpp 4 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_micro11.c --force-fast-kern-format
+ * Opts: --font PlexMono-tnum.ttf -r 0x20-0x7E,0xB0,0xB7 --size 11 --bpp 4 --no-compress --format lvgl -o firmware/ScoreDeck/src/assets/font_micro11.c --force-fast-kern-format
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

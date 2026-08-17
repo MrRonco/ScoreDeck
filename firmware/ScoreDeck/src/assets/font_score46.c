@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 46 px
  * Bpp: 4
- * Opts: --font Archivo-CondBold-tnum.ttf -r 0x30-0x3A,0x2D,0x20 --size 46 --bpp 4 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_score46.c --force-fast-kern-format
+ * Opts: --font Archivo-CondBold-tnum.ttf -r 0x30-0x3A,0x2D,0x20 --size 46 --bpp 4 --no-compress --format lvgl -o firmware/ScoreDeck/src/assets/font_score46.c --force-fast-kern-format
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

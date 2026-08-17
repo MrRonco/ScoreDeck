@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 17 px
  * Bpp: 4
- * Opts: --font Archivo-CondSemi.ttf -r 0x20,0x23,0x25,0x2A-0x2F,0x30-0x39,0x3A,0x41-0x5A --size 17 --bpp 4 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_abbr17.c --force-fast-kern-format
+ * Opts: --font Archivo-CondSemi.ttf -r 0x20,0x23,0x25,0x2A-0x2F,0x30-0x39,0x3A,0x41-0x5A --size 17 --bpp 4 --no-compress --format lvgl -o firmware/ScoreDeck/src/assets/font_abbr17.c --force-fast-kern-format
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

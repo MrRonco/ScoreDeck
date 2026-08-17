@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 15 px
  * Bpp: 4
- * Opts: --font PlexSans-Regular.ttf -r 0x20-0x7E,0xB0,0xB7,0xC0-0xFF,0x100-0x17F,0x2013,0x2014,0x2018,0x2019,0x201C,0x201D,0x2026 --size 15 --bpp 4 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_body15.c --force-fast-kern-format
+ * Opts: --font PlexSans-Regular.ttf -r 0x20-0x7E,0xB0,0xB7,0xC0-0xFF,0x100-0x17F,0x2013,0x2014,0x2018,0x2019,0x201C,0x201D,0x2026 --size 15 --bpp 4 --no-compress --format lvgl -o firmware/ScoreDeck/src/assets/font_body15.c --force-fast-kern-format
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

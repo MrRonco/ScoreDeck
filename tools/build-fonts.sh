@@ -61,4 +61,8 @@ gen Archivo-CondBold-tnum.ttf '0x30-0x3A,0x20'                                  
 # lv_font_conv emits "lvgl/lvgl.h"; the Arduino library resolves as <lvgl.h>.
 sed -i '' 's|#include "lvgl/lvgl.h"|#include <lvgl.h>|' "$OUT"/font_*.c 2>/dev/null || \
   sed -i    's|#include "lvgl/lvgl.h"|#include <lvgl.h>|' "$OUT"/font_*.c
+# Strip the build machine's absolute path from the generated Opts comment,
+# so the committed files never carry a developer's home directory.
+REPO="$(cd "$(dirname "$0")/.." && pwd)/"
+sed -i '' "s#${REPO}##g" "$OUT"/font_*.c 2>/dev/null || sed -i "s#${REPO}##g" "$OUT"/font_*.c
 echo "regenerated 6 faces into $OUT"

@@ -73,7 +73,7 @@
       <b>Updating an existing panel?</b>
       <p>This is a <b>first-install</b> image — it erases every setting,
       including the Wi-Fi password. To update a panel that's already set up,
-      use OTA instead: <code>curl --digest -u admin:PASSWORD -F "update=@scoredeck-ota.bin" http://scoredeck.local/update</code> (set a portal password on the panel first)</p>
+      use OTA instead: <code>curl --digest -u admin -F "update=@scoredeck-ota.bin" http://scoredeck.local/update</code> — curl prompts for the portal password you set on the panel</p>
     </div>
 
     <p class="foot"><a href="https://github.com/MrRonco/ScoreDeck">github.com/MrRonco/ScoreDeck</a>

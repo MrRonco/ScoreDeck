@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 96 px
  * Bpp: 2
- * Opts: --font Archivo-CondBold.ttf -r 0x30-0x39,0x3A,0x20 --size 96 --bpp 2 --no-compress --format lvgl -o /Users/francoraso/Documents/Development/Claude/ScoreDeck/firmware/ScoreDeck/src/assets/font_clock96.c --force-fast-kern-format
+ * Opts: --font Archivo-CondBold.ttf -r 0x30-0x39,0x3A,0x20 --size 96 --bpp 2 --no-compress --format lvgl -o firmware/ScoreDeck/src/assets/font_clock96.c --force-fast-kern-format
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
