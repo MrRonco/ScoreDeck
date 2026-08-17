@@ -11,6 +11,12 @@ export interface Store {
 
 export class MemoryStore implements Store {
   #m = new Map<string, { v: unknown; exp: number }>();
+  readonly #cap: number;
+
+  // Bounded so a caller minting unique keys (per-id story/standings routes)
+  // cannot grow the map without limit. Insertion order is eviction order
+  // (a Map iterates oldest-first), so deleting the first key is LRU-by-age.
+  constructor(cap = 2000) { this.#cap = cap; }
 
   async get<T>(key: string): Promise<T | undefined> {
     const e = this.#m.get(key);
@@ -19,11 +25,27 @@ export class MemoryStore implements Store {
       this.#m.delete(key);
       return undefined;
     }
+    // Touch: move to newest so genuinely-used keys survive eviction.
+    this.#m.delete(key);
+    this.#m.set(key, e);
     return e.v as T;
   }
 
   async put<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+    this.#m.delete(key);
     this.#m.set(key, { v: value, exp: Date.now() + ttlSeconds * 1000 });
+    if (this.#m.size > this.#cap) this.#sweep();
+  }
+
+  // Drop expired entries first; if still over cap, evict oldest until under.
+  #sweep(): void {
+    const now = Date.now();
+    for (const [k, e] of this.#m) if (e.exp < now) this.#m.delete(k);
+    while (this.#m.size > this.#cap) {
+      const oldest = this.#m.keys().next().value;
+      if (oldest === undefined) break;
+      this.#m.delete(oldest);
+    }
   }
 }
 

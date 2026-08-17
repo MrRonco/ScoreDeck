@@ -10,6 +10,8 @@ import { LEAGUES } from './registry.ts';
 interface WorkerEnv {
   /** Set with: wrangler secret put SD_TOKEN */
   SD_TOKEN?: string;
+  /** "1" to run without a token (fails closed otherwise). */
+  SD_ALLOW_ANONYMOUS?: string;
 }
 
 /**
@@ -53,7 +55,11 @@ class CacheStore implements Store {
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
-    const app = createApp({ store: new CacheStore(), token: env.SD_TOKEN });
+    const app = createApp({
+      store: new CacheStore(),
+      token: env.SD_TOKEN,
+      allowAnonymous: env.SD_ALLOW_ANONYMOUS === '1',
+    });
     return app.fetch(request);
   },
 
@@ -63,7 +69,11 @@ export default {
    * heavy normalising happens here instead.
    */
   async scheduled(_event: ScheduledEvent, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
-    const app = createApp({ store: new CacheStore(), token: env.SD_TOKEN });
+    const app = createApp({
+      store: new CacheStore(),
+      token: env.SD_TOKEN,
+      allowAnonymous: env.SD_ALLOW_ANONYMOUS === '1',
+    });
     const auth = env.SD_TOKEN ? { authorization: `Bearer ${env.SD_TOKEN}` } : undefined;
 
     // Warm only the in-season leagues a board is likely to ask for. Anything

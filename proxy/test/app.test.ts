@@ -36,7 +36,7 @@ const get = async (app: ReturnType<typeof createApp>, q: string, token?: string)
 
 test('a goal between polls produces exactly one event, once', async () => {
   const espn = { homeScore: 3 };
-  const app = createApp({ store: new MemoryStore(), fetchImpl: stubEspn(espn) });
+  const app = createApp({ store: new MemoryStore(), allowAnonymous: true, fetchImpl: stubEspn(espn) });
   const q = 'lg=nhl&f=nhl:21&rgn=ca&tz=America/Toronto';
 
   // First observation establishes the baseline and must NOT alert.
@@ -50,10 +50,10 @@ test('a goal between polls produces exactly one event, once', async () => {
   // TOR scores. The board cache has a 20 s TTL, so use a fresh app sharing the
   // same store to force an upstream refetch rather than sleeping in a test.
   const store = new MemoryStore();
-  const a1 = createApp({ store, fetchImpl: stubEspn(espn) });
+  const a1 = createApp({ store, allowAnonymous: true, fetchImpl: stubEspn(espn) });
   await get(a1, q);
   espn.homeScore = 4;
-  const a2 = createApp({ store, fetchImpl: stubEspn(espn) });
+  const a2 = createApp({ store, allowAnonymous: true, fetchImpl: stubEspn(espn) });
   // Bust only the board cache; diff state persists in the same store.
   await store.put('board:nhl:' + new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -73,7 +73,7 @@ test('a goal between polls produces exactly one event, once', async () => {
 });
 
 test('the response fits the device budget and carries a poll cadence', async () => {
-  const app = createApp({ store: new MemoryStore(), fetchImpl: stubEspn({ homeScore: 3 }) });
+  const app = createApp({ store: new MemoryStore(), allowAnonymous: true, fetchImpl: stubEspn({ homeScore: 3 }) });
   const { body } = await get(app, 'lg=nhl&f=nhl:21&rgn=ca&tz=America/Toronto');
   assert.equal(body.v, 1);
   assert.equal(body.next, 12, 'a followed team is live, so poll tightly');
@@ -94,10 +94,11 @@ test('a bearer token is enforced when configured', async () => {
 
 test('an upstream failure reports stale rather than an empty board', async () => {
   const store = new MemoryStore();
-  const ok = createApp({ store, fetchImpl: stubEspn({ homeScore: 3 }) });
+  const ok = createApp({ store, allowAnonymous: true, fetchImpl: stubEspn({ homeScore: 3 }) });
   await get(ok, 'lg=nhl&tz=UTC');           // seed last-known-good
 
   const dead = createApp({
+    allowAnonymous: true,
     store,
     fetchImpl: async () => new Response('nope', { status: 503 }),
   });
@@ -113,7 +114,7 @@ test('an upstream failure reports stale rather than an empty board', async () =>
 });
 
 test('unknown leagues and bad favourites are rejected, not trusted', async () => {
-  const app = createApp({ store: new MemoryStore(), fetchImpl: stubEspn({ homeScore: 3 }) });
+  const app = createApp({ store: new MemoryStore(), allowAnonymous: true, fetchImpl: stubEspn({ homeScore: 3 }) });
   const { body } = await get(app, 'lg=nhl&f=nhl:21,quidditch:1,nhl:DROP%20TABLE&tz=UTC');
   assert.equal(body.games.length, 1);
   const res = await app.fetch(new Request('http://t/v1/standings/quidditch'));
@@ -126,7 +127,7 @@ test('unknown leagues and bad favourites are rejected, not trusted', async () =>
  * failure looks like "the proxy is down" rather than "the browser refused".
  */
 test('CORS is allowed on the reference routes and withheld from /v1/state', async () => {
-  const app = createApp({ store: new MemoryStore(), fetchImpl: stubEspn({ homeScore: 3 }) });
+  const app = createApp({ store: new MemoryStore(), allowAnonymous: true, fetchImpl: stubEspn({ homeScore: 3 }) });
 
   const pre = await app.fetch(new Request('http://x/v1/catalog', { method: 'OPTIONS' }));
   assert.equal(pre.status, 204);
@@ -160,7 +161,7 @@ test('?teams=1 packs the catalog as arrays and skips the individual sports', asy
     }
     return new Response('{}', { status: 404 });
   };
-  const app = createApp({ store: new MemoryStore(), fetchImpl });
+  const app = createApp({ store: new MemoryStore(), allowAnonymous: true, fetchImpl });
   const body: any = await (await app.fetch(new Request('http://x/v1/catalog?teams=1'))).json();
 
   assert.equal(body.v, 1);
@@ -185,6 +186,7 @@ test('img reflects the asset directory even on a cache hit', async () => {
   const present = new Set<string>();
   const app = createApp({
     store: new MemoryStore(),
+    allowAnonymous: true,
     assets: async (p: string) => (present.has(p) ? new Uint8Array([1]) : null),
     fetchImpl: async (url: string | URL | Request) => {
       if (!String(url).includes('/athletes/')) return new Response('{}', { status: 404 });
@@ -202,4 +204,18 @@ test('img reflects the asset directory even on a cache hit', async () => {
   const two: any = await (await app.fetch(new Request('http://x/v1/player/mlb/99'))).json();
   assert.equal(two.img, true, 'a cache hit must still re-check the assets');
   assert.equal(two.n, 'A Player', 'and must still serve the cached payload');
+});
+
+test('a proxy with no token and no opt-out fails closed (503)', async () => {
+  const app = createApp({ store: new MemoryStore(), fetchImpl: stubEspn({ homeScore: 3 }) });
+  const res = await app.fetch(new Request('http://t/v1/health'));
+  assert.equal(res.status, 503);
+  const ok = createApp({ store: new MemoryStore(), allowAnonymous: true, fetchImpl: stubEspn({ homeScore: 3 }) });
+  assert.equal((await ok.fetch(new Request('http://t/v1/health'))).status, 200);
+});
+
+test('a wrong token is rejected in constant time (still 401)', async () => {
+  const app = createApp({ store: new MemoryStore(), token: 'sekrit', fetchImpl: stubEspn({ homeScore: 3 }) });
+  const res = await app.fetch(new Request('http://t/v1/health', { headers: { authorization: 'Bearer nope' } }));
+  assert.equal(res.status, 401);
 });

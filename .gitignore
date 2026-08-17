@@ -26,7 +26,6 @@ wrangler.toml.local
 .DS_Store
 .playwright-mcp/
 proxy/node_modules/
-proxy/package-lock.json
 firmware/ScoreDeck/src/dev_defaults.h
 
 # The portal source is authored as HTML and generated into svc/portal.h by

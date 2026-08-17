@@ -13,6 +13,8 @@ import { GS, SM, type Game, type ScoreEvent, type StateResponse, type NewsItem, 
 export interface Env {
   store: Store;
   token?: string;
+  /** When token is unset the proxy fails closed (503) unless this is true. */
+  allowAnonymous?: boolean;
   fetchImpl?: typeof fetch;
   /** Reads a built asset by relative path, or undefined when absent. */
   assets?: (path: string) => Promise<ArrayBuffer | undefined>;
@@ -62,9 +64,52 @@ function safeTz(tz: string | undefined): string {
   }
 }
 
+/** Length-checked constant-time string compare — no early-out on the token. */
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Wrap an upstream fetch with a hard timeout and a response-body byte cap.
+ *  ESPN's largest known payload is the 1.2 MB golf scoreboard, so 3 MB is
+ *  generous headroom; anything past it is treated as hostile/broken and the
+ *  read is aborted rather than buffered without bound. */
+function guardedFetch(base: typeof fetch, maxBytes = 3_000_000, timeoutMs = 8000): typeof fetch {
+  return (async (input: any, init?: any) => {
+    const res = await base(input, { ...(init ?? {}), signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok || !res.body) return res;
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) { await reader.cancel(); throw new Error('upstream body exceeded cap'); }
+      chunks.push(value);
+    }
+    const buf = new Uint8Array(total);
+    let o = 0;
+    for (const ch of chunks) { buf.set(ch, o); o += ch.byteLength; }
+    return new Response(buf, { status: res.status, statusText: res.statusText, headers: res.headers });
+  }) as typeof fetch;
+}
+
 export function createApp(env: Env) {
   const app = new Hono();
-  const doFetch = env.fetchImpl ?? fetch;
+  const doFetch = guardedFetch(env.fetchImpl ?? fetch);
+  // Single-flight: concurrent cold builds of the same expensive key share one
+  // computation instead of each doing ~22 upstream fetches (M4).
+  const inflight = new Map<string, Promise<unknown>>();
+  const once = <T>(k: string, make: () => Promise<T>): Promise<T> => {
+    const cur = inflight.get(k);
+    if (cur) return cur as Promise<T>;
+    const p = make().finally(() => inflight.delete(k));
+    inflight.set(k, p);
+    return p;
+  };
 
   /**
    * The browser portal is served from the DEVICE and fetches the catalog from
@@ -93,8 +138,12 @@ export function createApp(env: Env) {
       });
     }
     if (env.token) {
-      const auth = c.req.header('authorization');
-      if (auth !== `Bearer ${env.token}`) return c.json({ error: 'unauthorized' }, 401);
+      const auth = c.req.header('authorization') ?? '';
+      if (!safeEqual(auth, `Bearer ${env.token}`)) return c.json({ error: 'unauthorized' }, 401);
+    } else if (!env.allowAnonymous) {
+      // Fail closed: an unconfigured token is a deployment mistake, not an
+      // invitation to run open. Explicit SD_ALLOW_ANONYMOUS=1 opts out.
+      return c.json({ error: 'proxy has no SD_TOKEN configured' }, 503);
     }
     await next();
     if (corsOk) c.header('access-control-allow-origin', '*');
@@ -120,27 +169,32 @@ export function createApp(env: Env) {
     const hit = await env.store.get(key);
     if (hit) return c.json(hit);
 
-    // Tennis, golf and racing have no team endpoint — they are fields of
-    // individuals, and asking would 404.
-    const teamLeagues = LEAGUES.filter((l) => l.model !== SM.SET &&
-                                              l.model !== SM.LEADERBOARD &&
-                                              l.model !== SM.GRID);
-    const out: any[] = [];
-    for (const lg of teamLeagues) {
-      try {
-        const tk = `teams:${lg.slug}`;
-        const cached = await env.store.get(tk);
-        const teams = cached ?? normalizeTeams(await fetchTeams(lg, doFetch), lg);
-        if (!cached) await env.store.put(tk, teams, 24 * 3600);
-        out.push([lg.slug, lg.label, lg.family,
-                  (teams as any[]).map((t) => [t.id, t.a, t.n, t.c ?? 0])]);
-      } catch {
-        // One league failing upstream must not empty the whole catalog.
-        out.push([lg.slug, lg.label, lg.family, []]);
+    const body = await once(key, async () => {
+      const again = await env.store.get(key);
+      if (again) return again;
+      // Tennis, golf and racing have no team endpoint — they are fields of
+      // individuals, and asking would 404.
+      const teamLeagues = LEAGUES.filter((l) => l.model !== SM.SET &&
+                                                l.model !== SM.LEADERBOARD &&
+                                                l.model !== SM.GRID);
+      const out: any[] = [];
+      for (const lg of teamLeagues) {
+        try {
+          const tk = `teams:${lg.slug}`;
+          const cached = await env.store.get(tk);
+          const teams = cached ?? normalizeTeams(await fetchTeams(lg, doFetch), lg);
+          if (!cached) await env.store.put(tk, teams, 24 * 3600);
+          out.push([lg.slug, lg.label, lg.family,
+                    (teams as any[]).map((t) => [t.id, t.a, t.n, t.c ?? 0])]);
+        } catch {
+          // One league failing upstream must not empty the whole catalog.
+          out.push([lg.slug, lg.label, lg.family, []]);
+        }
       }
-    }
-    const body = { v: 1, leagues, t: out };
-    await env.store.put(key, body, 24 * 3600);
+      const b = { v: 1, leagues, t: out };
+      await env.store.put(key, b, 24 * 3600);
+      return b;
+    });
     return c.json(body);
   });
 
@@ -400,7 +454,7 @@ export function createApp(env: Env) {
   app.get('/v1/standings/:league', async (c) => {
     const lg = league(c.req.param('league'));
     if (!lg) return c.json({ error: 'unknown league' }, 404);
-    const grp = Number.parseInt(c.req.query('grp') ?? '0', 10) || 0;
+    const grp = Math.min(Math.max(0, Number.parseInt(c.req.query('grp') ?? '0', 10) || 0), 16);
     const key = `stand:${lg.slug}:${grp}`;
     const hit = await env.store.get(key);
     if (hit) return c.json(hit);
