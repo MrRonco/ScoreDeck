@@ -176,6 +176,17 @@ uint32_t teamInk(uint32_t color);
  *  only reaches ~3.1:1 there. Pass the surface it will actually be drawn on. */
 uint32_t teamInkOn(uint32_t color, uint32_t surface, float minRatio = 3.5f);
 
+// The team channel's one ratio and one ceiling. See teamInkFor().
+#define TEAM_RATIO 5.5f
+#define TEAM_CEIL  68.0f
+
+/** The ONLY way team colour should reach the screen. Lifts to TEAM_RATIO
+ *  against the surface it will actually be drawn on, then clamps lightness to
+ *  TEAM_CEIL so the team channel cannot climb into the signal colours' band.
+ *  Use this instead of teamInkOn() at every render site; teamInkOn remains the
+ *  primitive (it is also what teamFill()/badgeInk() are built on). */
+uint32_t teamInkFor(uint32_t color, uint32_t surface);
+
 /** Badge fill: lifted just enough to sit on the plate at all (black teams). */
 uint32_t teamFill(uint32_t color);
 

@@ -1356,7 +1356,7 @@ void uiBoardRefresh() {
       else if (g.state == GS_PRE || g.away.score == g.home.score)
         want = 0xFFFFFFFFu;
       else
-        want = leading ? teamInkOn(side[k]->color, si.fill, 6.5f) : 0xFFFFFFFDu;
+        want = leading ? teamInkFor(side[k]->color, si.fill) : 0xFFFFFFFDu;
       if (t.cScoreInk[k] != want) {
         t.cScoreInk[k] = want;
         lv_obj_set_style_text_color(t.score[k],
@@ -1475,7 +1475,7 @@ void uiBoardRefresh() {
       // teamInkOn against THIS state's fill, not the raw colour: Toronto navy
       // against the tile is 1.11:1, which made the product's signature element
       // invisible on its own flagship example. See theme.cpp.
-      const uint32_t c = teamInkOn(g.leaderHome ? g.home.color : g.away.color, si.fill);
+      const uint32_t c = teamInkFor(g.leaderHome ? g.home.color : g.away.color, si.fill);
       if (t.cEdge != c) {
         t.cEdge = c;
         lv_obj_set_style_bg_color(t.edge, lv_color_hex(c), 0);

@@ -112,6 +112,53 @@ static uint32_t lift(uint32_t c, uint32_t against, float minRatio) {
   return 0xFFFFFF;
 }
 
+/** CIE L* of a colour, from the same linear LUT the contrast solver uses. */
+static float lStar(uint32_t c) {
+  const float Y = relLum(c);
+  return (Y > 0.008856f) ? 116.0f * cbrtf(Y) - 16.0f : 903.3f * Y;
+}
+
+static uint32_t scaleRgb(uint32_t c, float m) {
+  const uint32_t r = (uint32_t)(((c >> 16) & 0xFF) * m);
+  const uint32_t g = (uint32_t)(((c >> 8) & 0xFF) * m);
+  const uint32_t b = (uint32_t)((c & 0xFF) * m);
+  return (r << 16) | (g << 8) | b;
+}
+
+/**
+ * THE team-colour rule. One ratio, one ceiling, every surface.
+ *
+ * The panel used to draw team colour at TWO ratios — 3.5:1 for the edge
+ * light, the lead rule and the win-probability bars, 6.5:1 for the leading
+ * score — which put the same team 16 L* apart on one tile (Toronto at L* 51
+ * as an edge light and L* 70 as a score). Worse, at 6.5 the channel rendered
+ * L* 69-83, and BOTH signal colours live inside that range (amber 78.2, teal
+ * 81.8). There was no lightness moat between content and chrome at all, so
+ * the eye's strongest grouping cue carried no information — which is what
+ * "the blue card accents don't feel like one palette" actually was.
+ *
+ * 5.5:1 is the only ratio that works: at 4.5 the leading score renders below
+ * the TRAILING score's neutral ink on 31 of 35 kits, and at 6.0+ the required
+ * lightness is already above the ceiling. The ceiling is 68, which leaves
+ * 8.4 L* of clear air to the dimmest signal rung.
+ *
+ * The floor always wins: if a surface needs more lightness than the ceiling
+ * allows, the contrast requirement is honoured and the ceiling gives way,
+ * rather than silently rendering an unreadable score.
+ */
+uint32_t teamInkFor(uint32_t color, uint32_t surface) {
+  const uint32_t c = lift(color, surface, TEAM_RATIO);
+  if (lStar(c) <= TEAM_CEIL) return c;
+  // Walk the triple down multiplicatively: hue is preserved and chroma falls
+  // with lightness, which is the correct trade here.
+  for (int t = 99; t >= 1; t--) {
+    const uint32_t d = scaleRgb(c, t / 100.0f);
+    if (contrast(d, surface) < TEAM_RATIO) break;   // the AA floor outranks it
+    if (lStar(d) <= TEAM_CEIL) return d;
+  }
+  return c;
+}
+
 uint32_t teamInkOn(uint32_t color, uint32_t surface, float minRatio) {
   return lift(color, surface, minRatio);
 }

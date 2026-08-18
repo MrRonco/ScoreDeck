@@ -415,7 +415,7 @@ void uiHeroShow(int8_t gameIdx) {
     if (g.away.score == g.home.score)
       want = 0xFFFFFFFFu;
     else
-      want = leading ? teamInkOn(side[k]->color, si.fill, 6.5f) : 0xFFFFFFFEu;
+      want = leading ? teamInkFor(side[k]->color, si.fill) : 0xFFFFFFFEu;
     if (c_scoreInk[k] != want) {
       c_scoreInk[k] = want;
       lv_obj_set_style_text_color(s_score[k],
@@ -427,7 +427,7 @@ void uiHeroShow(int8_t gameIdx) {
     // light means "this is happening", so a finished game keeps its colour in
     // the digits and loses the glow.
     const uint32_t glow = (leading && g.state == GS_LIVE)
-                          ? teamInkOn(side[k]->color, si.fill) : 0xFFFFFFFFu;
+                          ? teamInkFor(side[k]->color, si.fill) : 0xFFFFFFFFu;
     if (c_bloom[k] != glow) {
       c_bloom[k] = glow;
       bloomSet(s_bloom[k], glow == 0xFFFFFFFFu ? 0 : glow,
@@ -457,7 +457,7 @@ void uiHeroShow(int8_t gameIdx) {
   const bool edgeOn = (g.state == GS_LIVE) && (g.away.score != g.home.score);
   setVis(s_edge, &c_edgeVis, !edgeOn);
   if (edgeOn) {
-    const uint32_t c = teamInkOn(g.leaderHome ? g.home.color : g.away.color, si.fill);
+    const uint32_t c = teamInkFor(g.leaderHome ? g.home.color : g.away.color, si.fill);
     if (c_edgeC != c) { c_edgeC = c; lv_obj_set_style_bg_color(s_edge, lv_color_hex(c), 0); }
     const int y = 66 + (g.leaderHome ? HERO_ROW_H : 0);
     if (c_edgeY != y) { c_edgeY = y; lv_obj_set_pos(s_edge, 0, y); }
@@ -477,8 +477,8 @@ void uiHeroShow(int8_t gameIdx) {
       const bool first = (c_wpW == -1);
       c_wpW = hw;                 // the cache holds the TARGET immediately
       lv_obj_set_pos(s_wp[0], HERO_PAD, HERO_H - 10);
-      lv_obj_set_style_bg_color(s_wp[0], lv_color_hex(teamInkOn(g.away.color, si.fill)), 0);
-      lv_obj_set_style_bg_color(s_wp[1], lv_color_hex(teamInkOn(g.home.color, si.fill)), 0);
+      lv_obj_set_style_bg_color(s_wp[0], lv_color_hex(teamInkFor(g.away.color, si.fill)), 0);
+      lv_obj_set_style_bg_color(s_wp[1], lv_color_hex(teamInkFor(g.home.color, si.fill)), 0);
       lv_anim_del(s_wp, nullptr);
       if (first || s_wpCur < 0) {
         wpExec(nullptr, hw);      // first appearance snaps — nothing to move from

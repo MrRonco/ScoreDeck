@@ -443,7 +443,8 @@ void uiIdleTick() {
     teamBadgeSet(s_nextBadgeA, nx->away.color);
     teamBadgeSet(s_nextBadgeH, nx->home.color);
     lv_obj_set_style_bg_color(s_nextEdge,
-        nx->isFav ? lv_color_hex(teamInk(nx->home.color)) : C_EDGE, 0);
+        nx->isFav ? lv_color_hex(teamInkFor(nx->home.color, kStateInk[GS_LIVE].fill))
+                  : C_EDGE, 0);
   }
 
   // Countdown is the hero — it is the reason this screen exists.

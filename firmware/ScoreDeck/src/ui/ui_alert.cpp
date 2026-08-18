@@ -160,7 +160,8 @@ static bool scoredByFavourite(const AlertEvent& e) {
 }
 
 static void presentBanner(const AlertEvent& e) {
-  const uint32_t ink = teamInk(e.color);
+  // Lifted against the card this actually sits on, not the default tile.
+  const uint32_t ink = teamInkFor(e.color, kStateInk[SI_HERO].fill);
   lv_obj_set_style_bg_color(s_banEdge, lv_color_hex(ink), 0);
   lv_label_set_text(s_banAbbr, e.abbr);
   lv_label_set_text(s_banVerb, e.verb);
@@ -200,9 +201,12 @@ void uiAlertEnqueue(const AlertEvent& e) {
 }
 
 static void present(const AlertEvent& e) {
-  lv_obj_set_style_bg_color(s_edge, lv_color_hex(teamInk(e.color)), 0);
+  lv_obj_set_style_bg_color(s_edge, lv_color_hex(teamInkFor(e.color, kStateInk[SI_HERO].fill)), 0);
   teamBadgeSet(s_badge, e.color);
-  lv_obj_set_style_bg_color(s_pulse, lv_color_hex(e.color), 0);
+  // Was the RAW wire colour with no lift whatsoever: 24 of 34 kits measured
+  // below 3:1 here, Toronto at 1.01:1 — invisible — on the goal takeover the
+  // whole alert system exists to deliver.
+  lv_obj_set_style_bg_color(s_pulse, lv_color_hex(teamInkFor(e.color, kStateInk[SI_HERO].fill)), 0);
   lv_label_set_text(s_badgeLbl, e.abbr);
   lv_label_set_text(s_verb, e.verb);
   lv_label_set_text(s_who, e.who[0] ? e.who : "");

@@ -199,7 +199,7 @@ void uiGameInit(lv_obj_t* parent) {
 static void setLeadInk(lv_obj_t* score, uint32_t colour, bool leading) {
   lv_obj_set_style_text_color(
       score,
-      leading ? lv_color_hex(teamInkOn(colour, kStateInk[GS_LIVE].fill))
+      leading ? lv_color_hex(teamInkFor(colour, kStateInk[GS_LIVE].fill))
               : kStateInk[GS_LIVE].ink2,
       0);
 }
