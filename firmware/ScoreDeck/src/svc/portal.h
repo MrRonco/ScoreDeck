@@ -7,7 +7,7 @@
 // Served straight from flash with sendContent_P, so it costs no heap. That
 // matters more than it looks: the web server runs inside the same loop() that
 // drives the display, so response time IS panel stall time, and building this
-// page into a String first would put 45.6 KB through the allocator on
+// page into a String first would put 45.7 KB through the allocator on
 // every request.
 #pragma once
 #include <pgmspace.h>
@@ -119,6 +119,7 @@ input:not([type=checkbox]),select{width:100%;min-height:var(--tap);padding:0 12p
   border:1px solid var(--edge);border-radius:var(--r);color:var(--ink);
   font:16px/1 var(--sans)}  /* 16px: iOS zooms the page below it */
 input[data-mono]{font-family:var(--mono);font-size:14px}
+input[type=file]{display:flex;align-items:center;padding:0 10px;font-size:13px;cursor:pointer}
 label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
 .grid{display:grid;gap:14px}
 @media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}}
