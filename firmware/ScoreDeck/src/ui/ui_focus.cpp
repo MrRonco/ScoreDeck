@@ -29,8 +29,9 @@ static char     s_focusId[12];      // game we opened, "" when idle
 static uint32_t s_openedAt;
 static bool     s_userDismissed;    // do not reopen what was just closed
 
-/** Structured leverage only — see the file header. */
-static bool isTense(const Game& g) {
+/** Structured leverage only — see the file header. Exported: the board uses
+ *  the same test to decide when a situation earns the alert colour. */
+bool uiIsTense(const Game& g) {
   if (g.state != GS_LIVE || !g.situation) return false;
   if (g.model == SM_INNING) {
     // Runners in scoring position with two out is the moment; bases empty is
@@ -67,7 +68,7 @@ void uiFocusTick() {
 
     // Go back when the moment passes, when the game does, or when it has held
     // the screen long enough that it is no longer a moment.
-    const bool over = !g || !isTense(*g) ||
+    const bool over = !g || !uiIsTense(*g) ||
                       millis() - s_openedAt > FOCUS_MAX_MS;
     if (over) {
       s_focusId[0] = '\0';
@@ -84,7 +85,7 @@ void uiFocusTick() {
 
   for (uint8_t i = 0; i < g_gameCount; i++) {
     const Game& g = g_board[i];
-    if (!followedSide(g) || !isTense(g)) continue;
+    if (!followedSide(g) || !uiIsTense(g)) continue;
     strncpy(s_focusId, g.id, sizeof s_focusId - 1);
     s_focusId[sizeof s_focusId - 1] = '\0';
     s_openedAt = millis();

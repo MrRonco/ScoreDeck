@@ -86,8 +86,23 @@ static void sliverPaint() {
     if (!n) continue;
     int h = usable * n / total - 2;
     if (h < 6) h = 6;
-    seg.bg_color = g_leagues[i].live ? C_LIVE : C_EDGE_HI;
+    // The spine is STRUCTURE, so it is drawn in ink — never in the accent.
+    // Measured before this change: 3,268 of the board's 3,524 accent pixels
+    // (92.7%) were this one decorative bar, against 64 px of live dots. A
+    // colour whose pixels overwhelmingly mean nothing cannot teach the eye
+    // what it means. EDGE_HI was also only 2.13:1 on the plate — below the
+    // 3:1 floor for a graphic carrying information.
+    seg.bg_color = C_INK3;   // INK_3 in the token system
     lv_canvas_draw_rect(s_sliver, 0, y, 8, h, &seg);
+    // Liveness is a CAP, not the whole bar: 8x3 of real accent at the foot of
+    // the segment, clear of the white filter tab drawn at the top of (0,y).
+    if (g_leagues[i].live) {
+      lv_draw_rect_dsc_t cap;
+      lv_draw_rect_dsc_init(&cap);
+      cap.bg_color = A_LIVE;
+      cap.radius = 1;
+      lv_canvas_draw_rect(s_sliver, 0, y + h - 3, 8, 3, &cap);
+    }
     // The white tab: which league the FILTER currently is.
     if (g_leagueFilter == (int8_t)i) {
       lv_draw_rect_dsc_t tab;

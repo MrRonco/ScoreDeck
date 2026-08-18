@@ -158,6 +158,11 @@ lv_obj_t* uiStandingsRoot();
 
 // News — UI.md §5.4. Headlines plus the proxy's trimmed summary; no article body.
 void uiNewsInit(lv_obj_t* parent);
+/** True when a live game carries structured leverage (power play, red zone,
+ *  scoring position with two out). The board colours the situation chip by
+ *  this: amber is reserved for the moments that earn it. */
+bool uiIsTense(const Game& g);
+
 void uiReaderInit(lv_obj_t* parent);
 void uiReaderOpen(const NewsItem& it);
 void uiReaderTick();

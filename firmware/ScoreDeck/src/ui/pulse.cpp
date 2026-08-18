@@ -40,15 +40,27 @@ static uint8_t    s_step;
 // Discrete, not a tween. UI.md §8 requires every fade on this panel to be a
 // small number of fixed steps, because a smooth ramp is indistinguishable at
 // 610 mm and costs an invalidation per frame to produce it.
-static lv_opa_t stepOpa(uint8_t step) {
+// SOLID COLOURS, not an opacity ramp. bg_opa blends toward whatever is
+// behind the dot: lv_color_mix quantises opacity to (opa + 4) >> 3 — 26
+// levels, not 256 — and pulls chroma down with lightness, so the dot at its
+// trough rendered as a dimmer, greener teal than the flat accent elsewhere
+// on the panel and measured 3.79:1 on the hero surface, below AA. These five
+// rungs are pre-solved on the ramp toward A_LIVE: even 1.2-1.5 L* steps, a
+// 5.4 L* amplitude (still plainly a breath at 610 mm), and every rung is
+// >= 7.39:1 on every surface it can sit on.
+static lv_color_t stepColour(uint8_t step) {
+  static const lv_color_t kRung[5] = { A_LIVE_P0, A_LIVE_P1, A_LIVE_P2,
+                                       A_LIVE_P3, A_LIVE_P4 };
   const int half = PULSE_STEPS / 2;
   const int up = step < half ? step : PULSE_STEPS - step;   // triangle
-  return (lv_opa_t)(150 + (105 * up) / half);               // 150..255
+  int i = up * 4 / half;                                    // 0..4
+  if (i > 4) i = 4;
+  return kRung[i];
 }
 
 static void tick(lv_timer_t*) {
   s_step = (uint8_t)((s_step + 1) % PULSE_STEPS);
-  const lv_opa_t o = stepOpa(s_step);
+  const lv_color_t o = stepColour(s_step);
   for (uint8_t i = 0; i < s_count; i++) {
     lv_obj_t* d = s_dot[i];
     if (!d) continue;
@@ -56,7 +68,7 @@ static void tick(lv_timer_t*) {
     // invalidates its area when a style changes, and on a board with one live
     // game that would be eleven pointless invalidations per tick.
     if (lv_obj_has_flag(d, LV_OBJ_FLAG_HIDDEN)) continue;
-    lv_obj_set_style_bg_opa(d, o, 0);
+    lv_obj_set_style_bg_color(d, o, 0);
   }
 }
 

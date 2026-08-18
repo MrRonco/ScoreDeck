@@ -153,6 +153,7 @@ struct TileUI {
   int8_t   cState;
   char     cSit[20];   // widest: three 3-byte diamonds + " 2 OUT"
   bool     cSitVis;
+  int8_t   cSitTense;   // -1 unset; amber only when the moment earns it
   bool     cBcastVis;
   bool     cDotVis;
   int8_t   cShape;     // -1 unknown, 0 two-sided, 1 field — gates the vis swap
@@ -552,7 +553,11 @@ static void buildTile(TileUI& t, int idx) {
   lv_obj_set_style_text_font(t.sit, F_NUM, 0);
   // Amber: the situation is a caution-class fact ("something is at stake
   // RIGHT NOW"), and C_WARN is the only non-team hue with that meaning.
-  lv_obj_set_style_text_color(t.sit, C_WARN, 0);
+  // Default is the state's own tertiary ink. Amber is applied in the refresh
+  // ONLY when uiIsTense() says the moment earns it — it was previously on
+  // every situation string, which is two of every three live tiles, and a
+  // colour that is always present cannot interrupt.
+  lv_obj_set_style_text_color(t.sit, kStateInk[GS_LIVE].ink3, 0);
   lv_obj_set_style_text_align(t.sit, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_set_width(t.sit, rightW);
   // Pinned to one line — LONG_DOT only ellipsises past the label's HEIGHT,
@@ -587,6 +592,7 @@ static void buildTile(TileUI& t, int idx) {
   t.cLead = false;
   // Must match the objects' real state at build time — see the note above.
   t.cSitVis = false;
+  t.cSitTense = -1;
   t.cBcastVis = true;
   t.cDotVis = false;
   t.cShape = -1;
@@ -692,7 +698,7 @@ static void buildBar() {
   lv_obj_set_style_bg_color(s_zaDot, C_LIVE, 0);
   lv_obj_set_style_bg_opa(s_zaDot, LV_OPA_COVER, 0);
   pulseRegister(s_zaDot);
-  s_zaLive  = microLabel(s_bar, 32, baseY(F_MICRO), C_LIVE_SD, F_MICRO);
+  s_zaLive  = microLabel(s_bar, 32, baseY(F_MICRO), A_LIVE, F_MICRO);
   lv_obj_set_style_text_letter_space(s_zaLive, 2, 0);
   lv_label_set_text(s_zaLive, "LIVE");
   s_zaCount = microLabel(s_bar, 78, baseY(F_DISPLAY), C_LIVE, F_DISPLAY);
@@ -781,13 +787,13 @@ static void buildBar() {
   lv_obj_remove_style_all(ht);
   lv_obj_set_size(ht, SCR_W, 2);
   lv_obj_set_pos(ht, 0, barH - 3);      // above the hairline, which keeps the last row
-  lv_obj_set_style_bg_color(ht, C_LIVE_SD, 0);
+  lv_obj_set_style_bg_color(ht, C_EDGE_HI, 0);   // the track is furniture
   lv_obj_set_style_bg_opa(ht, 90, 0);   // 46 measured ~1.2:1 — a track that reads
   lv_obj_t* hb = lv_obj_create(s_board);
   lv_obj_remove_style_all(hb);
   lv_obj_set_size(hb, 1, 2);
   lv_obj_set_pos(hb, 0, barH - 3);
-  lv_obj_set_style_bg_color(hb, C_LIVE_SD, 0);
+  lv_obj_set_style_bg_color(hb, C_EDGE_HI, 0);   // so is the poll bar
   lv_obj_set_style_bg_opa(hb, LV_OPA_COVER, 0);
   s_heart[0] = hb;
 
@@ -1445,6 +1451,15 @@ void uiBoardRefresh() {
     char sit[20] = "";
     situationText(g, sit, sizeof sit, rightW < SIT_FULL_W);
     setHiddenCached(t.sit,   &t.cSitVis,   !sit[0]);
+    // Amber ONLY for structured leverage; every other situation string stays
+    // in the state's ink. Change-cached: this runs for every tile every poll.
+    {
+      const int8_t tense = uiIsTense(g) ? 1 : 0;
+      if (t.cSitTense != tense) {
+        t.cSitTense = tense;
+        lv_obj_set_style_text_color(t.sit, tense ? S_ALERT : si.ink3, 0);
+      }
+    }
     setHiddenCached(t.bcast, &t.cBcastVis,  sit[0] != '\0');
     setStatusWidth(t, d, sit[0] != '\0' || g.bcast[0] != '\0');
     if (sit[0]) setTextCached(t.sit, t.cSit, sizeof t.cSit, sit);
@@ -1636,7 +1651,7 @@ void uiSetStatus() {
     lv_obj_set_x(s_pill, s_pillX);
     lv_obj_clear_flag(s_zaTotal, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(s_zaLive, "LIVE");
-    lv_obj_set_style_text_color(s_zaLive, C_LIVE_SD, 0);
+    lv_obj_set_style_text_color(s_zaLive, A_LIVE, 0);
     lv_obj_set_style_bg_color(s_zaDot, C_LIVE, 0);
   } else {
     zaOdoKill();
@@ -1703,7 +1718,8 @@ void uiHeartbeatSet(uint8_t pct, bool overdue) {
   for (uint8_t i = 0; i < 2; i++) {
     if (!s_heart[i]) continue;
     lv_obj_set_width(s_heart[i], w < 1 ? 1 : w);
-    lv_obj_set_style_bg_color(s_heart[i], overdue ? C_WARN : C_LIVE_SD, 0);
+    // Overdue is a SYSTEM fault, which is exactly what S_ALERT is for.
+    lv_obj_set_style_bg_color(s_heart[i], overdue ? S_ALERT : C_EDGE_HI, 0);
   }
 }
 

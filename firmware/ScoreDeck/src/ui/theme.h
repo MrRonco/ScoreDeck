@@ -73,6 +73,20 @@
 // the same thing. That margin is the invariant. If teamInk()'s target ratio
 // ever rises, or this colour is ever darkened, re-check it.
 #define C_LIVE    lv_color_hex(0x3BE0C0)
+// A_LIVE is C_LIVE under the name the token system uses. The SIGNAL cell is
+// defined by rendered lightness (L* >= 76) and chroma (>= 30) — that pair is
+// what separates "the system is talking" from team colour, which is clamped
+// below it. See PULSE_RUNGS: the pulse is FIVE SOLID COLOURS, never an
+// opacity ramp, because lv_color_mix quantises opa to (opa+4)>>3 (26 levels)
+// and blends toward the surface, losing chroma as well as lightness — which
+// is precisely why the pulsing dot and the flat rail bar did not read as the
+// same colour. Every rung is pre-solved to stay >= 7.39:1 on every surface.
+#define A_LIVE    C_LIVE
+#define A_LIVE_P0 lv_color_hex(0x31D3B5)   // L* 76.4  pulse trough
+#define A_LIVE_P1 lv_color_hex(0x31D7B5)   // L* 77.6
+#define A_LIVE_P2 lv_color_hex(0x39DBBD)   // L* 79.2
+#define A_LIVE_P3 lv_color_hex(0x39DFBD)   // L* 80.4
+#define A_LIVE_P4 lv_color_hex(0x3BE0C0)   // L* 81.8  peak (== A_LIVE)
 #define C_LIVE_SD lv_color_hex(0x2A9E8C)   // the same hue, for LABELS not dots
 // The BODY-TEXT member of the live family, solved rather than picked. C_LIVE_SD
 // measures 4.63:1 on the live tile fill — it clears AA by 2.9%, which is the
@@ -81,7 +95,17 @@
 // sit on: 6.15 (live), 5.52 (hero), 8.13 (plate). Use it for any live-state
 // SENTENCE OR VALUE; keep C_LIVE_SD for tracked caps labels only.
 #define C_LIVE_TX lv_color_hex(0x30B89D)
-#define C_WARN    lv_color_hex(0xF2B441)   // stale — never used for team data
+// S_ALERT means SOMETHING DEMANDS ATTENTION RIGHT NOW, and it is rationed so
+// that it can. Two uses, both rare by construction:
+//   * the system is not okay — no Wi-Fi, no proxy, stale feed, league cap;
+//   * a live game carries structured leverage — uiIsTense() only: a power
+//     play, the red zone, scoring position with two out.
+// It used to sit on EVERY situation string, which measured 15.1% of the
+// board's salient chroma across two of every three live tiles. A colour that
+// is always present cannot interrupt, which is why the base diamonds read as
+// decoration rather than as a warning.
+#define S_ALERT   lv_color_hex(0xF2B441)
+#define C_WARN    S_ALERT                  // legacy spelling, same colour
 
 // One line colour at several opacities, rather than several near-identical
 // greys. Hairlines, borders and the specular catch are all this hue.

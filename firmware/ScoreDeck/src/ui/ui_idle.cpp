@@ -197,13 +197,13 @@ void uiIdleInit(lv_obj_t* parent) {
     lv_obj_remove_style_all(ht);
     lv_obj_set_size(ht, SCR_W, 2);
     lv_obj_set_pos(ht, 0, BAR_H - 3);
-    lv_obj_set_style_bg_color(ht, C_LIVE_SD, 0);
+    lv_obj_set_style_bg_color(ht, C_EDGE_HI, 0);   // track is furniture
     lv_obj_set_style_bg_opa(ht, 90, 0);
     lv_obj_t* hb = lv_obj_create(s_root);
     lv_obj_remove_style_all(hb);
     lv_obj_set_size(hb, 1, 2);
     lv_obj_set_pos(hb, 0, BAR_H - 3);
-    lv_obj_set_style_bg_color(hb, C_LIVE_SD, 0);
+    lv_obj_set_style_bg_color(hb, C_EDGE_HI, 0);
     lv_obj_set_style_bg_opa(hb, LV_OPA_COVER, 0);
     uiHeartbeatAdd(hb);
   }
@@ -239,7 +239,10 @@ void uiIdleInit(lv_obj_t* parent) {
   // F_HERO covers digits plus '-' ':' 'H' 'M' and NOTHING ELSE — the "NOW"
   // case swaps to F_DISPLAY at write time in uiIdleTick(). A missing glyph is
   // a silent hollow box in LVGL and three shipped bugs have been exactly that.
-  s_countdown = lbl(nextCard, 24, 100, C_LIVE, F_HERO);
+  // NOT the accent: this is a countdown to a game that has not started, which
+  // is the opposite of 'happening now'. PRE's own solved primary ink says
+  // 'scheduled' and still clears 11.62:1, 8.9 L* below the 96 px clock.
+  s_countdown = lbl(nextCard, 24, 100, kStateInk[GS_PRE].ink, F_HERO);
   s_nextMeta  = lbl(nextCard, 24, 194, C_INK3, F_NUM);
   s_nextNone  = lbl(nextCard, 24, 110, C_INK2, F_BODY);
   lv_label_set_text(s_nextNone, "Nothing scheduled");
