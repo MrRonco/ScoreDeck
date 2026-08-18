@@ -1,55 +1,70 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Franco Raso
-// ui_ledger.cpp — settled and scheduled games, as rows on the bare plate.
+// ui_ledger.cpp — the results row under the hero. UI.md §5.2.
 //
-// WHY THERE IS NO CARD HERE. This started as a card, and the card was measured
-// and thrown away. The first draft of the featured layout put the hero in a
-// 508x268 cell and the ledger in a 768x124 one, and the result covered MORE of
-// the panel than the nine-up grid it replaced: 86.8% against 84.4%. It fixed
-// the hierarchy and left the diagnosed problem — no figure, no ground —
-// completely untouched.
+// HISTORY, because this file has now been both things and the reasons matter.
 //
-// A ledger is a list, not an object. Three rows under a hairline, sitting
-// directly on the plate. That single change takes card coverage to 62% and is
-// the reason the plate finally reads as a background rather than as grout.
+// It began as a CARD and the card was measured and thrown away: the first
+// featured layout put the hero in a 508x268 cell and the ledger in one
+// 768x124 slab, and the result covered MORE of the panel than the nine-up
+// grid it replaced — 86.8% against 84.4%. It fixed the hierarchy and left the
+// diagnosed problem, no figure and no ground, completely untouched. So it
+// became a bare list on the plate, which took card coverage to 62% and is the
+// reason the plate finally reads as a background rather than as grout.
 //
-// Do not give this a fill, a border or a radius. The hairline and the column
-// gap are the whole structure, and they are enough.
+// The list then had three problems of its own, all visible at once:
+//
+//   * it aligned with nothing. Its columns broke at 16/412 while the tile
+//     column above ended at 784, so the lower band missed the grid overhead by
+//     124-136 px and the screen read as two unrelated layouts.
+//   * the lower LEFT was usually dead. UPCOMING only has content while
+//     fixtures remain; after the last first pitch it is empty for the rest of
+//     the night, and the band reserved half the width for it regardless.
+//     Measured on a real frame: 376x136 px containing ZERO lit pixels.
+//   * it showed the WRONG finals. The board's order is start-time ASCENDING
+//     and this file took the first three finals it met, so on any night with
+//     more than three completed games it locked onto the games that finished
+//     EARLIEST and the one that had just ended never appeared at all.
+//
+// So it is a ROW OF CARDS now — but deliberately NOT the slab that was
+// rejected. The old lesson was that one 768-wide fill smothers the ground;
+// this is three cards on the SAME x grid as the tiles above, with plate
+// showing in both gutters and a 40 px plate reserve beneath. The bottom band
+// carries 74,400 px of card against the rejected version's 95,232 — 22% less
+// — and total card coverage lands at ~71%, between the bare list (52%) and
+// the grid (84.4%). If it ever creeps back toward the slab, RES_H is the
+// constant that did it: 100 px is the budget, 128 px reproduces the rejection.
+//
+// Content is one stream, not two fixed bins: finished games claim slots
+// newest-first, upcoming fixtures fill whatever is left soonest-first. A quiet
+// night shows one card, not one card and a hole.
 #include "ui.h"
 #include "theme.h"
 #include "../config.h"
 #include "../core/state.h"
+#include <string.h>
+#include <stdio.h>
 
-#define LED_ROWS    3
-#define LED_COL_W 372
-#define LED_X0     16
-#define LED_X1    412
-#define LED_ROW_H  30
+#define RES_MAX  3          // one grid row
+#define RES_Y  340
+#define RES_H  100          // the coverage budget — see the header
 
 static lv_obj_t* s_root;
-static lv_obj_t* s_hdr[2];
-static lv_obj_t* s_rule[2];
-static lv_obj_t* s_cell[2][LED_ROWS][3];
-// Same defect as the hero root: this one is 800x140 = 112,000 px and its
-// HIDDEN flag was written unconditionally on every refresh.
+static lv_obj_t* s_card[RES_MAX];
+static lv_obj_t* s_abbr[RES_MAX][2];
+static lv_obj_t* s_score[RES_MAX][2];
+static lv_obj_t* s_meta[RES_MAX];
+static lv_obj_t* s_bcast[RES_MAX];
+// See ui_hero.cpp: lv_obj_clear_flag invalidates unconditionally, and this
+// root is 800x140. Its own visibility is change-cached.
 static bool      s_rootVis;
+static int8_t    s_cardVis[RES_MAX];   // -1 unset, else 0/1 — same discipline
 
-// Column 0 is UPCOMING, column 1 is FINAL. Each row is three fields; the
-// widths differ per column because a start time and a final score are not the
-// same shape of thing.
-// Field 0 of UPCOMING carries a start time, and 50 px is not one: "7:00 PM" is
-// seven mono glyphs at roughly 9 px, so it ellipsised to "7:..." — the field
-// clipped exactly the part that made it a time.
-static const int kColX[2][3] = { { 0, 78, 214 }, { 0, 96, 214 } };
-static const int kColW[2][3] = { { 74, 130, 158 }, { 92, 112, 158 } };
-
-static lv_obj_t* cell(lv_obj_t* p, int x, int y, int w, lv_color_t c,
-                      lv_text_align_t al = LV_TEXT_ALIGN_LEFT) {
+static lv_obj_t* lab(lv_obj_t* p, const lv_font_t* f, lv_color_t c,
+                     lv_text_align_t al = LV_TEXT_ALIGN_LEFT) {
   lv_obj_t* l = lv_label_create(p);
-  lv_obj_set_pos(l, x, y);
-  lv_obj_set_width(l, w);
+  lv_obj_set_style_text_font(l, f, 0);
   lv_obj_set_style_text_color(l, c, 0);
-  lv_obj_set_style_text_font(l, F_NUM, 0);
   lv_obj_set_style_text_align(l, al, 0);
   lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
   lv_label_set_text(l, "");
@@ -57,41 +72,27 @@ static lv_obj_t* cell(lv_obj_t* p, int x, int y, int w, lv_color_t c,
 }
 
 void uiLedgerInit(lv_obj_t* parent) {
-  // A plain container, not a glassPanel: transparent, no border, no radius.
   s_root = lv_obj_create(parent);
   lv_obj_remove_style_all(s_root);
-  lv_obj_set_pos(s_root, 0, 340);
-  lv_obj_set_size(s_root, SCR_W, SCR_H - 340);
+  lv_obj_set_pos(s_root, 0, RES_Y);
+  lv_obj_set_size(s_root, SCR_W, SCR_H - RES_Y);
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_SCROLLABLE);
 
-  static const char* kHdr[2] = { "UPCOMING", "FINAL" };
-  for (int c = 0; c < 2; c++) {
-    const int x = c ? LED_X1 : LED_X0;
+  for (int i = 0; i < RES_MAX; i++) {
+    // The SAME primitive the live tiles are built from — which is the point:
+    // a finished game should look like a game, not like a spreadsheet row.
+    s_card[i] = glassPanel(s_root, 0, 0, 248, RES_H, R_LG);
+    lv_obj_clear_flag(s_card[i], LV_OBJ_FLAG_SCROLLABLE);
 
-    s_hdr[c] = lv_label_create(s_root);
-    lv_obj_set_pos(s_hdr[c], x, 8);
-    lv_obj_set_style_text_color(s_hdr[c], C_INK3, 0);
-    lv_obj_set_style_text_font(s_hdr[c], F_MICRO, 0);
-    // Tracked caps means "this LABELS something"; zero tracking means "this is
-    // the data". Two free axes the grid spends neither of.
-    lv_obj_set_style_text_letter_space(s_hdr[c], 1, 0);
-    lv_label_set_text(s_hdr[c], kHdr[c]);
-
-    s_rule[c] = lv_obj_create(s_root);
-    lv_obj_remove_style_all(s_rule[c]);
-    lv_obj_set_pos(s_rule[c], x, 28);
-    lv_obj_set_size(s_rule[c], LED_COL_W, 1);
-    lv_obj_set_style_bg_color(s_rule[c], C_LINE, 0);
-    lv_obj_set_style_bg_opa(s_rule[c], OPA_HAIR, 0);
-
-    for (int r = 0; r < LED_ROWS; r++) {
-      const int y = 44 + r * LED_ROW_H;
-      for (int f = 0; f < 3; f++) {
-        const lv_color_t ink = (f == 1) ? C_INK2 : C_INK3;
-        const lv_text_align_t al = (f == 2) ? LV_TEXT_ALIGN_RIGHT : LV_TEXT_ALIGN_LEFT;
-        s_cell[c][r][f] = cell(s_root, x + kColX[c][f], y, kColW[c][f], ink, al);
-      }
+    for (int k = 0; k < 2; k++) {
+      s_abbr[i][k]  = lab(s_card[i], F_TITLE, C_INK);
+      s_score[i][k] = lab(s_card[i], F_DISPLAY, C_INK, LV_TEXT_ALIGN_RIGHT);
     }
+    s_meta[i]  = lab(s_card[i], F_MICRO, C_INK3);
+    lv_obj_set_style_text_letter_space(s_meta[i], 1, 0);
+    s_bcast[i] = lab(s_card[i], F_MICRO, C_INK3, LV_TEXT_ALIGN_RIGHT);
+    lv_obj_add_flag(s_card[i], LV_OBJ_FLAG_HIDDEN);
+    s_cardVis[i] = 0;
   }
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
   s_rootVis = false;
@@ -100,39 +101,53 @@ void uiLedgerInit(lv_obj_t* parent) {
 lv_obj_t* uiLedgerRoot() { return s_root; }
 
 /**
- * Two column layouts: bare-plate at 24/412 with 348-wide columns when the
- * rail is closed, and 156/482 with 300-wide columns when it is open — the
- * rail owns x<140 and the old left column would vanish underneath it.
- * Field widths compress with the column; every cell already carries
- * LV_LABEL_LONG_DOT, so the loss is an ellipsis, not an overlap.
+ * Lay the row on the SAME x grid as the tiles above it, so the two cannot
+ * drift apart when the rail opens.
+ *
+ *   rail closed:  16 / 276 / 536, each 248 wide  (= the Standard grid)
+ *   rail open:   156 / 376 / 596, 210 / 210 / 192  (= the narrowed grid)
  */
 void uiLedgerLayout(bool railOpen) {
   if (!s_root) return;
-  static const int xO[2] = { 156, 488 };
-  static const int xC[2] = { 16, 412 };
-  static const int colXO[2][3] = { { 0, 72, 192 }, { 0, 90, 192 } };
-  static const int colWO[2][3] = { { 68, 116, 108 }, { 86, 98, 108 } };
-  const int colW = railOpen ? 300 : LED_COL_W;
-  for (int c = 0; c < 2; c++) {
-    const int x = railOpen ? xO[c] : xC[c];
-    lv_obj_set_x(s_hdr[c], x);
-    lv_obj_set_pos(s_rule[c], x, 28);
-    lv_obj_set_width(s_rule[c], colW);
-    for (int r = 0; r < LED_ROWS; r++)
-      for (int f = 0; f < 3; f++) {
-        const int cx = railOpen ? colXO[c][f] : kColX[c][f];
-        const int cw = railOpen ? colWO[c][f] : kColW[c][f];
-        lv_obj_set_x(s_cell[c][r][f], x + cx);
-        lv_obj_set_width(s_cell[c][r][f], cw);
-      }
+  static const int xC[RES_MAX] = { 16, 276, 536 };
+  static const int wC[RES_MAX] = { 248, 248, 248 };
+  static const int xO[RES_MAX] = { 156, 376, 596 };
+  static const int wO[RES_MAX] = { 210, 210, 192 };
+
+  for (int i = 0; i < RES_MAX; i++) {
+    const int x = railOpen ? xO[i] : xC[i];
+    const int w = railOpen ? wO[i] : wC[i];
+    lv_obj_set_pos(s_card[i], x, 0);
+    lv_obj_set_size(s_card[i], w, RES_H);
+
+    const int pad = 14, scoreW = 62;
+    for (int k = 0; k < 2; k++) {
+      const int y = 8 + k * 30;
+      lv_obj_set_pos(s_abbr[i][k], pad, y + 5);
+      lv_obj_set_width(s_abbr[i][k], w - 2 * pad - scoreW - 6);
+      lv_obj_set_pos(s_score[i][k], w - pad - scoreW, y);
+      lv_obj_set_width(s_score[i][k], scoreW);
+    }
+    lv_obj_set_pos(s_meta[i], pad, RES_H - 24);
+    lv_obj_set_width(s_meta[i], w - 2 * pad - 74);
+    lv_obj_set_pos(s_bcast[i], w - pad - 74, RES_H - 24);
+    lv_obj_set_width(s_bcast[i], 74);
   }
 }
+
 void uiLedgerHide() {
   if (s_root && s_rootVis) { s_rootVis = false; lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
 }
 
+static void showCard(int i, bool on) {
+  if (s_cardVis[i] == (int8_t)on) return;      // add/clear_flag always invalidates
+  s_cardVis[i] = (int8_t)on;
+  on ? lv_obj_clear_flag(s_card[i], LV_OBJ_FLAG_HIDDEN)
+     : lv_obj_add_flag(s_card[i], LV_OBJ_FLAG_HIDDEN);
+}
+
 /**
- * Fill from g_board in `order`, skipping anything already drawn elsewhere.
+ * Fill from g_board, skipping anything already drawn elsewhere.
  *
  * `exclude` is a small array of game indices the caller has put on the hero or
  * on a tile. A game must never appear twice on one screen — that reads as two
@@ -143,54 +158,88 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
                     bool (*passes)(const Game&)) {
   if (!s_root) return;
 
-  char buf[24];
-  int fill[2] = { 0, 0 };
+  // ── choose, then draw ────────────────────────────────────────────────────
+  // Finals NEWEST first: the game that just ended is the one worth a slot, and
+  // board order gave the exact opposite. Upcoming soonest-first fills the tail.
+  int8_t fin[RES_MAX], pre[RES_MAX];
+  uint8_t nFin = 0, nPre = 0;
 
   for (uint8_t oi = 0; oi < n; oi++) {
     const uint8_t gi = order[oi];
     const Game& g = g_board[gi];
     if (passes && !passes(g)) continue;
-
     bool skip = false;
     for (uint8_t e = 0; e < nExclude; e++) if (exclude[e] == (int8_t)gi) { skip = true; break; }
     if (skip) continue;
 
-    const int c = (g.state == GS_FINAL) ? 1 : (g.state == GS_PRE ? 0 : -1);
-    if (c < 0 || fill[c] >= LED_ROWS) continue;      // live games are never here
-    const int r = fill[c]++;
-
-    if (c == 0) {
-      lv_label_set_text(s_cell[0][r][0], g.status);           // "7:00 PM"
-      snprintf(buf, sizeof buf, "%s @ %s", g.away.abbr, g.home.abbr);
-      lv_label_set_text(s_cell[0][r][1], buf);
-      lv_label_set_text(s_cell[0][r][2], g.bcast);
-    } else {
-      snprintf(buf, sizeof buf, "%-4s %2u", g.away.abbr, g.away.score);
-      lv_label_set_text(s_cell[1][r][0], buf);
-      snprintf(buf, sizeof buf, "%-4s %2u", g.home.abbr, g.home.score);
-      lv_label_set_text(s_cell[1][r][1], buf);
-      lv_label_set_text(s_cell[1][r][2], g.status);           // "Final" | "F/OT"
-      // Winner bright, loser recessive — a results list you read without
-      // parsing eight numbers. Ties (soccer) keep both sides equal.
-      const bool homeWon = g.home.score > g.away.score;
-      const bool tie = g.home.score == g.away.score;
-      lv_obj_set_style_text_color(s_cell[1][r][0], tie ? C_INK2 : (homeWon ? C_INK3 : C_INK), 0);
-      lv_obj_set_style_text_color(s_cell[1][r][1], tie ? C_INK2 : (homeWon ? C_INK : C_INK3), 0);
+    if (g.state == GS_FINAL) {
+      uint8_t p = 0;
+      while (p < nFin && g_board[fin[p]].startUtc >= g.startUtc) p++;
+      if (p >= RES_MAX) continue;
+      for (int8_t q = (int8_t)((nFin < RES_MAX ? nFin : RES_MAX - 1)); q > (int8_t)p; q--)
+        fin[q] = fin[q - 1];
+      fin[p] = (int8_t)gi;
+      if (nFin < RES_MAX) nFin++;
+    } else if (g.state == GS_PRE) {
+      uint8_t p = 0;
+      while (p < nPre && g_board[pre[p]].startUtc <= g.startUtc) p++;
+      if (p >= RES_MAX) continue;
+      for (int8_t q = (int8_t)((nPre < RES_MAX ? nPre : RES_MAX - 1)); q > (int8_t)p; q--)
+        pre[q] = pre[q - 1];
+      pre[p] = (int8_t)gi;
+      if (nPre < RES_MAX) nPre++;
     }
   }
 
-  for (int c = 0; c < 2; c++) {
-    for (int r = fill[c]; r < LED_ROWS; r++)
-      for (int f = 0; f < 3; f++) lv_label_set_text(s_cell[c][r][f], "");
-    // An empty column keeps its header only if it has something under it — a
-    // heading over nothing is the same "failed to load" signal a bordered
-    // empty card gives, in a cheaper form.
-    const lv_opa_t o = fill[c] ? LV_OPA_COVER : LV_OPA_TRANSP;
-    lv_obj_set_style_opa(s_hdr[c], o, 0);
-    lv_obj_set_style_opa(s_rule[c], o, 0);
+  uint8_t slot = 0;
+  char buf[16];
+
+  for (uint8_t i = 0; i < nFin && slot < RES_MAX; i++, slot++) {
+    const Game& g = g_board[fin[i]];
+    const StateInk& si = kStateInk[GS_FINAL];
+    lv_obj_set_style_bg_color(s_card[slot], si.plate, 0);
+    lv_label_set_text(s_abbr[slot][0], g.away.abbr);
+    lv_label_set_text(s_abbr[slot][1], g.home.abbr);
+    snprintf(buf, sizeof buf, "%u", (unsigned)g.away.score);
+    lv_label_set_text(s_score[slot][0], buf);
+    snprintf(buf, sizeof buf, "%u", (unsigned)g.home.score);
+    lv_label_set_text(s_score[slot][1], buf);
+    // Winner bright, loser recessive — the tiles' own rule, so a result reads
+    // without parsing both numbers. Ties keep both sides equal.
+    const bool homeWon = g.home.score > g.away.score;
+    const bool tie = g.home.score == g.away.score;
+    for (int k = 0; k < 2; k++) {
+      const bool won = tie ? true : ((k == 1) == homeWon);
+      lv_obj_set_style_text_color(s_abbr[slot][k],  won ? si.ink : si.ink3, 0);
+      lv_obj_set_style_text_color(s_score[slot][k], won ? si.ink : si.ink3, 0);
+    }
+    lv_label_set_text(s_meta[slot], g.status);      // "Final" | "Final/OT"
+    lv_obj_set_style_text_color(s_meta[slot], si.ink3, 0);
+    lv_label_set_text(s_bcast[slot], "");
+    showCard(slot, true);
   }
 
-  if (!fill[0] && !fill[1]) {
+  for (uint8_t i = 0; i < nPre && slot < RES_MAX; i++, slot++) {
+    const Game& g = g_board[pre[i]];
+    const StateInk& si = kStateInk[GS_PRE];
+    lv_obj_set_style_bg_color(s_card[slot], si.plate, 0);
+    lv_label_set_text(s_abbr[slot][0], g.away.abbr);
+    lv_label_set_text(s_abbr[slot][1], g.home.abbr);
+    // No score placeholders: the start time already says it has not begun.
+    lv_label_set_text(s_score[slot][0], "");
+    lv_label_set_text(s_score[slot][1], "");
+    for (int k = 0; k < 2; k++)
+      lv_obj_set_style_text_color(s_abbr[slot][k], si.ink, 0);
+    lv_label_set_text(s_meta[slot], g.status);      // "7:00 PM"
+    lv_obj_set_style_text_color(s_meta[slot], si.ink3, 0);
+    lv_label_set_text(s_bcast[slot], g.bcast);
+    lv_obj_set_style_text_color(s_bcast[slot], si.ink3, 0);
+    showCard(slot, true);
+  }
+
+  for (uint8_t i = slot; i < RES_MAX; i++) showCard(i, false);
+
+  if (!slot) {
     if (s_rootVis) { s_rootVis = false; lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
     return;
   }
