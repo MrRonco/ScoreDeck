@@ -76,6 +76,11 @@ static int32_t     s_odoCur[2], s_odoTo[2];
 static uint8_t     s_odoStep[2];
 static char        c_id[24];          // hero game identity — animations are per-game
 static int32_t     s_wpCur = -1;      // M5: displayed win-prob width (cache holds target)
+// The ROOT's own visibility. lv_obj_clear_flag invalidates unconditionally,
+// so writing it every poll repainted this 508x268 card - 136,144 px - for no
+// visual change. setVis() below has always done this correctly for the nine
+// children; the root was the one object writing its flag raw.
+static bool     s_rootVis;
 
 static void odoKill(int k) {
   if (s_odo[k]) { lv_timer_del(s_odo[k]); s_odo[k] = nullptr; }
@@ -305,12 +310,13 @@ void uiHeroInit(lv_obj_t* parent) {
   c_dotVis = c_footDotVis = c_edgeVis = false;
 
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+  s_rootVis = false;          // cache tracks the flag this line just set
 }
 
 lv_obj_t* uiHeroRoot() { return s_root; }
 int8_t    uiHeroGameIdx() { return s_gameIdx; }
 void      uiHeroHide() {
-  if (s_root) lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+  if (s_root && s_rootVis) { s_rootVis = false; lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
   s_gameIdx = -1;
   odoKill(0); odoKill(1);
   revKill();
@@ -335,7 +341,9 @@ void uiHeroShow(int8_t gameIdx) {
   s_gameIdx = gameIdx;
   const Game& g = g_board[gameIdx];
   const StateInk& si = HI();
-  const bool appearing = lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+  // Reads the CACHE, not the flag: the flag write below is gated now, so the
+  // cache is the authority on whether this call is the card appearing.
+  const bool appearing = !s_rootVis;
 
   // League only. This carried "NHL  ·  SPORTSNET" and the footer carried the
   // broadcast too, so the hero printed the channel twice — once in each corner.
@@ -499,7 +507,7 @@ void uiHeroShow(int8_t gameIdx) {
   strncpy(c_id, g.id, sizeof c_id - 1);
   c_id[sizeof c_id - 1] = '\0';
 
-  lv_obj_clear_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+  if (!s_rootVis) { s_rootVis = true; lv_obj_clear_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
   if (appearing) {
     revKill();
     lv_obj_set_style_opa(s_root, 85, 0);

@@ -30,6 +30,9 @@ static lv_obj_t* s_root;
 static lv_obj_t* s_hdr[2];
 static lv_obj_t* s_rule[2];
 static lv_obj_t* s_cell[2][LED_ROWS][3];
+// Same defect as the hero root: this one is 800x140 = 112,000 px and its
+// HIDDEN flag was written unconditionally on every refresh.
+static bool      s_rootVis;
 
 // Column 0 is UPCOMING, column 1 is FINAL. Each row is three fields; the
 // widths differ per column because a start time and a final score are not the
@@ -91,6 +94,7 @@ void uiLedgerInit(lv_obj_t* parent) {
     }
   }
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+  s_rootVis = false;
 }
 
 lv_obj_t* uiLedgerRoot() { return s_root; }
@@ -123,7 +127,9 @@ void uiLedgerLayout(bool railOpen) {
       }
   }
 }
-void uiLedgerHide() { if (s_root) lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
+void uiLedgerHide() {
+  if (s_root && s_rootVis) { s_rootVis = false; lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
+}
 
 /**
  * Fill from g_board in `order`, skipping anything already drawn elsewhere.
@@ -184,6 +190,9 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
     lv_obj_set_style_opa(s_rule[c], o, 0);
   }
 
-  if (!fill[0] && !fill[1]) { lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); return; }
-  lv_obj_clear_flag(s_root, LV_OBJ_FLAG_HIDDEN);
+  if (!fill[0] && !fill[1]) {
+    if (s_rootVis) { s_rootVis = false; lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
+    return;
+  }
+  if (!s_rootVis) { s_rootVis = true; lv_obj_clear_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
 }

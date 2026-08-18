@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <unistd.h>
 #include <lvgl.h>
 #include "Arduino.h"
 #include "scenarios.h"
@@ -155,6 +156,7 @@ static void help() {
 
 int main(int argc, char** argv) {
   const char* shot = nullptr;
+  int settleMs = 0;
   const char* screen = nullptr;
   bool lint = false;
   bool spike = false;
@@ -163,6 +165,7 @@ int main(int argc, char** argv) {
   bool railOpen = false;
   for (int i = 1; i < argc; i++) {
     if      (!strcmp(argv[i], "--shot") && i + 1 < argc)     shot = argv[++i];
+    else if (!strcmp(argv[i], "--settle") && i + 1 < argc)   settleMs = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--scenario") && i + 1 < argc) s_scenario = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--screen") && i + 1 < argc)   screen = argv[++i];
     else if (!strcmp(argv[i], "--lint"))                     lint = true;
@@ -275,6 +278,17 @@ int main(int argc, char** argv) {
     uiReaderTick();
     uiAlertTick();
     for (int i = 0; i < 2; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+    // --settle <ms>: let one-shot animations FINISH before the capture.
+    // Without it every FEATURE screenshot is a rung-0 frame: the hero's staged
+    // reveal runs on an 80 ms lv_timer and the two passes above complete in
+    // microseconds, so the card is caught at 33% opacity — which is why the
+    // glow's banding was under-reported for so long (the plate's Bayer dither
+    // shows through a translucent card and accidentally dithers it).
+    if (settleMs > 0) {
+      const uint32_t t0 = millis();
+      while (millis() - t0 < (uint32_t)settleMs) { lv_timer_handler(); usleep(2000); }
+      lv_refr_now(nullptr);
+    }
     const bool ok = writeBmp(shot);
     printf("%s  %s  (%s)\n", ok ? "wrote" : "FAILED", shot, scenarioName(s_scenario));
     SDL_Quit();
