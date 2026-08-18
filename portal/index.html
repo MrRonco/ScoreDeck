@@ -1,67 +1,105 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0A0F18">
 <title>ScoreDeck</title>
 <style>
 :root{
   /* Lifted from firmware/ScoreDeck/src/ui/theme.h so the two surfaces are the
      same material. The panel has no accent colour because 3,000 team colours
      arrive as content; here the only team colour is a 3px swatch in the
-     picker, so status colour is allowed — but only for state, never decor. */
+     picker, so status colour is allowed — but only for state, never decor.
+     This page is a browser console, not the panel, so it additionally carries
+     one small teal accent (--accent) for its own chrome: primary actions,
+     focus rings, the "on" state of switches/segments. Never used for content. */
   --plate:#0A0F18; --frost:#1A2432; --frost2:#141C28;
   --ink:#F3F7FB; --ink2:#93A5B8; --ink3:#6E7E8F;
   --edge:#2A3646; --edge-hi:#46566A;
   --ok:#7FD4A0; --warn:#FFC061; --bad:#FF6472;
-  --r:10px; --tap:44px;
+  --accent:#5EEAD4; --accent-ink:#052422; --accent-dim:rgba(94,234,212,.14);
+  --r-xs:6px; --r:10px; --r-lg:16px; --r-xl:22px; --tap:44px;
+  --shadow-card:0 1px 0 rgba(255,255,255,.05) inset,0 10px 30px rgba(0,0,0,.32);
+  --shadow-pop:0 24px 60px -20px rgba(0,0,0,.65);
+  --ease:cubic-bezier(.2,.8,.2,1); --dur:.16s;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--plate);color:var(--ink);font:15px/1.5 var(--sans);
+html{scroll-behavior:smooth}
+body{margin:0;color:var(--ink);font:15px/1.55 var(--sans);
+  background:
+    radial-gradient(1100px 520px at 50% -12%,rgba(94,234,212,.07),transparent 60%),
+    var(--plate);
   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
 a{color:inherit}
+::selection{background:var(--accent-dim);color:var(--ink)}
+
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.skip{position:absolute;left:12px;top:-52px;z-index:60;background:var(--accent);color:var(--accent-ink);
+  padding:10px 16px;border-radius:var(--r);font:600 13px/1 var(--sans);text-decoration:none;
+  transition:top var(--dur) var(--ease)}
+.skip:focus{top:12px}
+
+:is(a,button,.btn,input,select,[tabindex]):focus-visible{outline:2px solid var(--accent);
+  outline-offset:2px;border-radius:4px}
+
 .wrap{max-width:1180px;margin:0 auto;padding:0 20px 64px}
 header .wrap{padding-bottom:0}   /* the 64px tail is for page content, not the bar */
 
 header{position:sticky;top:0;z-index:5;background:rgba(10,15,24,.92);
   backdrop-filter:blur(12px);border-bottom:1px solid var(--edge)}
 .top{display:flex;align-items:center;gap:14px;padding:14px 0;flex-wrap:wrap}
+.brand{display:inline-flex;align-items:center;gap:9px;min-width:0}
+.brand-mark{color:var(--accent);flex:0 0 auto}
 .mark{font-weight:600;letter-spacing:.02em}
 .host{font:12px/1 var(--mono);color:var(--ink3)}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;
   font:500 11px/1.6 var(--mono);text-transform:uppercase;margin-left:auto}
-.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto}
 .pill.ok{color:var(--ok);background:rgba(127,212,160,.1)}
+.pill.ok::before{animation:pulse 1.8s ease-in-out infinite}
 .pill.warn{color:var(--warn);background:rgba(255,192,97,.1)}
 .pill.bad{color:var(--bad);background:rgba(255,100,114,.1)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.32}}
+
 nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
 nav::-webkit-scrollbar{display:none}
-nav a{flex:0 0 auto;min-height:38px;display:flex;align-items:center;padding:0 14px;
-  border-radius:var(--r);text-decoration:none;color:var(--ink3);font-size:14px}
-nav a.on{background:var(--frost);color:var(--ink)}
+nav a{flex:0 0 auto;min-height:var(--tap);display:flex;align-items:center;padding:0 14px;
+  border-radius:var(--r);text-decoration:none;color:var(--ink3);font-size:14px;
+  transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+nav a:hover{color:var(--ink)}
+nav a.on{background:var(--frost);color:var(--ink);box-shadow:inset 0 0 0 1px var(--edge-hi)}
 
 h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);
-  font-weight:500;margin:26px 0 10px}
-.card{background:var(--frost2);border:1px solid var(--edge);border-radius:14px;
-.mirror{margin-top:14px;border-radius:12px;overflow:hidden;border:1px solid var(--edge);background:#04070E;line-height:0;box-shadow:0 12px 34px -14px rgba(0,0,0,.65)}
-.mirror img{width:100%;display:block}
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 28px rgba(0,0,0,.34);padding:6px 20px}
+  font-weight:500;margin:26px 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+h2 svg{color:var(--ink3);flex:0 0 auto}
+.card{background:var(--frost2);border:1px solid var(--edge);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-card);padding:2px 20px}
 .row{display:flex;align-items:center;gap:16px;min-height:var(--tap);padding:12px 0;
   border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap}
 .row:first-child{border-top:0}
 .row .k{flex:1 1 220px;min-width:0}
 .row .k small{display:block;color:var(--ink3);font-size:12.5px;margin-top:2px}
 .row .v{flex:0 0 auto;display:flex;gap:8px;align-items:center}
+label.row{cursor:pointer}
 
 button,.btn{min-height:var(--tap);padding:0 16px;border-radius:var(--r);
   border:1px solid var(--edge);background:var(--frost);color:var(--ink);
-  font:500 14px/1 var(--sans);cursor:pointer;transition:background .12s,border-color .12s}
+  font:500 14px/1 var(--sans);cursor:pointer;transition:background var(--dur),border-color var(--dur),transform var(--dur)}
 button:hover{background:#202C3C;border-color:var(--edge-hi)}
 button:active{transform:translateY(1px)}
-button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--edge-hi);outline-offset:2px}
 button.danger{border-color:rgba(255,100,114,.42);color:var(--bad)}
 button.ghost{background:transparent}
-button[disabled]{opacity:.45;cursor:default}
+button.icon-btn{min-width:var(--tap);padding:0;display:inline-flex;align-items:center;justify-content:center}
+button.primary{background:linear-gradient(180deg,#7BF3D8,var(--accent));border-color:transparent;
+  color:var(--accent-ink);font-weight:600}
+button.primary:hover{filter:brightness(1.06)}
+button.primary:active{filter:brightness(.98)}
+button[disabled]{opacity:.45;cursor:default;filter:none}
 
 input,select{width:100%;min-height:var(--tap);padding:0 12px;background:var(--plate);
   border:1px solid var(--edge);border-radius:var(--r);color:var(--ink);
@@ -72,65 +110,136 @@ label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
 @media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}}
 @media(min-width:420px){.grid.four{grid-template-columns:1fr 1fr}}
 @media(min-width:1100px){.grid.four{grid-template-columns:repeat(4,1fr)}}
-.stat{background:var(--frost2);border:1px solid var(--edge);border-radius:12px;padding:14px 16px}
+.stat{background:var(--frost2);border:1px solid var(--edge);border-radius:var(--r-lg);padding:14px 16px}
 .stat b{display:block;font-size:24px;font-variant-numeric:tabular-nums;margin-bottom:2px}
 .stat span{font:11px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
 
+.search-field{position:relative}
+.search-field svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink3);pointer-events:none}
+.search-field input{padding-left:38px}
+
 .seg{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r);overflow:hidden}
-.seg button{border:0;border-radius:0;background:transparent;color:var(--ink3);min-height:40px}
-.seg button[aria-pressed=true]{background:var(--frost);color:var(--ink)}
+.seg button{border:0;border-radius:0;background:transparent;color:var(--ink3);min-height:44px}
+.seg button[aria-pressed=true]{background:var(--accent-dim);color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(94,234,212,.35)}
 .sw{appearance:none;width:52px;height:30px;border-radius:999px;background:var(--edge);
   border:1px solid var(--edge-hi);position:relative;cursor:pointer;transition:background .15s;flex:0 0 auto}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
   background:var(--ink2);transition:transform .15s,background .15s}
-.sw:checked{background:var(--edge-hi)}
-.sw:checked::after{transform:translateX(22px);background:var(--ink)}
+.sw:checked{background:var(--accent);border-color:var(--accent)}
+.sw:checked::after{transform:translateX(22px);background:var(--accent-ink)}
 
 .wrapx{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;font:14px/1.5 var(--mono);font-variant-numeric:tabular-nums}
 th{text-align:left;font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
   color:var(--ink3);padding:0 12px 8px 0}
 td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,255,.05)}
-.sw3{display:inline-block;width:3px;height:14px;border-radius:2px;vertical-align:-2px;margin-right:8px}
+tbody tr:hover td{background:rgba(255,255,255,.02)}
+tr.is-focus td{background:rgba(94,234,212,.05)}
+tr.is-focus td:first-child{border-left:3px solid var(--accent);padding-left:9px}
+.sw3{display:inline-block;width:3px;height:14px;border-radius:2px;vertical-align:-2px;margin-right:8px;flex:0 0 auto}
 
-.banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-radius:12px;
-  padding:14px 18px;margin:16px 0;border:1px solid;font-size:14px}
+.banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-radius:var(--r-lg);
+  padding:14px 18px;margin:16px 0;border:1px solid;font-size:14px;
+  animation:slidein var(--dur) var(--ease)}
+.banner svg{flex:0 0 auto}
 .banner.warn{border-color:rgba(255,192,97,.4);background:rgba(255,192,97,.08);color:var(--warn)}
 .banner.bad{border-color:rgba(255,100,114,.4);background:rgba(255,100,114,.08);color:var(--bad)}
+.banner span{color:var(--ink)}
 .banner button{margin-left:auto}
+@keyframes slidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .hint{color:var(--ink3);font-size:13px;margin:10px 0 0}
 .bar{height:6px;border-radius:3px;background:var(--edge);overflow:hidden;margin:10px 0}
-.bar i{display:block;height:100%;background:var(--edge-hi);width:0}
-.list{max-height:340px;overflow:auto}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .12s linear}
+.list{max-height:340px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--edge-hi) transparent}
+.list::-webkit-scrollbar,.wrapx::-webkit-scrollbar{width:8px;height:8px}
+.list::-webkit-scrollbar-thumb,.wrapx::-webkit-scrollbar-thumb{background:var(--edge-hi);border-radius:8px}
+.list::-webkit-scrollbar-track,.wrapx::-webkit-scrollbar-track{background:transparent}
 .item{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.05)}
 .item:first-child{border-top:0}
 .item .nm{flex:1;min-width:0}
 .item .nm b{display:block;font-weight:500}
 .item .nm span{color:var(--ink3);font:12px/1.4 var(--mono)}
-.view{display:none}.view.on{display:block}
-@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;
+  color:var(--ink3);padding:30px 12px;font-size:13.5px}
+.empty svg{opacity:.45}
+td.empty-cell{padding:0;border-top:0}
+
+/* ---------- live panel preview: the headline diagnostics feature ---------- */
+.mirror-hero-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+  flex-wrap:wrap;margin:14px 0 18px}
+.mirror-hero-title{margin:0;font:600 15px/1.3 var(--sans);letter-spacing:0;text-transform:none;
+  color:var(--ink);display:flex;align-items:center;gap:8px}
+.mirror-hero-title svg{color:var(--accent)}
+.device-frame{max-width:640px;margin:0 auto}
+.device-bezel{position:relative;padding:16px 16px 30px;border-radius:var(--r-xl);
+  background:linear-gradient(160deg,#212c3a,#141b25 55%,#0a0f16);
+  border:1px solid var(--edge-hi);
+  box-shadow:0 1px 0 rgba(255,255,255,.05) inset,var(--shadow-pop);
+  transition:border-color var(--dur)}
+.device-frame[data-state="error"] .device-bezel{border-color:rgba(255,100,114,.5)}
+.device-screen{position:relative;aspect-ratio:5/3;border-radius:10px;overflow:hidden;
+  background:#04070E;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),inset 0 24px 46px rgba(0,0,0,.55)}
+.device-screen img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+.device-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:10px;color:var(--ink3);text-align:center;padding:20px;
+  background:radial-gradient(60% 60% at 50% 38%,rgba(255,255,255,.035),transparent)}
+.device-placeholder svg{opacity:.5}
+.device-placeholder span{font-size:13px;max-width:230px;line-height:1.55}
+.device-frame[data-state="error"] .device-placeholder{color:var(--bad)}
+.device-frame[data-state="error"] .device-placeholder svg{opacity:.75}
+.device-frame[data-state="loading"] .device-screen::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(100deg,transparent 15%,rgba(255,255,255,.08) 50%,transparent 85%);
+  background-size:250% 100%;animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{0%{background-position:150% 0}100%{background-position:-50% 0}}
+.device-chin{position:absolute;left:0;right:0;bottom:8px;display:flex;align-items:center;
+  justify-content:center;gap:7px;color:var(--ink3);font:600 10px/1 var(--mono);
+  letter-spacing:.14em;text-transform:uppercase}
+.device-led{width:5px;height:5px;border-radius:50%;background:var(--ink3);transition:background var(--dur)}
+.device-frame[data-state="ready"] .device-led{background:var(--ok)}
+.device-frame[data-state="loading"] .device-led{background:var(--warn)}
+.device-frame[data-state="error"] .device-led{background:var(--bad)}
+
+.view{display:none}.view.on{display:block;animation:fadein .18s var(--ease)}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
 </style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
   <div class="wrap">
     <div class="top">
-      <span class="mark">ScoreDeck</span>
+      <span class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="12" rx="1.5"></rect>
+          <path d="M8 20h8M12 17v3"></path>
+        </svg>
+        <span class="mark">ScoreDeck</span>
+      </span>
       <span class="host" id="host"></span>
       <span class="pill" id="net">…</span>
     </div>
-    <nav id="nav"></nav>
+    <nav id="nav" aria-label="Sections"></nav>
   </div>
 </header>
 
-<div class="wrap">
-  <div id="warn"></div>
+<main class="wrap" id="main">
+  <div id="warn" role="region" aria-live="polite" aria-label="Notifications"></div>
 
   <!-- BOARD -->
   <section class="view" id="v-board">
     <div class="grid four" id="stats"></div>
-    <h2>On the board now</h2>
+    <h2>On the board now <span class="host" id="boardAge"></span></h2>
     <div class="card"><div class="wrapx"><table id="board">
-      <thead><tr><th>LG</th><th>Matchup</th><th>Score</th><th>Status</th><th>TV</th></tr></thead>
+      <caption class="sr-only">Current games across your selected leagues</caption>
+      <thead><tr><th scope="col">LG</th><th scope="col">Matchup</th><th scope="col">Score</th>
+        <th scope="col">Status</th><th scope="col">TV</th></tr></thead>
       <tbody></tbody></table></div></div>
     <p class="hint">Refreshes every 10 seconds while this tab is visible.</p>
   </section>
@@ -145,7 +254,7 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
       <div id="lgList" class="list"><small>Load the catalog below to pick from
         a list, or the board is using the current set.</small></div>
       <div class="row"><div class="k"></div>
-        <div class="v"><button id="saveLg">Save sports</button></div></div>
+        <div class="v"><button id="saveLg" class="primary">Save sports</button></div></div>
     </div>
 
     <h2>Your teams <span id="favN" class="host"></span></h2>
@@ -154,9 +263,14 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
 
     <h2>Add a team</h2>
     <div class="card">
-      <div class="row"><div class="k"><input id="q" placeholder="Search 25 leagues…" autocomplete="off"></div></div>
+      <div class="row"><div class="k search-field">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>
+        </svg>
+        <input id="q" placeholder="Search 25 leagues…" autocomplete="off"></div></div>
       <div class="row"><div class="k"><small id="catInfo">Catalog not loaded.</small></div>
-        <div class="v"><button id="loadCat">Load catalog</button></div></div>
+        <div class="v"><button id="loadCat" class="primary">Load catalog</button></div></div>
       <div id="results" class="list"></div>
     </div>
 
@@ -164,7 +278,7 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
     <div class="card"><div class="row">
       <div class="k"><input id="favsRaw" data-mono placeholder="nhl:21,eng.1:359">
         <small>Always available, even with no catalog and no proxy.</small></div>
-      <div class="v"><button id="saveRaw">Save</button></div>
+      <div class="v"><button id="saveRaw" class="primary">Save</button></div>
     </div></div>
   </section>
 
@@ -172,84 +286,124 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
   <section class="view" id="v-alerts">
     <h2>Alerts</h2>
     <div class="card">
-      <div class="row"><div class="k">Score alerts
+      <label class="row" for="alen"><div class="k">Score alerts
         <small>A followed team takes over the screen. Everyone else gets a banner.</small></div>
-        <div class="v"><input type="checkbox" class="sw" id="alen"></div></div>
-      <div class="row"><div class="k">Open tense games automatically
+        <div class="v"><input type="checkbox" class="sw" id="alen"></div></label>
+      <label class="row" for="focus"><div class="k">Open tense games automatically
         <small>Power play, red zone, or a runner in scoring position with two out.</small></div>
-        <div class="v"><input type="checkbox" class="sw" id="focus"></div></div>
+        <div class="v"><input type="checkbox" class="sw" id="focus"></div></label>
     </div>
 
     <h2>Quiet hours</h2>
     <div class="card">
-      <div class="row"><div class="k">Enabled</div>
-        <div class="v"><input type="checkbox" class="sw" id="qen"></div></div>
-      <div class="row"><div class="k">From</div><div class="v"><input type="time" id="qfr" style="width:150px"></div></div>
-      <div class="row"><div class="k">To</div><div class="v"><input type="time" id="qto" style="width:150px"></div></div>
+      <label class="row" for="qen"><div class="k">Enabled</div>
+        <div class="v"><input type="checkbox" class="sw" id="qen"></div></label>
+      <div class="row"><div class="k"><label for="qfr">From</label></div>
+        <div class="v"><input type="time" id="qfr" style="width:150px"></div></div>
+      <div class="row"><div class="k"><label for="qto">To</label></div>
+        <div class="v"><input type="time" id="qto" style="width:150px"></div></div>
       <div class="row"><div class="k"><small id="tznow"></small></div></div>
     </div>
     <p class="hint">Alerts lag the broadcast by 30–80 seconds either way — the proxy polls, it is not pushed.</p>
-    <div class="row"><div class="v"><button id="saveAlerts">Save</button></div></div>
+    <div class="row"><div class="v"><button id="saveAlerts" class="primary">Save</button></div></div>
   </section>
 
   <!-- NETWORK -->
   <section class="view" id="v-network">
     <h2>Wi-Fi</h2>
     <div class="card">
-      <div class="row"><div class="k"><label>Network<input id="ssid" autocomplete="off"></label></div></div>
-      <div class="row"><div class="k"><label>Password<input id="wpass" type="password" autocomplete="new-password">
-        <small>Blank keeps the stored one. A single “-” clears it.</small></label></div></div>
+      <div class="row"><div class="k"><label for="ssid">Network</label><input id="ssid" autocomplete="off"></div></div>
+      <div class="row"><div class="k"><label for="wpass">Password</label><input id="wpass" type="password" autocomplete="new-password">
+        <small>Blank keeps the stored one. A single “-” clears it.</small></div></div>
       <div class="row"><div class="k"><small>Saving reboots the panel.</small></div>
         <div class="v"><button id="saveWifi" class="danger">Save &amp; reboot</button></div></div>
     </div>
 
     <h2>Proxy</h2>
     <div class="card">
-      <div class="row"><div class="k"><label>URL<input id="proxy" data-mono placeholder="http://192.168.1.50:8787"></label></div></div>
-      <div class="row"><div class="k"><label>Token<input id="token" data-mono placeholder="unchanged">
-        <small>Blank keeps the stored one. A single “-” clears it.</small></label></div></div>
+      <div class="row"><div class="k"><label for="proxy">URL</label><input id="proxy" data-mono placeholder="http://192.168.1.50:8787"></div></div>
+      <div class="row"><div class="k"><label for="token">Token</label><input id="token" data-mono placeholder="unchanged">
+        <small>Blank keeps the stored one. A single “-” clears it.</small></div></div>
       <div class="row"><div class="k">Reachability
         <small id="reach">Not tested.</small></div>
-        <div class="v"><button id="probe">Test</button></div></div>
+        <div class="v"><button id="probe" aria-label="Test proxy reachability">Test</button></div></div>
     </div>
 
     <h2>Region &amp; time</h2>
     <div class="card">
-      <div class="row"><div class="k">Broadcast region
+      <label class="row" for="rgn"><div class="k">Broadcast region
         <small>Which channel a game is on depends where you are.</small></div>
-        <div class="v"><select id="rgn" style="width:200px"></select></div></div>
-      <div class="row"><div class="k">Time zone
+        <div class="v"><select id="rgn" style="width:200px"></select></div></label>
+      <label class="row" for="tz"><div class="k">Time zone
         <small id="tznow2">The panel's own clock is shown under Alerts — check it after saving.</small></div>
-        <div class="v"><select id="tz" style="width:220px"></select></div></div>
+        <div class="v"><select id="tz" style="width:220px"></select></div></label>
     </div>
 
     <h2>Display</h2>
     <div class="card">
-      <div class="row"><div class="k">Density
+      <div class="row"><div class="k" id="densLabel">Density
         <small>Auto follows the number of games: roomy when quiet, dense when busy.</small></div>
-        <div class="v"><div class="seg" id="dens"></div></div></div>
-      <div class="row"><div class="k">Clock</div>
-        <div class="v"><div class="seg" id="clk"></div></div></div>
+        <div class="v"><div class="seg" id="dens" role="group" aria-labelledby="densLabel"></div></div></div>
+      <div class="row"><div class="k" id="clkLabel">Clock</div>
+        <div class="v"><div class="seg" id="clk" role="group" aria-labelledby="clkLabel"></div></div></div>
     </div>
-    <div class="row"><div class="v"><button id="saveNet">Save</button></div></div>
+    <div class="row"><div class="v"><button id="saveNet" class="primary">Save</button></div></div>
   </section>
 
   <!-- DIAGNOSTICS -->
   <section class="view" id="v-diag">
     <h2>Diagnostics <span class="host" id="diagAge"></span></h2>
-    <div class="grid four" id="diagStats"></div>
-    <h2>Detail</h2>
-    <div class="card"><div class="wrapx"><table id="diagTable"><tbody></tbody></table></div></div>
-    <div class="card" style="margin-top:18px">
-      <div class="row">
-        <div class="k">Live panel preview
-          <small>A screenshot of the panel's own 800&times;480 screen, streamed into this page.
-            1.15 MB, and it blocks the display for about two seconds &mdash; manual only.</small></div>
-        <div class="v"><button id="mirBtn">Capture</button></div>
+
+    <div class="card">
+      <div class="mirror-hero-head">
+        <div>
+          <p class="mirror-hero-title">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
+              <circle cx="12" cy="14" r="3.6"></circle>
+            </svg>
+            Live panel preview
+          </p>
+          <p class="hint" style="margin:4px 0 0">A screenshot straight off the panel's own framebuffer —
+            800&times;480, ~1.15&nbsp;MB — and it blocks the display for about two seconds. Manual only, never polled.</p>
+        </div>
+        <button id="mirBtn" class="primary">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+            style="margin-right:8px;vertical-align:-3px">
+            <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
+            <circle cx="12" cy="14" r="3.6"></circle>
+          </svg>
+          <span id="mirBtnLabel">Capture</span>
+        </button>
       </div>
-      <div class="mirror" id="mirWrap" hidden><img id="mirImg" alt="Live panel screenshot"></div>
+
+      <div class="device-frame" id="mirFrame" data-state="idle">
+        <div class="device-bezel">
+          <div class="device-screen" id="mirWrap">
+            <img id="mirImg" alt="Live panel screenshot">
+            <div class="device-placeholder" id="mirPlaceholder">
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
+                <circle cx="12" cy="14" r="3.6"></circle>
+              </svg>
+              <span id="mirPlaceholderText">No capture yet — tap Capture to see what's on the panel right now.</span>
+            </div>
+          </div>
+          <div class="device-chin"><span class="device-led"></span>ScoreDeck</div>
+        </div>
+      </div>
       <p class="hint" id="mirHint" hidden></p>
     </div>
+
+    <h2>At a glance</h2>
+    <div class="grid four" id="diagStats"></div>
+    <h2>Detail</h2>
+    <div class="card"><div class="wrapx"><table id="diagTable">
+      <caption class="sr-only">Diagnostic detail values</caption>
+      <tbody></tbody></table></div></div>
     <p class="hint">Every counter here has a real increment site in the firmware. Anything
       not yet wired shows a dash rather than a zero — a zero you cannot trust is worse than
       no number, and it has cost this project days before.</p>
@@ -268,10 +422,10 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
 
     <h2>Portal access</h2>
     <div class="card"><div class="row">
-      <div class="k"><label>Password<input id="ppass" type="password" autocomplete="new-password">
+      <div class="k"><label for="ppass">Password</label><input id="ppass" type="password" autocomplete="new-password">
         <small>Protects this page and firmware updates. Blank keeps, “-” clears.
-          You can also clear it on the panel itself.</small></label></div>
-      <div class="v"><button id="savePass">Set</button></div>
+          You can also clear it on the panel itself.</small></div>
+      <div class="v"><button id="savePass" class="primary">Set</button></div>
     </div></div>
 
     <h2>Danger zone</h2>
@@ -284,12 +438,40 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
       </div>
     </div></div>
   </section>
-</div>
+</main>
 
 <script>
 const $ = s => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c;
   if (x != null) n.textContent = x; return n; };
+const SVGNS = 'http://www.w3.org/2000/svg';
+function svgIcon(d, size) {
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', size || 22);
+  svg.setAttribute('height', size || 22);
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.6');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS(SVGNS, 'path');
+  p.setAttribute('d', d);
+  svg.append(p);
+  return svg;
+}
+// Small reusable "nothing here yet" block — an icon plus a line of copy,
+// used anywhere a list can legitimately be empty (favourites, search, board).
+function emptyState(msg, d) {
+  const box = el('div', 'empty');
+  box.append(svgIcon(d || 'M4 19V5a2 2 0 012-2h9l5 5v11a2 2 0 01-2 2H6a2 2 0 01-2-2z M9 13h6 M9 17h6 M13 3v6h6', 26));
+  box.append(el('span', '', msg));
+  return box;
+}
+function bannerIcon() {
+  return svgIcon('M12 9v4M12 17h.01M10.3 3.9L2.6 18a1.8 1.8 0 001.5 2.7h15.8a1.8 1.8 0 001.5-2.7L13.7 3.9a1.8 1.8 0 00-3.4 0z', 18);
+}
 const VIEWS = [['board','Board'],['teams','Teams'],['alerts','Alerts'],
                ['network','Network'],['diag','Diagnostics'],['system','System']];
 let CFG = {}, CAT = null, busy = false;
@@ -309,7 +491,8 @@ function paintNet(s) {
   $('#net').textContent = ['booting','no wi-fi','no proxy','error','live','stale'][s.net] || '?';
 }
 function toast(msg, bad) {
-  const b = el('div', 'banner ' + (bad ? 'bad' : 'warn'), msg);
+  const b = el('div', 'banner ' + (bad ? 'bad' : 'warn'));
+  b.append(bannerIcon(), el('span', '', msg));
   $('#warn').prepend(b);
   setTimeout(() => b.remove(), 4000);
 }
@@ -318,8 +501,11 @@ function toast(msg, bad) {
 function route() {
   const id = (location.hash.replace('#/', '') || 'board');
   VIEWS.forEach(([v]) => {
-    $('#v-' + v).classList.toggle('on', v === id);
-    $('#nav a[href="#/' + v + '"]').classList.toggle('on', v === id);
+    const on = v === id;
+    $('#v-' + v).classList.toggle('on', on);
+    const link = $('#nav a[href="#/' + v + '"]');
+    link.classList.toggle('on', on);
+    if (on) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
   });
   if (id === 'board') refreshBoard();
   if (id === 'diag') refreshDiag();
@@ -367,7 +553,7 @@ function countLeagues() {
     if (cb.checked && !auto.has(cb.dataset.slug)) n++;
   const lbl = document.getElementById('lgN');
   lbl.textContent = n ? (n + ' / 12' + (auto.size ? ' · ' + auto.size + ' by favourites' : '')) : '';
-  lbl.style.color = n >= 12 ? '#F2B441' : '';
+  lbl.style.color = n >= 12 ? 'var(--warn)' : '';
   for (const cb of document.querySelectorAll('#lgList input')) {
     if (auto.has(cb.dataset.slug)) { cb.checked = true; cb.disabled = true; continue; }
     if (!cb.checked) cb.disabled = n >= 12;
@@ -437,8 +623,8 @@ async function loadConfig() {
 
   if (!CFG.hasPass) {
     const b = el('div', 'banner warn');
-    b.append(el('span', '', 'No portal password. Anyone on this network can reflash this panel.'));
-    const go = el('button', '', 'Set one'); go.onclick = () => location.hash = '#/system';
+    b.append(bannerIcon(), el('span', '', 'No portal password. Anyone on this network can reflash this panel.'));
+    const go = el('button', 'primary', 'Set one'); go.onclick = () => location.hash = '#/system';
     b.append(go); $('#warn').append(b);
   }
   renderFavs();
@@ -449,8 +635,14 @@ const mins = s => { const [h, m] = (s || '0:0').split(':').map(Number); return h
 /* ---------- board ---------- */
 async function refreshBoard() {
   let s;
-  try { s = await api('/api/state'); } catch { return; }
+  try { s = await api('/api/state'); }
+  catch {
+    $('#net').className = 'pill bad'; $('#net').textContent = 'offline';
+    $('#boardAge').textContent = 'connection lost';
+    return;
+  }
   paintNet(s);
+  $('#boardAge').textContent = 'updated just now';
   const st = $('#stats'); st.textContent = '';
   [['Games', s.games], ['Live', s.live], ['Next poll', s.next + ' s'],
    ['Heap', ((s.heap / 1024) | 0) + ' K']].forEach(([k, v]) => {
@@ -458,18 +650,25 @@ async function refreshBoard() {
   });
 
   const tb = $('#board tbody'); tb.textContent = '';
-  (s.b || []).forEach(g => {
-    const tr = el('tr');
-    tr.append(el('td', '', g.l.toUpperCase()));
-    const td = el('td');
-    const sw = el('span', 'sw3'); sw.style.background = '#' + (g.ac || '5D6D7E');
-    td.append(sw, document.createTextNode(g.a + ' @ ' + g.h));
-    tr.append(td);
-    tr.append(el('td', '', g.g === 0 ? '–' : g.as + ' – ' + g.hs));
-    tr.append(el('td', '', g.st + (g.f ? '  ★' : '')));
-    tr.append(el('td', '', g.b || ''));
-    tb.append(tr);
-  });
+  if (!s.b || !s.b.length) {
+    const tr = el('tr'); const td = el('td', 'empty-cell'); td.colSpan = 5;
+    td.append(emptyState('No games right now.', 'M4 4h16v4H4z M4 10h7v10H4z M13 10h7v4h-7z M13 16h7v4h-7z'));
+    tr.append(td); tb.append(tr);
+  } else {
+    s.b.forEach(g => {
+      const tr = el('tr');
+      if (g.f) tr.classList.add('is-focus');
+      tr.append(el('td', '', g.l.toUpperCase()));
+      const td = el('td');
+      const sw = el('span', 'sw3'); sw.style.background = '#' + (g.ac || '5D6D7E');
+      td.append(sw, document.createTextNode(g.a + ' @ ' + g.h));
+      tr.append(td);
+      tr.append(el('td', '', g.g === 0 ? '–' : g.as + ' – ' + g.hs));
+      tr.append(el('td', '', g.st + (g.f ? '  ★' : '')));
+      tr.append(el('td', '', g.b || ''));
+      tb.append(tr);
+    });
+  }
 }
 
 /* ---------- teams ---------- */
@@ -488,7 +687,10 @@ function renderFavs() {
   const list = favList(), box = $('#favs');
   box.textContent = '';
   $('#favN').textContent = list.length + ' of 20';
-  if (!list.length) { box.append(el('p', 'hint', 'None yet. Search below, or type ids by hand.')); return; }
+  if (!list.length) {
+    box.append(emptyState('None yet. Search below, or type ids by hand.', 'M12 3v18M3 12h18'));
+    return;
+  }
   list.forEach((key, i) => {
     const it = el('div', 'item');
     const meta = nameFor(key);
@@ -497,9 +699,11 @@ function renderFavs() {
     sw.style.height = '28px';
     const nm = el('div', 'nm');
     nm.append(el('b', '', meta ? meta.n : key), el('span', '', meta ? meta.a + ' · ' + meta.lg : 'id only'));
-    const up = el('button', 'ghost', '↑'); up.style.minHeight = '38px';
+    const up = el('button', 'ghost icon-btn', '↑');
+    up.setAttribute('aria-label', 'Move ' + (meta ? meta.n : key) + ' up');
     up.onclick = () => { if (!i) return; const l = favList(); [l[i-1], l[i]] = [l[i], l[i-1]]; setFavs(l); };
-    const rm = el('button', 'ghost', '✕'); rm.style.minHeight = '38px';
+    const rm = el('button', 'ghost icon-btn', '✕');
+    rm.setAttribute('aria-label', 'Remove ' + (meta ? meta.n : key));
     rm.onclick = () => { const l = favList(); l.splice(i, 1); setFavs(l); };
     it.append(sw, nm, up, rm);
     box.append(it);
@@ -556,7 +760,7 @@ function search() {
   const q = $('#q').value.trim().toLowerCase(), box = $('#results');
   box.textContent = '';
   if (!q) return;
-  if (!CAT) { box.append(el('p', 'hint', 'Load the catalog first.')); return; }
+  if (!CAT) { box.append(emptyState('Load the catalog first.')); return; }
   let n = 0;
   for (const [lg, label, , teams] of CAT.t) {
     for (const [id, ab, nm, col] of teams) {
@@ -577,7 +781,7 @@ function search() {
       box.append(it);
     }
   }
-  if (!n) box.append(el('p', 'hint', 'Nothing matched.'));
+  if (!n) box.append(emptyState('Nothing matched.'));
 }
 $('#loadCat').onclick = loadCatalog;
 $('#saveRaw').onclick = () => postFavs();
@@ -675,7 +879,7 @@ $('#flash').onclick = () => {
 
 /* ---------- diagnostics ---------- */
 async function refreshDiag() {
-  let d; try { d = await api('/api/diag'); } catch { return; }
+  let d; try { d = await api('/api/diag'); } catch { $('#diagAge').textContent = 'connection lost'; return; }
   const g = $('#diagStats'); g.textContent = '';
   [['Heap free', ((d.heap / 1024) | 0) + ' K'], ['Largest block', ((d.largest / 1024) | 0) + ' K'],
    ['TLS gate', d.gate ? 'OPEN' : 'SHUT'], ['Wi-Fi', d.rssi + ' dBm']].forEach(([k, v]) => {
@@ -702,21 +906,32 @@ async function refreshDiag() {
 // The live panel preview. /screen.bmp is a 1.15 MB framebuffer read that
 // stalls the display ~2 s, so it is manual and never polled. Wired by property
 // assignment, not an inline handler — the CSP pins the script by hash and
-// blocks inline event attributes.
+// blocks inline event attributes. The device-frame's data-state attribute
+// drives every visual state (idle / loading / ready / error) from CSS.
 $('#mirBtn').onclick = () => {
-  const wrap = $('#mirWrap'), img = $('#mirImg'), hint = $('#mirHint'), btn = $('#mirBtn');
-  btn.disabled = true; btn.textContent = 'Capturing\u2026';
-  hint.hidden = false; hint.textContent = 'Reading the framebuffer \u2014 the panel will stutter for ~2 s.';
+  const frame = $('#mirFrame'), img = $('#mirImg'), ph = $('#mirPlaceholder'),
+        phText = $('#mirPlaceholderText'), hint = $('#mirHint'),
+        btn = $('#mirBtn'), label = $('#mirBtnLabel');
+  btn.disabled = true; label.textContent = 'Capturing…';
+  frame.dataset.state = 'loading';
+  hint.hidden = false;
+  hint.textContent = 'Reading the framebuffer — the panel will stutter for ~2 s.';
   const t0 = Date.now();
   img.onload = () => {
-    wrap.hidden = false; btn.disabled = false; btn.textContent = 'Refresh';
+    frame.dataset.state = 'ready';
+    img.style.display = 'block'; ph.style.display = 'none';
+    btn.disabled = false; label.textContent = 'Refresh';
     hint.textContent = 'Captured ' + new Date().toLocaleTimeString() +
-      ' \u00b7 ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s';
+      ' · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s · ~1.15 MB';
   };
   img.onerror = () => {
-    btn.disabled = false; btn.textContent = 'Capture';
-    hint.textContent = 'Capture failed \u2014 the panel may be busy. Try again in a moment.';
+    frame.dataset.state = 'error';
+    img.style.display = 'none'; ph.style.display = 'flex';
+    phText.textContent = 'Capture failed — the panel may be busy. Try again in a moment.';
+    btn.disabled = false; label.textContent = 'Capture';
+    hint.textContent = 'Capture failed — the panel may be busy.';
   };
+  img.style.display = 'none';
   img.src = '/screen.bmp?t=' + Date.now();
 };
 
@@ -733,6 +948,10 @@ function poll() {
 document.addEventListener('visibilitychange', poll);
 
 loadConfig().then(() => { route(); poll(); api('/api/state').then(paintNet).catch(() => {}); }).catch(e => {
-  document.body.prepend(el('div', 'banner bad', 'Could not load settings: ' + e.message));
+  const b = el('div', 'banner bad');
+  b.append(bannerIcon(), el('span', '', 'Could not load settings: ' + e.message));
+  document.body.prepend(b);
 });
 </script>
+</body>
+</html>
