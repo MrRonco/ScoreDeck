@@ -18,6 +18,9 @@ bool plateReady();
 void bloomInit();
 lv_obj_t* bloomCreate(lv_obj_t* parent, int w, int h);
 void bloomSet(lv_obj_t* o, uint32_t colour, lv_opa_t opa);
+/** Pre-composite the glow over `fill` in `colour` and draw it OPAQUE — no
+ *  runtime blend, so none of lv_color_mix's 26-level quantisation. */
+void bloomComposite(lv_obj_t* o, uint32_t colour, uint32_t fill);
 
 // ── motion ─────────────────────────────────────────────────────────────────
 // The live dots breathe, on ONE shared timer. See pulse.cpp for the repaint

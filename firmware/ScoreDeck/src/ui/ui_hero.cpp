@@ -256,6 +256,18 @@ void uiHeroInit(lv_obj_t* parent) {
   }
   // At the optical midpoint between the rows' ink, ending 16 px before the
   // score column so the digits never draw across it.
+  // Z-ORDER. Child order is creation order, and the blooms are created inside
+  // the per-side loop — so s_bloom[1] was created AFTER s_score[0] and, now
+  // that it is OPAQUE, would paint over the leading score's digits. Move both
+  // to sit directly above glassPanel's specular pair and below all content.
+  //
+  // Indices 2 and 3 specifically: glassRelayout() indexes the specular pair
+  // POSITIONALLY as children 0 and 1 (theme.cpp), so nothing may be inserted
+  // ahead of them. The bloom's opaque disc is capped at 0.80 of its radius so
+  // it cannot reach those strips from index 2 either.
+  for (int k = 0; k < 2; k++)
+    if (s_bloom[k]) lv_obj_move_to_index(s_bloom[k], 2 + k);
+
   hairline(s_root, HERO_PAD - 4, 131, HERO_W - 204);
 
   // Win probability, along the foot of the cell.
@@ -430,8 +442,10 @@ void uiHeroShow(int8_t gameIdx) {
                           ? teamInkFor(side[k]->color, si.fill) : 0xFFFFFFFFu;
     if (c_bloom[k] != glow) {
       c_bloom[k] = glow;
-      bloomSet(s_bloom[k], glow == 0xFFFFFFFFu ? 0 : glow,
-               glow == 0xFFFFFFFFu ? 0 : 200);
+      if (glow == 0xFFFFFFFFu) bloomSet(s_bloom[k], 0, 0);          // hide
+      // Pre-composited against the surface it is actually drawn on, so LVGL
+      // copies opaque pixels instead of blending — see bloomComposite().
+      else                     bloomComposite(s_bloom[k], glow, si.fill);
     }
 
     if (c_color[k] != side[k]->color) {

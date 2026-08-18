@@ -25,6 +25,7 @@
 #include "../config.h"
 #include <esp_heap_caps.h>
 #include <math.h>
+#include <string.h>
 
 // Generated at FINAL size. An earlier version generated 96 px and zoomed to
 // 220 with LV_IMG_SIZE_MODE_REAL and a 0,0 pivot; the sprite then landed well
@@ -34,8 +35,28 @@
 // 220x220x3 = 145 KB of PSRAM, once, against 8 MB.
 #define BLOOM_S 220
 
-static uint8_t*     s_buf;
+static uint8_t*     s_buf;          // the shared WHITE alpha sprite (soft path)
 static lv_img_dsc_t s_dsc;
+
+// PRE-COMPOSITED sprites, one per bloom object.
+//
+// The soft path above hands LVGL an alpha ramp and lets it blend at draw time,
+// and that blend is the whole problem: lv_color_mix quantises opacity to
+// (opa + 4) >> 3 — 26 levels — so a smooth radius collapses onto 26 outputs
+// and the falloff reads as rings. Dithering the alpha (see below) spreads the
+// boundaries but cannot add levels that the blend does not have.
+//
+// So this path does the blend OURSELVES, in 8-bit, against the known card
+// fill, dithers the INCREMENT, quantises once to RGB565 and hands LVGL an
+// OPAQUE image it can copy without blending. No runtime blend, no 26-level
+// quantisation, no rings.
+#define BLOOM_SLOTS 2
+static struct BloomSlot {
+  lv_obj_t*    obj;
+  uint8_t*     buf;
+  lv_img_dsc_t dsc;
+} s_slot[BLOOM_SLOTS];
+static uint8_t s_slotN;
 
 void bloomInit() {
   if (s_buf) return;
@@ -117,6 +138,32 @@ lv_obj_t* bloomCreate(lv_obj_t* parent, int w, int h) {
   if (!s_buf) return nullptr;
   lv_obj_t* o = lv_img_create(parent);
   lv_img_set_src(o, &s_dsc);
+
+  // Each bloom gets its OWN composited buffer: the two sides of a game are
+  // different teams, so a shared sprite cannot carry both pre-blended.
+  // Slots are REUSED, not consumed. uiHeroInit runs again on every rebuild
+  // (density change, rail toggle, settings close), so a create-once registry
+  // would hand the second build no buffer and the glow would silently never
+  // draw again — while leaking 145 KB of PSRAM per rebuild. Exactly
+  // BLOOM_SLOTS blooms are alive at a time, so slot k always belongs to the
+  // k-th bloom of the CURRENT build.
+  {
+    BloomSlot& sl = s_slot[s_slotN % BLOOM_SLOTS];
+    sl.obj = o;
+    if (!sl.buf) {
+      sl.buf = (uint8_t*)heap_caps_malloc(BLOOM_S * BLOOM_S * 3, MALLOC_CAP_SPIRAM);
+      if (sl.buf) {
+        memset(sl.buf, 0, BLOOM_S * BLOOM_S * 3);
+        sl.dsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+        sl.dsc.header.always_zero = 0;
+        sl.dsc.header.w = BLOOM_S;
+        sl.dsc.header.h = BLOOM_S;
+        sl.dsc.data_size = BLOOM_S * BLOOM_S * 3;
+        sl.dsc.data = sl.buf;
+      }
+    }
+    if (sl.buf) s_slotN++;
+  }
   // No zoom, no pivot, no size mode — the sprite is already the right size.
   (void)w; (void)h;
   lv_obj_clear_flag(o, LV_OBJ_FLAG_CLICKABLE);
@@ -136,4 +183,112 @@ void bloomSet(lv_obj_t* o, uint32_t colour, lv_opa_t opa) {
   lv_obj_set_style_img_recolor_opa(o, LV_OPA_COVER, 0);
   lv_obj_set_style_img_opa(o, opa, 0);
   lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
+
+
+/**
+ * Pre-composite this bloom over `fill` in the team's colour.
+ *
+ * Three things make this different from simply tinting the alpha sprite:
+ *
+ *  1. THE BLEND IS DONE HERE, in 8 bits, so the output is an opaque image and
+ *     LVGL never runs lv_color_mix over it. That is what removes the rings.
+ *  2. THE INCREMENT IS DITHERED, not the absolute value. Dithering the
+ *     absolute leaves a visible 220x220 textured patch, because the card fill
+ *     itself is not exactly representable in RGB565 and the noise therefore
+ *     lands on the flat background too. Dithering only the glow's CONTRIBUTION
+ *     means the noise scales to zero exactly where the glow does.
+ *  3. THE STENCIL IS ADAPTIVE. Alpha is 0 wherever the glow's contribution
+ *     would quantise away to the fill anyway — computed from THIS team's own
+ *     channel deltas — so the hard edge is provably invisible rather than
+ *     merely faint. The opaque disc is additionally capped well inside the
+ *     sprite so it can never reach the card's 1 px specular highlight or its
+ *     2 px bottom shade, which are drawn by glassPanel as children 0 and 1 and
+ *     must keep drawing OVER this (glassRelayout indexes them positionally, so
+ *     the bloom cannot be moved below them).
+ */
+void bloomComposite(lv_obj_t* o, uint32_t colour, uint32_t fill) {
+  BloomSlot* sl = nullptr;
+  for (uint8_t i = 0; i < s_slotN; i++) if (s_slot[i].obj == o) { sl = &s_slot[i]; break; }
+  if (!sl || !sl->buf) return;
+
+  const int fr = (fill >> 16) & 0xFF, fg = (fill >> 8) & 0xFF, fb = fill & 0xFF;
+  const int tr = (colour >> 16) & 0xFF, tg = (colour >> 8) & 0xFF, tb = colour & 0xFF;
+  const int dr = tr - fr, dg = tg - fg, db = tb - fb;
+
+  // One RGB565 step is 8 units of red/blue and 4 of green. The glow is
+  // invisible once every channel's contribution is under half a step.
+  int maxd = abs(dr) > abs(db) ? abs(dr) : abs(db);
+  if (abs(dg) * 2 > maxd) maxd = abs(dg) * 2;      // green's step is half
+  int thresh = maxd > 0 ? (4 * 255) / maxd : 255;  // alpha below this is a no-op
+  if (thresh < 6)   thresh = 6;
+  if (thresh > 40)  thresh = 40;
+
+  static const uint8_t kBayer4[16] = { 0, 8, 2, 10, 12, 4, 14, 6,
+                                       3, 11, 1,  9, 15, 7, 13, 5 };
+  const float c = (BLOOM_S - 1) / 2.0f;
+
+  // Where this sprite sits inside the card, so the opaque region can be kept
+  // OFF the specular pair. glassPanel draws a 1 px highlight at the top of the
+  // content area and a 2 px shade at the bottom, as children 0 and 1; they
+  // must keep drawing over the bloom, and an opaque pixel there would punch a
+  // hole in the highlight (the disc overlaps ~100 px of it).
+  const int yOff  = lv_obj_get_y(o);
+  lv_obj_t* par   = lv_obj_get_parent(o);
+  const int cardH = par ? lv_obj_get_height(par) : 0;
+
+  for (int y = 0; y < BLOOM_S; y++) {
+    const int cardY = yOff + y;
+    const bool onSpecular = cardH && (cardY < 3 || cardY > cardH - 5);
+    for (int x = 0; x < BLOOM_S; x++) {
+      const float dx = (x - c) / c, dy = (y - c) / c;
+      float r = sqrtf(dx * dx + dy * dy);
+      uint8_t* p = sl->buf + (y * BLOOM_S + x) * 3;
+
+      if (r >= 1.0f) { p[0] = 0; p[1] = 0; p[2] = 0; continue; }
+      const float f = (1.0f - r) * (1.0f - r);
+      // 200, not 255: the soft path drew this sprite at img_opa 200, and the
+      // pre-composited path has to reproduce the SAME intensity or the glow
+      // arrives 27% hotter and its gradient correspondingly steeper.
+      const float a = f * 200.0f;
+
+      // OPAQUE CORE: we did the blend ourselves, so LVGL copies these pixels
+      // and none of its 26-level opacity quantisation touches them. This is
+      // the part that removes the rings.
+      //
+      // SOFT RIM: past 0.92 of the radius — and anywhere the sprite crosses
+      // the specular strips — fall back to letting LVGL blend the team colour
+      // at the true alpha. Both paths compute the SAME ideal value; the rim's
+      // contribution is under two 565 steps, so quantising it costs nothing
+      // visible, and it keeps the seam from ever becoming a hard circle.
+      if (r < 0.92f && !onSpecular && a >= (float)thresh) {
+        const float t = (kBayer4[(y & 3) * 4 + (x & 3)] + 0.5f) / 16.0f - 0.5f;
+        // Dither the INCREMENT, each channel by half its own 565 step. The
+        // absolute value must not be dithered: the card fill is not exactly
+        // representable in 565, so that would texture the flat background too.
+        int rr = fr + (int)(dr * a / 255.0f + 8.0f * t + 0.5f);
+        int gg = fg + (int)(dg * a / 255.0f + 4.0f * t + 0.5f);
+        int bb = fb + (int)(db * a / 255.0f + 8.0f * t + 0.5f);
+        if (rr < 0) rr = 0; if (rr > 255) rr = 255;
+        if (gg < 0) gg = 0; if (gg > 255) gg = 255;
+        if (bb < 0) bb = 0; if (bb > 255) bb = 255;
+        const uint16_t v = (uint16_t)(((rr >> 3) << 11) | ((gg >> 2) << 5) | (bb >> 3));
+        p[0] = (uint8_t)(v & 0xFF);
+        p[1] = (uint8_t)(v >> 8);
+        p[2] = 0xFF;
+      } else {
+        const uint16_t v = (uint16_t)(((tr >> 3) << 11) | ((tg >> 2) << 5) | (tb >> 3));
+        p[0] = (uint8_t)(v & 0xFF);
+        p[1] = (uint8_t)(v >> 8);
+        p[2] = (uint8_t)(a + 0.5f);     // let LVGL blend the faint remainder
+      }
+    }
+  }
+
+  lv_img_set_src(o, &sl->dsc);
+  // The recolour must be OFF: the pixels already carry the team's colour.
+  lv_obj_set_style_img_recolor_opa(o, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_img_opa(o, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_invalidate(o);
 }
