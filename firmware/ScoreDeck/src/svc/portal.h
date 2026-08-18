@@ -115,7 +115,7 @@ button.primary:hover{filter:brightness(1.06)}
 button.primary:active{filter:brightness(.98)}
 button[disabled]{opacity:.45;cursor:default;filter:none}
 
-input,select{width:100%;min-height:var(--tap);padding:0 12px;background:var(--plate);
+input:not([type=checkbox]),select{width:100%;min-height:var(--tap);padding:0 12px;background:var(--plate);
   border:1px solid var(--edge);border-radius:var(--r);color:var(--ink);
   font:16px/1 var(--sans)}  /* 16px: iOS zooms the page below it */
 input[data-mono]{font-family:var(--mono);font-size:14px}
@@ -136,7 +136,7 @@ label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
 .seg button{border:0;border-radius:0;background:transparent;color:var(--ink3);min-height:44px}
 .seg button[aria-pressed=true]{background:var(--accent-dim);color:var(--accent);
   box-shadow:inset 0 0 0 1px rgba(94,234,212,.35)}
-.sw{appearance:none;width:52px;height:30px;border-radius:999px;background:var(--edge);
+.sw{appearance:none;-webkit-appearance:none;width:52px;height:30px;min-height:0;padding:0;border-radius:999px;background:var(--edge);
   border:1px solid var(--edge-hi);position:relative;cursor:pointer;transition:background .15s;flex:0 0 auto}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
   background:var(--ink2);transition:transform .15s,background .15s}
