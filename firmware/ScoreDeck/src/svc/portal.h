@@ -7,7 +7,7 @@
 // Served straight from flash with sendContent_P, so it costs no heap. That
 // matters more than it looks: the web server runs inside the same loop() that
 // drives the display, so response time IS panel stall time, and building this
-// page into a String first would put 32.6 KB through the allocator on
+// page into a String first would put 34.0 KB through the allocator on
 // every request.
 #pragma once
 #include <pgmspace.h>
@@ -57,6 +57,8 @@ nav a.on{background:var(--frost);color:var(--ink)}
 h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);
   font-weight:500;margin:26px 0 10px}
 .card{background:var(--frost2);border:1px solid var(--edge);border-radius:14px;
+.mirror{margin-top:14px;border-radius:12px;overflow:hidden;border:1px solid var(--edge);background:#04070E;line-height:0;box-shadow:0 12px 34px -14px rgba(0,0,0,.65)}
+.mirror img{width:100%;display:block}
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 28px rgba(0,0,0,.34);padding:6px 20px}
 .row{display:flex;align-items:center;gap:16px;min-height:var(--tap);padding:12px 0;
   border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap}
@@ -252,12 +254,16 @@ td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,25
     <div class="grid four" id="diagStats"></div>
     <h2>Detail</h2>
     <div class="card"><div class="wrapx"><table id="diagTable"><tbody></tbody></table></div></div>
-    <div class="card" style="margin-top:18px"><div class="row">
-      <div class="k">Mirror the panel
-        <small>1.15 MB, and it blocks the display for about two seconds. Manual only.</small></div>
-      <div class="v"><a class="btn" href="/screen.bmp" target="_blank"
-        style="display:inline-flex;align-items:center;text-decoration:none">Capture</a></div>
-    </div></div>
+    <div class="card" style="margin-top:18px">
+      <div class="row">
+        <div class="k">Live panel preview
+          <small>A screenshot of the panel's own 800&times;480 screen, streamed into this page.
+            1.15 MB, and it blocks the display for about two seconds &mdash; manual only.</small></div>
+        <div class="v"><button id="mirBtn">Capture</button></div>
+      </div>
+      <div class="mirror" id="mirWrap" hidden><img id="mirImg" alt="Live panel screenshot"></div>
+      <p class="hint" id="mirHint" hidden></p>
+    </div>
     <p class="hint">Every counter here has a real increment site in the firmware. Anything
       not yet wired shows a dash rather than a zero — a zero you cannot trust is worse than
       no number, and it has cost this project days before.</p>
@@ -706,6 +712,27 @@ async function refreshDiag() {
     tr.append(el('td', '', k), el('td', '', String(v))); tb.append(tr); });
   $('#diagAge').textContent = 'updated just now';
 }
+
+// The live panel preview. /screen.bmp is a 1.15 MB framebuffer read that
+// stalls the display ~2 s, so it is manual and never polled. Wired by property
+// assignment, not an inline handler — the CSP pins the script by hash and
+// blocks inline event attributes.
+$('#mirBtn').onclick = () => {
+  const wrap = $('#mirWrap'), img = $('#mirImg'), hint = $('#mirHint'), btn = $('#mirBtn');
+  btn.disabled = true; btn.textContent = 'Capturing\u2026';
+  hint.hidden = false; hint.textContent = 'Reading the framebuffer \u2014 the panel will stutter for ~2 s.';
+  const t0 = Date.now();
+  img.onload = () => {
+    wrap.hidden = false; btn.disabled = false; btn.textContent = 'Refresh';
+    hint.textContent = 'Captured ' + new Date().toLocaleTimeString() +
+      ' \u00b7 ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s';
+  };
+  img.onerror = () => {
+    btn.disabled = false; btn.textContent = 'Capture';
+    hint.textContent = 'Capture failed \u2014 the panel may be busy. Try again in a moment.';
+  };
+  img.src = '/screen.bmp?t=' + Date.now();
+};
 
 let timer;
 function poll() {
