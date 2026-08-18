@@ -124,9 +124,14 @@ static void revKill() {
   if (s_root) lv_obj_set_style_opa(s_root, LV_OPA_COVER, 0);
 }
 static void revTick(lv_timer_t* tm) {
+  // ONE rung, not three. Each rung repaints the whole 508x268 card AND the
+  // plate beneath it (bg_opa < COVER fails LV_EVENT_COVER_CHECK, so the
+  // background cannot be skipped), which cost ~245 ms of flush spread across
+  // three steps on a device whose first rule is that nothing may delay data.
   s_revStep++;
-  if (s_root) lv_obj_set_style_opa(s_root, s_revStep == 1 ? 170 : LV_OPA_COVER, 0);
-  if (s_revStep >= 2) { s_rev = nullptr; lv_timer_del(tm); }
+  if (s_root) lv_obj_set_style_opa(s_root, LV_OPA_COVER, 0);
+  s_rev = nullptr;
+  lv_timer_del(tm);
 }
 
 static void wpExec(void* var, int32_t v) {
@@ -510,7 +515,7 @@ void uiHeroShow(int8_t gameIdx) {
   if (!s_rootVis) { s_rootVis = true; lv_obj_clear_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
   if (appearing) {
     revKill();
-    lv_obj_set_style_opa(s_root, 85, 0);
+    lv_obj_set_style_opa(s_root, 150, 0);   // one visible rung, then COVER
     s_revStep = 0;
     s_rev = lv_timer_create(revTick, 80, nullptr);
   }

@@ -51,9 +51,16 @@ void bloomInit() {
       // QUADRATIC, not quartic — and this is an RGB565 constraint, not taste.
       //
       // The first version squared this again for a softer edge. It rendered,
-      // and it was invisible: blending the glow over the hero fill moves the
-      // blue channel by (255-66)*alpha/255, and RGB565's 5-bit blue needs a
-      // delta of 8 before ANY change survives quantisation. Quartic put the
+      // and it was invisible: RGB565's 5-bit blue needs a delta of 8 before
+      // ANY change survives quantisation, and a quartic falloff is under that
+      // for most of the radius.
+      //
+      // NOTE the arithmetic below is illustrative only. It was written as
+      // (255-66)*alpha/255 from THIS sprite's white blue channel, but
+      // lv_img_set_recolor replaces the sprite's colour with the team's
+      // before the blend runs, so the real delta depends on the team (for a
+      // deep-blue kit it is ~1 of 31, not 189). The CONCLUSION — quadratic,
+      // not quartic — is unaffected and was confirmed on the panel. Quartic put the
       // delta at 0.6 by three quarters of the radius, so everything outside
       // the middle third rounded away to exactly the card colour — which is
       // why the card fill measured identical 60 px either side of the digit.
@@ -64,7 +71,34 @@ void bloomInit() {
       // A gentler curve is not "less soft" here. On a 5-bit channel it is the
       // difference between a gradient and nothing at all.
       const float f = (1.0f - r) * (1.0f - r);
-      const uint8_t a = (uint8_t)(f * 255.0f + 0.5f);
+
+      // ORDERED DITHER on the alpha, for the same reason plate.cpp dithers:
+      // this is a gradient on a 5/6/5 panel. Alpha is the ONLY variable here
+      // and it feeds lv_color_mix, which quantises opacity to (opa + 4) >> 3
+      // — 26 blend levels, not 256 — so a wide span of radii collapses onto
+      // one output value and the falloff reads as concentric rings. Measured
+      // before this change: 16 flat colour bands across the glow, runs up to
+      // 67 px wide.
+      //
+      // The amplitude is exactly one blend step (8 units of opa_tmp = 10.24
+      // alpha units at the img_opa this sprite is drawn with), so each hard
+      // step edge becomes a 4x4 interleave of the two values that already
+      // bracket it. It cannot invent detail the channel cannot carry — the
+      // rim survives, and Phase 6 is what removes it — but it halves the
+      // visible run length for four lines and no runtime cost.
+      static const uint8_t kBayer4[16] = { 0, 8, 2, 10, 12, 4, 14, 6,
+                                           3, 11, 1,  9, 15, 7, 13, 5 };
+      uint8_t a;
+      if (f <= 0.0f) {
+        a = 0;                      // outside the disc stays exactly clear:
+                                    // dithering here would ring the boundary
+      } else {
+        const float t = (kBayer4[(y & 3) * 4 + (x & 3)] + 0.5f) / 16.0f - 0.5f;
+        float av = f * 255.0f + 10.24f * t;
+        if (av < 0.0f)   av = 0.0f;
+        if (av > 255.0f) av = 255.0f;
+        a = (uint8_t)(av + 0.5f);
+      }
 
       uint8_t* p = s_buf + (y * BLOOM_S + x) * 3;
       p[0] = 0xFF; p[1] = 0xFF;      // white RGB565; recolour supplies the hue
