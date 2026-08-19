@@ -107,11 +107,18 @@ void uiStandingsInit(lv_obj_t* parent) {
     lv_obj_add_flag(s_edge[r], LV_OBJ_FLAG_HIDDEN);
 
     s_rank[r]  = lb(card, 14, y + 6, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 22);
-    s_badge[r] = teamBadge(card, "", 0x5D6D7E, 22);
+    // 30, not 22. badgeLabelFit() allows (size-6)*16/125 glyphs, so a 22 px chip
+    // holds TWO — and every NHL/NFL/MLB abbreviation is three. F_MICRO is mono at
+    // 7.8125 px, so "FLA" measures 23.44 px inside a 22 px box: wider than its own
+    // container before the R_SM corners cut into it. This is the one screen where
+    // the chip IS the team — there is no logo blob and no city name beside it — so
+    // the fix grows the chip rather than truncating the mark. The 36 px row pitch
+    // has the room: 30 leaves 3 px above and a clear pixel below the cut rule.
+    s_badge[r] = teamBadge(card, "", 0x5D6D7E, 30);
     lv_obj_set_pos(s_badge[r], 44, y + 3);
     s_badgeLbl[r] = lv_obj_get_child(s_badge[r], 0);
     // Team names are upstream prose — Munchen, Atletico, Besiktas.
-    s_team[r]  = lb(card, 74, y + 5, C_INK, F_BODY);
+    s_team[r]  = lb(card, 80, y + 5, C_INK, F_BODY);
     for (uint8_t c = 0; c < ST_MAX_COLS; c++)
       s_cell[r][c] = lb(card, 0, y + 5, C_INK2, F_NUM, LV_TEXT_ALIGN_RIGHT, 58);
 
@@ -195,7 +202,11 @@ void uiStandingsRender() {
     lv_label_set_text(s_rank[r], n);
     lv_obj_clear_flag(s_badge[r], LV_OBJ_FLAG_HIDDEN);
     teamBadgeSet(s_badge[r], row.color);
-    lv_label_set_text(s_badgeLbl[r], row.abbr);
+    // Through the guard, never raw: badgeLabelFit() is what keeps a mark inside
+    // its chip, and this was one of four label sites that bypassed it.
+    char fit[6];
+    badgeLabelFit(fit, sizeof fit, row.abbr, 30);
+    lv_label_set_text(s_badgeLbl[r], fit);
     lv_label_set_text(s_team[r], row.name);
 
     // A followed team keeps the edge light it has on the board.

@@ -295,8 +295,15 @@ void uiHeroInit(lv_obj_t* parent) {
   s_footDot = dot(s_root, HERO_PAD, 224);
   s_foot    = lab(s_root, HERO_PAD + 14, 218, C_LIVE, F_NUM, 180);
   s_footR   = lab(s_root, HERO_W - 164, 218, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
-  s_play    = lab(s_root, HERO_PAD, 240, HI().ink2, F_MICRO, HERO_W - 2 * HERO_PAD);
-  lv_obj_set_style_text_letter_space(s_play, 1, 0);
+  // F_BODY, not F_MICRO. This line is upstream prose — "Matthews (24) PP, from
+  // Marner", and on any European or Nordic roster "Ødegaard", "Hedström",
+  // "Kanté". font_micro13 is ASCII 0x20-0x7E only, so every one of those
+  // renders as a hollow box with no warning; theme.h's own rule is that a
+  // string which can come from upstream needs F_BODY. ui_game.cpp:140 already
+  // draws this exact field in F_BODY, so the two screens disagreed about the
+  // same sentence. The letter_space belonged to the 13 px chrome face and is
+  // dropped with it — F_BODY is set at its designed tracking.
+  s_play    = lab(s_root, HERO_PAD, 240, HI().ink2, F_BODY, HERO_W - 2 * HERO_PAD);
 
   // Caches must match the objects' real state at build time, or the first
   // update sees a match and skips the write it was meant to make cheap.

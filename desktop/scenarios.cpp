@@ -390,7 +390,13 @@ void scenarioApply(int n) {
                         "TOR", 3, 0x00205B, "Sportsnet", true);
       feat.situation = 0x04;                     // power play
       feat.winProbHome = 71;                     // drawn on the hero's foot
-      strncpy(feat.lastPlay, "Matthews (24) PP, from Marner", sizeof feat.lastPlay - 1);
+      // Accented on purpose. The hero drew this line in an ASCII-only face and
+      // nothing caught it, because every fixture in this file was ASCII — so
+      // `make lint`, which walks the live object tree asking "can this label's
+      // font draw this label's text", had nothing to fail on. A real roster
+      // has Ødegaard, Hedström and Kanté in it; the harness now does too.
+      strncpy(feat.lastPlay, "Ødegaard (24) PP, from Hedström",
+              sizeof feat.lastPlay - 1);
       push("nfl", GS_LIVE,  "Q2 11:03",  "BUF", 14, 0x00338D, "KC", 21, 0xE31837, "CBS")
         .situation = 0x02;                       // red zone
       push("nhl", GS_LIVE,  "1st 18:44", "EDM", 1, 0xFF4C00, "CGY", 0, 0xC8102E, "SN");

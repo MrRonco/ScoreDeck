@@ -115,7 +115,20 @@ void uiGameInit(lv_obj_t* parent) {
   }
 
   // ── scoring plays ────────────────────────────────────────────────────────
-  lv_obj_t* pc = glassPanel(s_root, 16, 190, 468, 242, 12);
+  //
+  // 520 wide, not 468. The two cards below split the row by their box sizes
+  // rather than by what they carry: the scoring column ellipsised FIVE of five
+  // plays — "Matthews (24) Power Play, from Marner and Nyland" losing half its
+  // characters — while the stats card beside it centred a four-glyph key in a
+  // 128 px box. The plays are prose that has to be read; the stats are three
+  // short columns. The width follows the content.
+  //
+  // Sized from the type bound, per the rule at :132 below: statK is char[10],
+  // so the widest key the type permits is 9 glyphs of F_MICRO's 7.8125 px
+  // advance = 70.3 px. The stats card is therefore 14 + 60 + 8 + 72 + 8 + 60 +
+  // 14 = 236, pinned to the 784 right frame, and the scoring card takes the
+  // rest of the row less the 12 px gutter.
+  lv_obj_t* pc = glassPanel(s_root, 16, 190, 520, 242, 12);
   lv_obj_t* ph = lb(pc, 16, 12, C_INK3, F_MICRO);
   lv_label_set_text(ph, "SCORING");
   for (int i = 0; i < PLAY_ROWS; i++) {
@@ -138,20 +151,38 @@ void uiGameInit(lv_obj_t* parent) {
     s_playT[i] = lb(pc, 26, y, C_INK3, F_MICRO, LV_TEXT_ALIGN_LEFT, 82);
     lv_label_set_long_mode(s_playT[i], LV_LABEL_LONG_DOT);
     s_playX[i] = lb(pc, 114, y, C_INK2, F_BODY);   // play text names players
-    lv_obj_set_width(s_playX[i], 278);
+    // 326, up from 278 (+17.3%). The card's inner right edge is 520-16 = 504,
+    // the score column takes the last 56, and 8 px separates them.
+    lv_obj_set_width(s_playX[i], 326);
+    // TWO lines, because one cannot be enough at any width this row can have.
+    // GameDetail::playX is char[73], and a real play — "Auston Matthews scores
+    // on a wrist shot from the slot, assisted by Nylander" — is 74 characters,
+    // roughly 500 px of F_BODY. The row is 520 px wide in total and has to
+    // carry a clock and a score as well, so widening alone could never do it:
+    // before this change five of five plays ellipsised, one of them losing
+    // half its text. Two lines at 326 px carry ~650 px of prose, which clears
+    // the type bound. The 40 px row pitch already had the room (2 x 19 = 38).
+    // LONG_DOT stays: if a future string overruns even two lines it must say
+    // so rather than silently paint over the row below it.
+    lv_obj_set_height(s_playX[i], 2 * (int)lv_font_get_line_height(F_BODY));
     lv_label_set_long_mode(s_playX[i], LV_LABEL_LONG_DOT);
-    s_playS[i] = lb(pc, 396, y, C_INK, F_MICRO, LV_TEXT_ALIGN_RIGHT, 56);
+    s_playS[i] = lb(pc, 448, y, C_INK, F_MICRO, LV_TEXT_ALIGN_RIGHT, 56);
   }
 
   // ── team comparison ──────────────────────────────────────────────────────
-  lv_obj_t* sc = glassPanel(s_root, 496, 190, 288, 242, 12);
+  lv_obj_t* sc = glassPanel(s_root, 548, 190, 236, 242, 12);
   lv_obj_t* sh = lb(sc, 16, 12, C_INK3, F_MICRO);
   lv_label_set_text(sh, "TEAM STATS");
   for (int i = 0; i < STAT_ROWS; i++) {
     const int y = 40 + i * 33;
     s_statA[i] = lb(sc, 14, y, C_INK2, F_MICRO, LV_TEXT_ALIGN_LEFT, 60);
-    s_statK[i] = lb(sc, 80, y, C_INK3, F_MICRO, LV_TEXT_ALIGN_CENTER, 128);
-    s_statH[i] = lb(sc, 214, y, C_INK, F_MICRO, LV_TEXT_ALIGN_RIGHT, 60);
+    // 72, from the type bound (statK is char[10] = 9 glyphs = 70.3 px), not
+    // from the fixture in front of us — "SOG"/"PP"/"FO%" are four glyphs and
+    // sizing to those is how the 128 px box got a 31 px word in it. LONG_DOT
+    // so a longer key ellipsises instead of running into the home value.
+    s_statK[i] = lb(sc, 82, y, C_INK3, F_MICRO, LV_TEXT_ALIGN_CENTER, 72);
+    lv_label_set_long_mode(s_statK[i], LV_LABEL_LONG_DOT);
+    s_statH[i] = lb(sc, 162, y, C_INK, F_MICRO, LV_TEXT_ALIGN_RIGHT, 60);
   }
 
   // ── win probability ──────────────────────────────────────────────────────

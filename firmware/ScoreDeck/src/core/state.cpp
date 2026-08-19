@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Franco Raso
 #include "state.h"
 #include <Preferences.h>
+#include <ctype.h>
 #include <esp_heap_caps.h>
 #include <time.h>
 
@@ -246,6 +247,48 @@ void situationText(const Game& g, char* out, size_t cap, bool compact) {
     if (s & 0x04)           snprintf(out, cap, compact ? "PP" : "POWER PLAY");
     else if (sitRedZone(s)) snprintf(out, cap, compact ? "RZ" : "RED ZONE");
   }
+}
+
+/**
+ * The broadcaster, for a column that cannot hold it.
+ *
+ * Same shape and same rule as situationText()'s compact vocabulary: a short
+ * form only when the slot genuinely cannot carry the full string.
+ *
+ * The slot is 113 px on Standard and 48 px on Dense — five glyphs of F_NUM's
+ * 9.0 px mono. An ellipsis reports THAT something was cut but not WHAT: at
+ * five glyphs "Prime V…" and "Paramou…" are the same word to a glancing
+ * viewer, and "MLB.TV" becomes "MLB.T…", which is worse than "MLB". A short
+ * name is a decision; a truncation is a shrug.
+ *
+ * Deliberately a small table plus one rule, not a general abbreviator. The
+ * fallback keeps the FIRST word, because the first word is the network and
+ * the rest is the feed ("SN Ontario" -> "SN", "CBS Sports" -> "CBS"). A first
+ * word that is still too long falls through to the label's own ellipsis,
+ * which is the honest answer when there is no better one.
+ */
+void broadcastText(const char* src, char* out, size_t cap, bool compact) {
+  out[0] = '\0';
+  if (!src || !src[0] || cap < 2) return;
+  if (!compact) { snprintf(out, cap, "%s", src); return; }
+
+  static const struct { const char* full; const char* brief; } kBrief[] = {
+    { "Prime Video", "PRIME" }, { "Apple TV+",   "APPLE" },
+    { "Paramount+",  "PARA"  }, { "Peacock",     "PCOCK" },
+    { "Sportsnet",   "SN"    }, { "MLB.TV",      "MLB"   },
+    { "NHL Network", "NHLN"  }, { "NFL Network", "NFLN"  },
+    { "NBA TV",      "NBATV" }, { "YouTube",     "YT"    },
+  };
+  for (size_t i = 0; i < sizeof kBrief / sizeof kBrief[0]; i++) {
+    const char* a = src; const char* b = kBrief[i].full;
+    while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b)) { a++; b++; }
+    if (!*a && !*b) { snprintf(out, cap, "%s", kBrief[i].brief); return; }
+  }
+
+  size_t n = 0;
+  while (src[n] && src[n] != ' ') n++;
+  if (n <= 5 && n < cap) { memcpy(out, src, n); out[n] = '\0'; }
+  else                   snprintf(out, cap, "%s", src);
 }
 
 /**

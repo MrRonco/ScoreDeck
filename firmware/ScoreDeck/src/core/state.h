@@ -151,6 +151,10 @@ const char* tzForProxy();
  *  the note on the definition. */
 void situationText(const Game& g, char* out, size_t cap, bool compact = false);
 
+/** The broadcaster, shortened when the column cannot hold it. `compact` picks
+ *  a five-glyph vocabulary for Dense's 48 px slot — see the definition. */
+void broadcastText(const char* src, char* out, size_t cap, bool compact = false);
+
 /** Which league the TBL button opens. Never a field event — golf and F1 have
  *  a leaderboard, not a season table. See the definition. */
 const char* standingsLeague();

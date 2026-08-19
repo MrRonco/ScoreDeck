@@ -276,17 +276,42 @@ static void setNumCached(lv_obj_t* o, int32_t* cache, int32_t v) {
   snprintf(b, sizeof b, "%ld", (long)v);
   lv_label_set_text(o, b);
 }
+/** The bottom row's right-hand column, in px: 113 on Standard, 48 on Dense.
+ *  One definition, because buildTile(), the situation vocabulary and the
+ *  broadcast vocabulary all key off it and a drifted copy is how the comment
+ *  at buildTile() came to claim 55 px for a 48 px column. */
+static inline int tileRightW(const DensitySpec& d) {
+  return d.tileW - TILE_PAD_X - (TILE_PAD_X + 14 + STATUS_W + 8);
+}
+
 /**
- * Give the status the whole bottom row when nothing is sharing it.
+ * Give the status the room the right-hand column is not actually using.
  *
  * The reserve exists so a long status cannot run into the situation chip; with
  * an empty right-hand column there is nothing to run into, and holding 81 px
  * back only truncates. F1 sends "8/21 - 6:30 AM" for a scheduled session and
  * it printed as "8/21 -...".
+ *
+ * The reserve used to be all-or-nothing: 81 px whenever ANYTHING sat on the
+ * right, however short. So "2nd 00:04.7" (11 glyphs, 99 px) ellipsised at 81
+ * beside "SN" — two glyphs — with 63 px of empty row between them. The right
+ * label is right-aligned inside its own box, so its ink only ever occupies the
+ * rightmost `measured` pixels; everything left of that is free. Measure it and
+ * hand the remainder over, never dropping below the 81 px reserve so a chip
+ * that grows on the next poll still has its slot.
  */
-static void setStatusWidth(TileUI& t, const DensitySpec& d, bool rightInUse) {
-  const int leftX = TILE_PAD_X + 14;   // dot 6 + 8 — the row's second edge
-  const int w = rightInUse ? STATUS_W : (d.tileW - TILE_PAD_X - leftX);
+static void setStatusWidth(TileUI& t, const DensitySpec& d, const char* right) {
+  const int leftX  = TILE_PAD_X + 14;   // dot 6 + 8 — the row's second edge
+  const int full   = d.tileW - TILE_PAD_X - leftX;
+  int w = full;
+  if (right && right[0]) {
+    lv_point_t sz;
+    lv_txt_get_size(&sz, right, F_NUM, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    // The right box ends at the tile's inner edge; its ink starts sz.x before that.
+    w = full - sz.x - 8;                // 8 = SP_2, the row's one gutter
+    if (w < STATUS_W) w = STATUS_W;
+    if (w > full)     w = full;
+  }
   if (t.cStatusW == (int16_t)w) return;
   t.cStatusW = (int16_t)w;
   lv_obj_set_width(t.status, w);
@@ -506,10 +531,12 @@ static void buildTile(TileUI& t, int idx) {
   // status and the situation chip straight through each other.
   //
   // F_NUM is monospaced at exactly 9.0 px. The longest status the proxy sends
-  // is nine glyphs ("3rd 04:21"), so the left column is 81 px on every tile
-  // and the right-hand label takes whatever is left after a 12 px gutter:
-  // 117 px on Standard, 55 px on Dense. situationText() switches to a
-  // five-glyph vocabulary when that is all the room there is.
+  // is nine glyphs ("3rd 04:21"), so the left column reserves 81 px on every
+  // tile and the right-hand label takes whatever is left after the 8 px
+  // gutter: 248-16-119 = 113 px on Standard, 183-16-119 = 48 px on Dense.
+  // (The comment here used to say 117/55, which was arithmetic from an older
+  // gutter; the numbers matter because situationText() switches to its
+  // five-glyph vocabulary off this width.)
   const int rowY   = d.tileH - TILE_PAD_Y - 15;
   const int leftX  = TILE_PAD_X + 14;      // past the live dot's gutter (6 + 8)
   // Gutter 8 (SP_2): at Dense's 183 px the right column must still hold the
@@ -536,6 +563,13 @@ static void buildTile(TileUI& t, int idx) {
   // Fixed width plus the default LONG_WRAP clips mid-word: "Prime Video" drew
   // as "Prime Vid" with the rest simply gone. An ellipsis at least says that
   // something was cut. Confirmed in desktop scenario 3.
+  //
+  // LONG_DOT does nothing until the height is bounded too — the same omission
+  // the status label above was fixed for at :528, and it silently reappeared
+  // here. Unbounded, LVGL WRAPS: at Dense's 48 px "Prime Video" drew "Prime"
+  // on the row and the rest below the card's bottom edge, off the tile, with
+  // no ellipsis to say so. A viewer reads "Prime" as the broadcaster's name.
+  lv_obj_set_height(t.bcast, (int)lv_font_get_line_height(F_NUM));
   lv_label_set_long_mode(t.bcast, LV_LABEL_LONG_DOT);
   lv_obj_set_pos(t.bcast, rightX, rowY);
   lv_label_set_text(t.bcast, "");
@@ -1241,8 +1275,10 @@ void uiBoardRefresh() {
         lv_label_set_text(t.fldVal[k],  on ? F->rows[k].val : "");
       }
       setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
-      setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
-      setStatusWidth(t, d, g.bcast[0] != '\0');
+      char bc[20];
+      broadcastText(g.bcast, bc, sizeof bc, tileRightW(d) < SIT_FULL_W);
+      setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  bc);
+      setStatusWidth(t, d, bc);
       // State ink already applied above; a leaderboard has no leader side.
       setHiddenCached(t.sit,   &t.cSitVis,   true);
       setHiddenCached(t.bcast, &t.cBcastVis, false);
@@ -1272,11 +1308,25 @@ void uiBoardRefresh() {
       if (t.cSetMode != (int8_t)isSet) {
         if (k == 1) t.cSetMode = (int8_t)isSet;      // after both sides ran
         lv_obj_set_style_text_font(t.abbr[k], isSet ? F_BODY : F_TITLE, 0);
+        // The score reserve is model-aware, because 74 px is sized for a
+        // three-digit college basketball score and a set-scored match never
+        // shows one — the number in that box is the MATCH score, 0/1/2. Held
+        // at a flat 74 it took 74 px from the one model whose left column is
+        // prose rather than a three-letter abbreviation: at Dense the name box
+        // came out 183 - 52 - 68 = 63 px against a 74 px "N. Djokovic", so a
+        // tennis player rendered as "N....". (Note the 68 here never matched
+        // the 74 the box is actually built at, so the name could also run six
+        // pixels under the digits.) Gated on the mode changing, never on the
+        // score changing — a width write per goal is the invalidation
+        // pathology this gate exists to prevent.
+        const int sw = isSet ? 40 : 74;
+        lv_obj_set_width(t.score[k], sw);
+        lv_obj_set_x(t.score[k], d.tileW - TILE_PAD_X - sw);
         if (isSet) {
           // Tennis names are prose and must not run into the score column —
           // "N. Budkov Kjaer" touched the digits at 186 px on the real
           // overnight board. Width-gated; club abbreviations stay free.
-          lv_obj_set_width(t.abbr[k], d.tileW - (TILE_PAD_X + d.badge + 10) - 68);
+          lv_obj_set_width(t.abbr[k], d.tileW - (TILE_PAD_X + d.badge + 10) - sw - 8);
           lv_obj_set_height(t.abbr[k], (int)lv_font_get_line_height(F_BODY));
           lv_label_set_long_mode(t.abbr[k], LV_LABEL_LONG_DOT);
         } else {
@@ -1442,14 +1492,18 @@ void uiBoardRefresh() {
     }
 
     setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
-    setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
 
     // Compact when the right-hand column cannot hold the full vocabulary —
     // which on Dense it cannot. Derived from the same geometry buildTile used,
     // so the two can never disagree about how much room there is.
-    const int rightW = d.tileW - TILE_PAD_X - (TILE_PAD_X + 14 + STATUS_W + 8);
+    const int rightW = tileRightW(d);
+    const bool tight = rightW < SIT_FULL_W;
     char sit[20] = "";
-    situationText(g, sit, sizeof sit, rightW < SIT_FULL_W);
+    situationText(g, sit, sizeof sit, tight);
+    // The broadcaster gets the same treatment the situation string already had.
+    char bc[20];
+    broadcastText(g.bcast, bc, sizeof bc, tight);
+    setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  bc);
     setHiddenCached(t.sit,   &t.cSitVis,   !sit[0]);
     // Amber ONLY for structured leverage; every other situation string stays
     // in the state's ink. Change-cached: this runs for every tile every poll.
@@ -1461,7 +1515,9 @@ void uiBoardRefresh() {
       }
     }
     setHiddenCached(t.bcast, &t.cBcastVis,  sit[0] != '\0');
-    setStatusWidth(t, d, sit[0] != '\0' || g.bcast[0] != '\0');
+    // Whichever of the two actually occupies the slot is what the status has
+    // to clear — not merely whether SOMETHING does.
+    setStatusWidth(t, d, sit[0] ? sit : bc);
     if (sit[0]) setTextCached(t.sit, t.cSit, sizeof t.cSit, sit);
     else        t.cSit[0] = '\0';
 
