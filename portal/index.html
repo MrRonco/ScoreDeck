@@ -9,31 +9,99 @@
 <style>
 :root{
   /* Lifted from firmware/ScoreDeck/src/ui/theme.h so the two surfaces are the
-     same material. The panel has no accent colour because 3,000 team colours
-     arrive as content; here the only team colour is a 3px swatch in the
-     picker, so status colour is allowed — but only for state, never decor.
-     This page is a browser console, not the panel, so it additionally carries
-     one small teal accent (--accent) for its own chrome: primary actions,
-     focus rings, the "on" state of switches/segments. Never used for content. */
-  --plate:#0A0F18; --frost:#1A2432; --frost2:#141C28;
-  --ink:#F3F7FB; --ink2:#93A5B8; --ink3:#6E7E8F;
+     same material — and this time actually lifted. The header used to claim
+     parity while six of ten shared role tokens had drifted: --ink2 and --ink3
+     were hand-picked DARKER than the values theme.h solves for, which put 35
+     live elements below 4.5:1 on the one page whose whole job is explanation.
+     They are now theme.h's C_INK2/C_INK3 exactly, and --frost/--accent/--warn
+     are C_SURF_2/A_LIVE/S_ALERT.
+
+     --plate is the one deliberate divergence. The panel's C_PLATE #04070E is
+     near-black because it is an emissive panel in a dark room and every
+     surface above it has to read AS a surface. This is a document in a lit
+     room, usually beside other browser chrome, and #04070E reads as a hole
+     rather than a ground. #0A0F18 is the same hue, 3 L* up.
+
+     The panel has no accent colour because 3,000 team colours arrive as
+     content; here the only team colour is a 3px swatch in the picker, so
+     status colour is allowed — but only for state, never decor. This page is
+     a browser console, not the panel, so it additionally carries one small
+     teal accent (--accent) for its own chrome: primary actions, focus rings,
+     the "on" state of switches/segments. Never used for content.
+
+     Status colours are declared as CHANNELS, not hexes, so every tint and
+     border derives from one value. Retuning --bad used to mean editing
+     thirteen hand-written rgba() copies of it, which is how the error colour
+     came to be the dimmest and most saturated of the four. */
+  /* The surface ladder, bottom to top. --frost-hi was shipping as a bare
+     #202C3C on the button hover rule and was, unnamed, the highest elevation
+     on the page. */
+  --plate:#0A0F18; --frost2:#141C28; --frost:#1B2636; --frost-hi:#202C3C;
+  --ink:#F3F7FB; --ink2:#ACBCCE; --ink3:#8696A8;
   --edge:#2A3646; --edge-hi:#46566A;
-  --ok:#7FD4A0; --warn:#FFC061; --bad:#FF6472;
-  --accent:#5EEAD4; --accent-ink:#052422; --accent-dim:rgba(94,234,212,.14);
-  --r-xs:6px; --r:10px; --r-lg:16px; --r-xl:22px; --tap:44px;
-  --shadow-card:0 1px 0 rgba(255,255,255,.05) inset,0 10px 30px rgba(0,0,0,.32);
-  --shadow-pop:0 24px 60px -20px rgba(0,0,0,.65);
+
+  /* The device mock is a PICTURE OF THE PANEL, so it is the one place that
+     legitimately uses the firmware's own plate rather than this page's. */
+  --panel-plate:#04070E;
+  --bezel-1:#212C3A; --bezel-2:#141B25; --bezel-3:#0A0F16;
+
+  /* One line colour at several opacities, rather than several near-identical
+     whites — theme.h's C_LINE/OPA_HAIR rule, which this page had not adopted. */
+  --line-rgb:180 205 230;
+  --hair:rgb(var(--line-rgb) / .07);
+  --hair-2:rgb(var(--line-rgb) / .03);
+  --spec:rgb(var(--line-rgb) / .10);
+
+  --ok-rgb:127 212 160;
+  --warn-rgb:242 180 65;
+  /* #FF8E93, not #FF6472. The old error red measured 6.69:1 where the other
+     three status colours sat at 10.8-13.0 — the loudest colour on the page was
+     "healthy" and the quietest was "broken". This clears 8.72:1 and drops
+     chroma 64.4 -> 46.1 so it stops vibrating on the dark ground. It is also
+     deliberately NOT isoluminant with --ok: the .device-led is a bare 5 px dot
+     whose entire meaning is red-versus-green, and equal lightness there is the
+     textbook deuteranope failure. ~7 L* of separation is kept on purpose. */
+  --bad-rgb:255 142 147;
+  --accent-rgb:59 224 192;
+  --ok:rgb(var(--ok-rgb)); --warn:rgb(var(--warn-rgb)); --bad:rgb(var(--bad-rgb));
+  --accent:rgb(var(--accent-rgb));
+  --accent-ink:#052422; --accent-dim:rgb(var(--accent-rgb) / .14);
+  --accent-lift:#7BF3D8;                      /* the primary button's top stop */
+
+  /* 2/6/10/16/22 + a pill. The first two rungs are the panel's R_XS/R_SM; the
+     top two deliberately differ — a 44 px tap target needs a softer corner
+     than a 26 px chip, and this page has no 800x480 budget to answer to. */
+  --r-xs:2px; --r-sm:6px; --r:10px; --r-lg:16px; --r-xl:22px; --r-pill:999px;
+  --tap:44px;
+  --shadow-card:0 1px 0 var(--spec) inset,0 10px 30px rgb(0 0 0 / .32);
+  --shadow-pop:0 24px 60px -20px rgb(0 0 0 / .65);
   --ease:cubic-bezier(.2,.8,.2,1); --dur:.16s;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0;color:var(--ink);font:15px/1.55 var(--sans);
-  background:
-    radial-gradient(1100px 520px at 50% -12%,rgba(94,234,212,.07),transparent 60%),
-    var(--plate);
+body{margin:0;color:var(--ink);font:15px/1.55 var(--sans);background:var(--plate);
   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+/* The ambient, on a VIEWPORT-fixed layer rather than the body's own box.
+   Anchored to the body it was anchored to DOCUMENT height: the -12% centre
+   scales with the page, so the taller the page the further off-screen the
+   light went while its 312 px reach stayed fixed. It covered 57.9% of the
+   shortest view and 1.4% of Diagnostics, all of it behind the 107 px header —
+   i.e. there was nothing for glass to sit on exactly where there was most
+   content. Fixed, it is scroll- and length-independent.
+
+   Three lobes, and only ONE of them is teal, held at the .07 it already had.
+   This page's own rule two blocks up says teal is chrome and never content; a
+   full-viewport teal wash would have made the ambient the largest teal object
+   on the page and broken the rule the page is written to. The other two are
+   indigo and a cool neutral. */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(120% 90% at 12% -10%,rgb(var(--accent-rgb) / .07),rgb(var(--accent-rgb) / 0) 70%),
+    radial-gradient(110% 95% at 92% 6%,rgb(124 140 240 / .10),rgb(124 140 240 / 0) 72%),
+    radial-gradient(130% 100% at 50% 112%,rgb(126 156 196 / .09),rgb(126 156 196 / 0) 75%),
+    linear-gradient(180deg,rgb(124 140 240 / .022),rgb(126 156 196 / .038))}
 a{color:inherit}
 ::selection{background:var(--accent-dim);color:var(--ink)}
 
@@ -45,25 +113,25 @@ a{color:inherit}
 .skip:focus{top:12px}
 
 :is(a,button,.btn,input,select,[tabindex]):focus-visible{outline:2px solid var(--accent);
-  outline-offset:2px;border-radius:4px}
+  outline-offset:2px;border-radius:var(--r-xs)}
 
 .wrap{max-width:1180px;margin:0 auto;padding:0 20px 64px}
 header .wrap{padding-bottom:0}   /* the 64px tail is for page content, not the bar */
 
-header{position:sticky;top:0;z-index:5;background:rgba(10,15,24,.92);
+header{position:sticky;top:0;z-index:5;background:rgb(10 15 24 / .92);
   backdrop-filter:blur(12px);border-bottom:1px solid var(--edge)}
 .top{display:flex;align-items:center;gap:14px;padding:14px 0;flex-wrap:wrap}
 .brand{display:inline-flex;align-items:center;gap:9px;min-width:0}
 .brand-mark{color:var(--accent);flex:0 0 auto}
 .mark{font-weight:600;letter-spacing:.02em}
 .host{font:12px/1 var(--mono);color:var(--ink3)}
-.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:var(--r-pill);
   font:500 11px/1.6 var(--mono);text-transform:uppercase;margin-left:auto}
 .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto}
-.pill.ok{color:var(--ok);background:rgba(127,212,160,.1)}
+.pill.ok{color:var(--ok);background:rgb(var(--ok-rgb) / .1)}
 .pill.ok::before{animation:pulse 1.8s ease-in-out infinite}
-.pill.warn{color:var(--warn);background:rgba(255,192,97,.1)}
-.pill.bad{color:var(--bad);background:rgba(255,100,114,.1)}
+.pill.warn{color:var(--warn);background:rgb(var(--warn-rgb) / .1)}
+.pill.bad{color:var(--bad);background:rgb(var(--bad-rgb) / .1)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.32}}
 
 nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
@@ -80,7 +148,7 @@ h2 svg{color:var(--ink3);flex:0 0 auto}
 .card{background:var(--frost2);border:1px solid var(--edge);border-radius:var(--r-lg);
   box-shadow:var(--shadow-card);padding:2px 20px}
 .row{display:flex;align-items:center;gap:16px;min-height:var(--tap);padding:12px 0;
-  border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap}
+  border-top:1px solid var(--hair);flex-wrap:wrap}
 .row:first-child{border-top:0}
 .row .k{flex:1 1 220px;min-width:0}
 .row .k small{display:block;color:var(--ink3);font-size:12.5px;margin-top:2px}
@@ -90,12 +158,12 @@ label.row{cursor:pointer}
 button,.btn{min-height:var(--tap);padding:0 16px;border-radius:var(--r);
   border:1px solid var(--edge);background:var(--frost);color:var(--ink);
   font:500 14px/1 var(--sans);cursor:pointer;transition:background var(--dur),border-color var(--dur),transform var(--dur)}
-button:hover{background:#202C3C;border-color:var(--edge-hi)}
+button:hover{background:var(--frost-hi);border-color:var(--edge-hi)}
 button:active{transform:translateY(1px)}
-button.danger{border-color:rgba(255,100,114,.42);color:var(--bad)}
+button.danger{border-color:rgb(var(--bad-rgb) / .42);color:var(--bad)}
 button.ghost{background:transparent}
 button.icon-btn{min-width:var(--tap);padding:0;display:inline-flex;align-items:center;justify-content:center}
-button.primary{background:linear-gradient(180deg,#7BF3D8,var(--accent));border-color:transparent;
+button.primary{background:linear-gradient(180deg,var(--accent-lift),var(--accent));border-color:transparent;
   color:var(--accent-ink);font-weight:600}
 button.primary:hover{filter:brightness(1.06)}
 button.primary:active{filter:brightness(.98)}
@@ -122,8 +190,8 @@ label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
 .seg{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r);overflow:hidden}
 .seg button{border:0;border-radius:0;background:transparent;color:var(--ink3);min-height:44px}
 .seg button[aria-pressed=true]{background:var(--accent-dim);color:var(--accent);
-  box-shadow:inset 0 0 0 1px rgba(94,234,212,.35)}
-.sw{appearance:none;-webkit-appearance:none;width:52px;height:30px;min-height:0;padding:0;border-radius:999px;background:var(--edge);
+  box-shadow:inset 0 0 0 1px rgb(var(--accent-rgb) / .35)}
+.sw{appearance:none;-webkit-appearance:none;width:52px;height:30px;min-height:0;padding:0;border-radius:var(--r-pill);background:var(--edge);
   border:1px solid var(--edge-hi);position:relative;cursor:pointer;transition:background .15s;flex:0 0 auto}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
   background:var(--ink2);transition:transform .15s,background .15s}
@@ -134,29 +202,29 @@ label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
 table{width:100%;border-collapse:collapse;font:14px/1.5 var(--mono);font-variant-numeric:tabular-nums}
 th{text-align:left;font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
   color:var(--ink3);padding:0 12px 8px 0}
-td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,255,.05)}
-tbody tr:hover td{background:rgba(255,255,255,.02)}
-tr.is-focus td{background:rgba(94,234,212,.05)}
+td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid var(--hair)}
+tbody tr:hover td{background:var(--hair-2)}
+tr.is-focus td{background:rgb(var(--accent-rgb) / .05)}
 tr.is-focus td:first-child{border-left:3px solid var(--accent);padding-left:9px}
-.sw3{display:inline-block;width:3px;height:14px;border-radius:2px;vertical-align:-2px;margin-right:8px;flex:0 0 auto}
+.sw3{display:inline-block;width:3px;height:14px;border-radius:var(--r-xs);vertical-align:-2px;margin-right:8px;flex:0 0 auto}
 
 .banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-radius:var(--r-lg);
   padding:14px 18px;margin:16px 0;border:1px solid;font-size:14px;
   animation:slidein var(--dur) var(--ease)}
 .banner svg{flex:0 0 auto}
-.banner.warn{border-color:rgba(255,192,97,.4);background:rgba(255,192,97,.08);color:var(--warn)}
-.banner.bad{border-color:rgba(255,100,114,.4);background:rgba(255,100,114,.08);color:var(--bad)}
+.banner.warn{border-color:rgb(var(--warn-rgb) / .4);background:rgb(var(--warn-rgb) / .08);color:var(--warn)}
+.banner.bad{border-color:rgb(var(--bad-rgb) / .4);background:rgb(var(--bad-rgb) / .08);color:var(--bad)}
 .banner span{color:var(--ink)}
 .banner button{margin-left:auto}
 @keyframes slidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .hint{color:var(--ink3);font-size:13px;margin:10px 0 0}
-.bar{height:6px;border-radius:3px;background:var(--edge);overflow:hidden;margin:10px 0}
+.bar{height:6px;border-radius:var(--r-xs);background:var(--edge);overflow:hidden;margin:10px 0}
 .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .12s linear}
 .list{max-height:340px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--edge-hi) transparent}
 .list::-webkit-scrollbar,.wrapx::-webkit-scrollbar{width:8px;height:8px}
-.list::-webkit-scrollbar-thumb,.wrapx::-webkit-scrollbar-thumb{background:var(--edge-hi);border-radius:8px}
+.list::-webkit-scrollbar-thumb,.wrapx::-webkit-scrollbar-thumb{background:var(--edge-hi);border-radius:var(--r-sm)}
 .list::-webkit-scrollbar-track,.wrapx::-webkit-scrollbar-track{background:transparent}
-.item{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.05)}
+.item{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--hair)}
 .item:first-child{border-top:0}
 .item .nm{flex:1;min-width:0}
 .item .nm b{display:block;font-weight:500}
@@ -175,23 +243,23 @@ td.empty-cell{padding:0;border-top:0}
 .mirror-hero-title svg{color:var(--accent)}
 .device-frame{max-width:640px;margin:0 auto}
 .device-bezel{position:relative;padding:16px 16px 30px;border-radius:var(--r-xl);
-  background:linear-gradient(160deg,#212c3a,#141b25 55%,#0a0f16);
+  background:linear-gradient(160deg,var(--bezel-1),var(--bezel-2) 55%,var(--bezel-3));
   border:1px solid var(--edge-hi);
-  box-shadow:0 1px 0 rgba(255,255,255,.05) inset,var(--shadow-pop);
+  box-shadow:0 1px 0 var(--spec) inset,var(--shadow-pop);
   transition:border-color var(--dur)}
-.device-frame[data-state="error"] .device-bezel{border-color:rgba(255,100,114,.5)}
-.device-screen{position:relative;aspect-ratio:5/3;border-radius:10px;overflow:hidden;
-  background:#04070E;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),inset 0 24px 46px rgba(0,0,0,.55)}
+.device-frame[data-state="error"] .device-bezel{border-color:rgb(var(--bad-rgb) / .5)}
+.device-screen{position:relative;aspect-ratio:5/3;border-radius:var(--r);overflow:hidden;
+  background:var(--panel-plate);box-shadow:inset 0 0 0 1px var(--spec),inset 0 24px 46px rgb(0 0 0 / .55)}
 .device-screen img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
 .device-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:10px;color:var(--ink3);text-align:center;padding:20px;
-  background:radial-gradient(60% 60% at 50% 38%,rgba(255,255,255,.035),transparent)}
+  background:radial-gradient(60% 60% at 50% 38%,rgb(var(--line-rgb) / .05),transparent)}
 .device-placeholder svg{opacity:.5}
 .device-placeholder span{font-size:13px;max-width:230px;line-height:1.55}
 .device-frame[data-state="error"] .device-placeholder{color:var(--bad)}
 .device-frame[data-state="error"] .device-placeholder svg{opacity:.75}
 .device-frame[data-state="loading"] .device-screen::after{content:"";position:absolute;inset:0;
-  background:linear-gradient(100deg,transparent 15%,rgba(255,255,255,.08) 50%,transparent 85%);
+  background:linear-gradient(100deg,transparent 15%,rgb(var(--line-rgb) / .10) 50%,transparent 85%);
   background-size:250% 100%;animation:shimmer 1.4s linear infinite}
 @keyframes shimmer{0%{background-position:150% 0}100%{background-position:-50% 0}}
 .device-chin{position:absolute;left:0;right:0;bottom:8px;display:flex;align-items:center;
