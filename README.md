@@ -353,20 +353,92 @@ which is part of why a banding defect in the hero's glow survived an entire poli
 
 ---
 
-## The browser console & API
+## The browser console
 
-`http://scoredeck.local/` serves a single-page console — board mirror, settings, diagnostics, a live
-panel preview that streams the device's own framebuffer into the page, and OTA upload.
+`http://scoredeck.local/` serves a full console for the device — every setting the panel has,
+plus the things a screen you tap with a fingertip is bad at: typing a proxy URL, pasting a token,
+reading diagnostics, and shipping firmware.
+
+<div align="center">
+
+<img src="docs/img/web-diagnostics.png" width="820" alt="The Diagnostics view: a live panel preview showing the device's real board of ten live games inside a device frame, above heap, largest block, TLS gate and Wi-Fi tiles and a detail table">
+
+<sub><b>The live panel preview — the console's headline.</b> <b>Capture</b> reads the device's own
+framebuffer over <code>GET /screen.bmp</code> and drops it into the page inside a device frame, so
+you can see exactly what is on the glass from anywhere on the network. That is the panel's real
+board above: ten live games, real marks, at 9:40 PM. It is <b>manual and never polled</b>, and the
+UI says why — the readback is 1.15 MB and stalls the display for about two seconds, so a
+"refresh every 5 s" toggle would be a way to make the product worse. Below it, every counter has a
+real increment site in the firmware; anything not yet wired shows a dash rather than a zero,
+because a zero you cannot trust is worse than no number.</sub>
+
+<img src="docs/img/web-board.png" width="820" alt="The Board view: tiles for games, live and next-poll counters, and a table of every game with league, matchup, score, status and broadcaster">
+
+<sub><b>Board.</b> What the panel is showing, as a table you can actually scan — with the same
+team-colour accent bar the tiles use, and a star on followed teams. It refreshes every 10 seconds
+<b>only while the tab is visible</b>: this is a microcontroller, and a forgotten background tab is
+a real load on it.</sub>
+
+<img src="docs/img/web-teams.png" width="820" alt="The Teams view for choosing followed teams">
+<img src="docs/img/web-alerts.png" width="820" alt="The Alerts view with score alert and tense-game toggles and quiet hours">
+
+<sub><b>Teams and Alerts.</b> Favourites are searched from a catalog the proxy builds — and
+validated on arrival, since those strings come off the network — then cached so the picker still
+works when the proxy does not. Quiet hours silence takeovers overnight without stopping the board.</sub>
+
+<img src="docs/img/web-network.png" width="820" alt="The Network view with Wi-Fi, proxy URL, token, region and time zone fields">
+<img src="docs/img/web-system.png" width="820" alt="The System view with firmware version, an OTA file picker, the portal password field and a danger zone">
+
+<sub><b>Network and System.</b> The proxy URL and bearer token are far easier to get right with a
+keyboard than a touch keypad, which is most of why this console exists. Secrets follow one rule
+everywhere: <b>blank keeps what is stored, a single <code>-</code> clears it</b> — the fields are
+never populated with the current value, so the page cannot leak one. System carries the OTA
+upload and the destructive actions, fenced off in their own zone.</sub>
+
+<img src="docs/img/web-mobile.png" width="330" alt="The console at phone width, with the navigation and cards reflowed into a single column">
+
+<sub><b>And it reflows to a phone</b> — which matters because the one time you urgently need the
+console is the one time you are not at your desk. Tap targets are 44 px, and the whole thing is
+mobile-first rather than a desktop layout squeezed down.</sub>
+
+</div>
+
+**How it is built, and why that shape.** The console is a **single self-contained HTML file served
+straight out of flash** with `sendContent_P`, so it costs the device no heap to serve — which
+matters because the web server shares the same loop that drives the display, and response time *is*
+panel stall time. There is no build step, no framework, and **no external resources at all**: no
+CDN, no web fonts, no remote images. The device serves exactly one page and can serve nothing else.
+
+That also makes the security posture simple to state. The page carries **one inline `<script>`,
+pinned by SHA-256 hash in the Content-Security-Policy** — not `unsafe-inline` — so an injected
+inline handler cannot execute even if a string ever escaped escaping. There are no inline
+`onclick=` attributes anywhere; every interaction is wired in that one script. Anything arriving
+from the network is written with `textContent`, never `innerHTML`.
+
+### API
+
+Everything the console does is available directly. Authentication is HTTP **Digest** once a portal
+password is set.
 
 | Endpoint | Purpose |
 |---|---|
 | `GET`/`POST` `/api/config` | Read or write every setting |
+| `POST /api/favs` · `/api/leagues` | Followed teams; leagues on the board |
 | `GET /api/state` | The board as JSON |
-| `GET /api/diag` | Heap, largest block, RSSI, poll age/latency, reset reason, declines |
-| `GET /api/probe` | Device-side fetch test — "is it my firewall or the firmware?" |
-| `GET /api/relay?p=` | Fetch one allow-listed proxy path *through* the device |
-| `GET /screen.bmp` | The live 800×480 framebuffer |
-| `POST /update` | OTA firmware upload (requires a portal password) |
+| `GET /api/diag` | Heap, largest block, TLS gate, RSSI, poll age/code/latency, declines, board counts |
+| `GET /api/probe` | Device-side fetch test — settles "is it my firewall or your firmware?" |
+| `GET /api/relay?p=` | Fetch one allow-listed proxy path *through* the device, for a browser that can reach the panel but not the proxy |
+| `GET /screen.bmp` | The live 800×480 framebuffer as a BMP |
+| `POST /api/wifi` · `/api/reboot` · `/api/forget` · `/api/reset` | Lifecycle |
+| `POST /update` | OTA firmware upload |
+
+```bash
+curl --digest -u admin http://scoredeck.local/api/diag | jq
+curl --digest -u admin -F "update=@scoredeck-ota.bin" http://scoredeck.local/update
+```
+
+Every screenshot above is the real console driven against a real device — the diagnostics, the
+board and the panel preview are all live values, not mock-ups.
 
 ---
 
