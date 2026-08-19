@@ -163,6 +163,7 @@ int main(int argc, char** argv) {
   int  mock = -1;
   int  density = -1;
   bool railOpen = false;
+  const char* measure = nullptr;
   for (int i = 1; i < argc; i++) {
     if      (!strcmp(argv[i], "--shot") && i + 1 < argc)     shot = argv[++i];
     else if (!strcmp(argv[i], "--settle") && i + 1 < argc)   settleMs = atoi(argv[++i]);
@@ -176,11 +177,15 @@ int main(int argc, char** argv) {
     // to reach from a scenario alone. 0=roomy 1=standard 2=dense 3=auto.
     else if (!strcmp(argv[i], "--density") && i + 1 < argc)  density = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--rail"))                     railOpen = true;
+    // --measure <what>: report pixels flushed for one interaction, so a
+    // redraw-cost claim can be a number rather than an argument. The counters
+    // are the ones spike.cpp already reads.
+    else if (!strcmp(argv[i], "--measure") && i + 1 < argc)   measure = argv[++i];
     else if (!strcmp(argv[i], "--help")) { help(); return 0; }
   }
   if (s_scenario < 0 || s_scenario >= SCN_COUNT) s_scenario = SCN_TYPICAL;
 
-  if (SDL_Init((shot || lint || spike) ? 0 : SDL_INIT_VIDEO) != 0) {
+  if (SDL_Init((shot || lint || spike || measure) ? 0 : SDL_INIT_VIDEO) != 0) {
     fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
     return 1;
   }
@@ -197,7 +202,7 @@ int main(int argc, char** argv) {
   dd.ver_res = SCR_H;
   lv_disp_drv_register(&dd);
 
-  if (!shot && !lint) {
+  if (!shot && !lint && !measure) {
     s_win = SDL_CreateWindow("ScoreDeck", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                              SCR_W, SCR_H, SDL_WINDOW_ALLOW_HIGHDPI);
     s_ren = SDL_CreateRenderer(s_win, -1, SDL_RENDERER_ACCELERATED);
@@ -266,6 +271,52 @@ int main(int argc, char** argv) {
     printf("\n%d label%s the assigned face cannot render\n", bad, bad == 1 ? "" : "s");
     SDL_Quit();
     return bad ? 1 : 0;
+  }
+
+  if (measure) {
+    // Settle the board first so the numbers below are the INTERACTION's cost,
+    // not the boot paint's.
+    uiIdleTick(); uiReaderTick(); uiAlertTick();
+    for (int i = 0; i < 3; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+
+    uint32_t total = 0, worstPass = 0, passes = 0;
+    auto pump = [&](int ms) {
+      const uint32_t t0 = millis();
+      while (millis() - t0 < (uint32_t)ms) {
+        g_spikePx = 0;
+        uiAlertTick(); uiIdleTick(); uiReaderTick();
+        lv_timer_handler();
+        const uint32_t d = g_spikePx;
+        if (d) { passes++; total += d; if (d > worstPass) worstPass = d; }
+        usleep(2000);
+      }
+    };
+
+    if (!strcmp(measure, "alert")) {
+      scenarioFireAlert();
+      pump(600);                      // 4 rungs x 70 ms, with room to settle
+      printf("alert-present  %u px total, %u flushing passes, worst pass %u px\n",
+             total, passes, worstPass);
+    } else if (!strcmp(measure, "idle")) {
+      showScreen("idle");
+      for (int i = 0; i < 3; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+      pump(3000);                     // three simulated seconds
+      printf("idle-3s        %u px total, %u flushing passes, worst pass %u px\n",
+             total, passes, worstPass);
+    } else if (!strcmp(measure, "poll")) {
+      scenarioReapply(s_scenario);
+      for (int i = 0; i < 2; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+      total = 0; passes = 0; worstPass = 0;
+      scenarioReapply(s_scenario);    // identical data, second time
+      pump(200);
+      printf("poll-nochange  %u px total, %u flushing passes, worst pass %u px\n",
+             total, passes, worstPass);
+    } else {
+      fprintf(stderr, "--measure: expected alert|idle|poll\n");
+      SDL_Quit(); return 2;
+    }
+    SDL_Quit();
+    return 0;
   }
 
   if (shot) {

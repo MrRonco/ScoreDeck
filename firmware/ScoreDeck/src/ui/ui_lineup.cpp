@@ -178,15 +178,22 @@ void uiLineupInit(lv_obj_t* parent) {
   lv_obj_add_flag(s_sheet, LV_OBJ_FLAG_HIDDEN);
 
   lv_obj_t* sc = glassPanel(s_sheet, 380, 140, 404, 324, 14);
+  // The card is the obvious thing to tap to close the sheet, and it was the
+  // one place that did not close it — same defect as the goal alert's card,
+  // and this one has no auto-dismiss timer to rescue it.
+  lv_obj_add_event_cb(sc, onSheetDismiss, LV_EVENT_CLICKED, nullptr);
+
   s_shEdge = lv_obj_create(sc);
   lv_obj_remove_style_all(s_shEdge);
   lv_obj_set_size(s_shEdge, 3, 322);
   lv_obj_set_pos(s_shEdge, 0, 0);
   lv_obj_set_style_bg_opa(s_shEdge, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(s_shEdge, LV_OBJ_FLAG_CLICKABLE);
 
   s_shBadge = teamBadge(sc, "", 0x5D6D7E, 68);
   lv_obj_set_pos(s_shBadge, 18, 16);
   lv_obj_set_style_radius(s_shBadge, 12, 0);
+  lv_obj_clear_flag(s_shBadge, LV_OBJ_FLAG_CLICKABLE);
   s_shBadgeLbl = lv_obj_get_child(s_shBadge, 0);
 
   // Headshot sits exactly on the badge and replaces it when one exists. 68 px
