@@ -89,6 +89,7 @@ static lv_obj_t* s_testLbl;
 static lv_obj_t* s_tzView;
 static lv_obj_t* s_tzBtn[TZ_PER];
 static lv_obj_t* s_tzBtnLbl[TZ_PER];
+static lv_obj_t* s_tzTick[TZ_PER];
 static lv_obj_t* s_tzPageLbl;
 static uint8_t   s_tzPage;
 
@@ -625,7 +626,12 @@ static void onTzPick(lv_event_t* e) {
 }
 
 static void tzRender() {
-  const int8_t cur = tzIndexOf(g_set.tzIana.c_str());
+  // tzForProxy(), not g_set.tzIana directly. The raw field is empty until the
+  // user has picked one, so on a fresh panel `cur` was -1 and NONE of the
+  // fourteen buttons marked the zone actually in force — the summary row at
+  // :1009 already resolved it through tzForProxy() and the picker disagreed
+  // with it.
+  const int8_t cur = tzIndexOf(tzForProxy());
   for (uint8_t k = 0; k < TZ_PER; k++) {
     const uint8_t i = s_tzPage * TZ_PER + k;
     if (i >= kTimeZoneCount) { lv_obj_add_flag(s_tzBtn[k], LV_OBJ_FLAG_HIDDEN); continue; }
@@ -634,6 +640,11 @@ static void tzRender() {
     const bool on = ((int8_t)i == cur);
     lv_obj_set_style_bg_color(s_tzBtn[k], on ? C_EDGE_HI : C_FROST_2, 0);
     lv_obj_set_style_text_color(s_tzBtnLbl[k], on ? C_INK : C_INK2, 0);
+    // Not fill alone. A single filled row among fourteen is easy to miss and
+    // impossible to see if you cannot separate the two greys; the mark says it
+    // in a second channel.
+    on ? lv_obj_clear_flag(s_tzTick[k], LV_OBJ_FLAG_HIDDEN)
+       : lv_obj_add_flag(s_tzTick[k], LV_OBJ_FLAG_HIDDEN);
   }
   char b[24];
   const uint8_t pages = (kTimeZoneCount + TZ_PER - 1) / TZ_PER;
@@ -874,14 +885,17 @@ void uiSettingsInit(lv_obj_t* parent) {
     label(s_tzView, 20, 16, "TIME ZONE", C_INK3, F_MICRO);
 
     lv_obj_t* back = lv_btn_create(s_tzView);
-    lv_obj_set_size(back, 88, 36);
-    lv_obj_set_pos(back, 768 - 20 - 88, 10);
+    lv_obj_set_size(back, 116, 36);
+    lv_obj_set_pos(back, 768 - 20 - 116, 10);
     lv_obj_set_style_radius(back, R_MD, 0);
     lv_obj_set_style_border_width(back, 0, 0);
     lv_obj_set_style_bg_color(back, C_EDGE, 0);
     lv_obj_add_event_cb(back, onTzClose, LV_EVENT_CLICKED, nullptr);
     lv_obj_t* bl = lv_label_create(back);
-    lv_label_set_text(bl, "DONE");
+    // "< NETWORK", not a second DONE. Two identical DONE buttons sat 64 px
+    // apart doing opposite things: this one returns to the Network pane, the
+    // one behind it closes settings entirely.
+    lv_label_set_text(bl, "< NETWORK");
     lv_obj_set_style_text_font(bl, F_MICRO, 0);
     lv_obj_center(bl);
 
@@ -897,6 +911,13 @@ void uiSettingsInit(lv_obj_t* parent) {
       lv_obj_set_style_text_font(s_tzBtnLbl[k], F_BODY, 0);   // city names
       lv_label_set_text(s_tzBtnLbl[k], "");
       lv_obj_align(s_tzBtnLbl[k], LV_ALIGN_LEFT_MID, 12, 0);
+      s_tzTick[k] = lv_label_create(s_tzBtn[k]);
+      lv_obj_set_style_text_font(s_tzTick[k], F_BODY, 0);
+      lv_obj_set_style_text_color(s_tzTick[k], C_INK, 0);
+      lv_label_set_text(s_tzTick[k], "IN USE");
+      lv_obj_set_style_text_font(s_tzTick[k], F_MICRO, 0);
+      lv_obj_align(s_tzTick[k], LV_ALIGN_RIGHT_MID, -12, 0);
+      lv_obj_add_flag(s_tzTick[k], LV_OBJ_FLAG_HIDDEN);
     }
 
     lv_obj_t* more = lv_btn_create(s_tzView);

@@ -449,3 +449,82 @@ void teamBadgeSet(lv_obj_t* badge, uint32_t color) {
   lv_obj_t* l = lv_obj_get_child(badge, 0);
   if (l) lv_obj_set_style_text_color(l, badgeInk(fill), 0);
 }
+
+/**
+ * The primary action, and the ONLY place a button carries the accent.
+ *
+ * The first screen anyone ever sees gave equal visual weight to the action
+ * that sets the product up and the action that skips it: both buttons came
+ * out of one lambda in ui_setup.cpp and rendered bit-identical fills of
+ * (41,52,66). A user who taps the wrong one lands on an empty board with no
+ * idea why.
+ *
+ * A_LIVE's second declared meaning is "touch this", so a primary action is
+ * exactly what it is for. The label is solved rather than picked —
+ * badgeInk() returns whichever of plate ink or white survives on the fill,
+ * which is what keeps the teal readable without hard-coding a colour that
+ * only works for one accent.
+ */
+void uiPrimaryButton(lv_obj_t* b) {
+  // Geometry is held across the reset. In LVGL v8 lv_obj_set_size()/set_pos()
+  // write LV_STYLE_WIDTH/HEIGHT/X/Y as LOCAL STYLES, so remove_style_all()
+  // takes the button's size and position with it — it collapsed to its label
+  // in the top-left corner the first time this ran.
+  const lv_coord_t w = lv_obj_get_style_width(b, LV_PART_MAIN);
+  const lv_coord_t h = lv_obj_get_style_height(b, LV_PART_MAIN);
+  const lv_coord_t x = lv_obj_get_style_x(b, LV_PART_MAIN);
+  const lv_coord_t y = lv_obj_get_style_y(b, LV_PART_MAIN);
+  lv_obj_remove_style_all(b);              // drop lv_theme_default's own press
+  lv_obj_set_size(b, w, h);
+  lv_obj_set_pos(b, x, y);
+  lv_obj_set_style_bg_color(b, A_LIVE, 0);
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(b, 0, 0);
+  lv_obj_set_style_radius(b, R_MD, 0);
+  lv_obj_t* l = lv_obj_get_child(b, 0);
+  if (l) lv_obj_set_style_text_color(l, badgeInk(0x3BE0C0), 0);
+  uiPressable(b);
+}
+
+/**
+ * The on-device keyboard, drawn from the token system.
+ *
+ * It is 200 of the panel's 480 rows — 41.7% of the screen — inside the
+ * first-run flow, and it was the one surface not drawn from these tokens:
+ * ui_setup.cpp overrode the background and the font and left everything else
+ * to lv_theme_default, whose dark keys render #282B30. That measures 1.04:1
+ * against C_FROST_2 and 1.25:1 against C_SURF_2 — a keyboard whose keys are
+ * very nearly invisible against the surface they sit on.
+ */
+void keyboardTheme(lv_obj_t* kb) {
+  lv_obj_set_style_bg_color(kb, C_PLATE, 0);
+  lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(kb, 0, 0);
+  lv_obj_set_style_pad_all(kb, 6, 0);
+  lv_obj_set_style_pad_gap(kb, 4, 0);
+  // The FONT is deliberately not overridden. LVGL's keyboard labels backspace,
+  // enter, shift and close with LV_SYMBOL_* strings, and its default event
+  // handler dispatches by strcmp against those same strings — so the symbols
+  // cannot be relabelled without breaking the keys, and they only exist in the
+  // built-in Montserrat face. ui_setup.cpp used to set F_BODY here, which
+  // rendered five keys as hollow boxes; nobody saw it because the keyboard was
+  // positioned off-screen. If LV_FONT_DEFAULT ever moves off Montserrat, this
+  // is what breaks — see the note in lv_conf.h.
+
+  // The keys themselves.
+  lv_obj_set_style_bg_color(kb, lv_color_hex(0x1A2436), LV_PART_ITEMS);
+  lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS);
+  lv_obj_set_style_text_color(kb, C_INK, LV_PART_ITEMS);
+  lv_obj_set_style_radius(kb, R_SM, LV_PART_ITEMS);
+  lv_obj_set_style_border_color(kb, C_EDGE, LV_PART_ITEMS);
+  lv_obj_set_style_border_width(kb, 1, LV_PART_ITEMS);
+  // Press is an outline here too, so the keyboard presses like everything else.
+  lv_obj_set_style_border_color(kb, A_LIVE, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_border_width(kb, 2, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(kb, lv_color_hex(0x1A2436), LV_PART_ITEMS | LV_STATE_PRESSED);
+  // CHECKED is what LVGL paints the mode keys with; left alone it is a blue
+  // that belongs to no token on this device.
+  lv_obj_set_style_bg_color(kb, C_SURF_2, LV_PART_ITEMS | LV_STATE_CHECKED);
+  lv_obj_set_style_border_color(kb, C_EDGE_HI, LV_PART_ITEMS | LV_STATE_CHECKED);
+  lv_obj_set_style_text_color(kb, C_INK, LV_PART_ITEMS | LV_STATE_CHECKED);
+}

@@ -60,6 +60,8 @@ lv_obj_t* uiRailRoot();
 
 // Setup / onboarding
 void uiSetupInit(lv_obj_t* parent);
+/** Force the on-device keyboard open — harness only, so it is reviewable. */
+void uiSetupShowKeyboard();
 bool uiSetupActive();
 /** Root of the setup screen, or nullptr before uiSetupInit(). */
 lv_obj_t* uiSetupRoot();

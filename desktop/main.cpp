@@ -135,6 +135,10 @@ static void showScreen(const char* name) {
   else if (!strcmp(name, "player"))  { uiLineupOpen("nhl", "900000");
                                        uiPlayerOpen("nhl", "3024"); }
   else if (!strcmp(name, "setup"))     uiShow(SCR_SETUP);
+  // The on-device keyboard is 41.7% of the panel and sits in the first-run
+  // flow, and there was no way to look at it without a device — which is why
+  // it was the one surface still drawn by lv_theme_default.
+  else if (!strcmp(name, "setup-kb"))  { uiShow(SCR_SETUP); uiSetupShowKeyboard(); }
   else if (!strcmp(name, "settings"))  uiSettingsOpen();
   else if (!strcmp(name, "settings-sports")) { uiSettingsOpen(); uiSettingsTab(1); }
   else if (!strcmp(name, "settings-teams")) { uiSettingsOpen(); uiSettingsTab(2); }

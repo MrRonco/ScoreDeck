@@ -12,6 +12,7 @@
 #include "../config.h"
 #include "../core/state.h"
 #include "../net/logos.h"
+#include <WiFi.h>
 #include <time.h>
 
 static lv_obj_t* s_root;
@@ -58,6 +59,8 @@ static char s_cNextId[12];
 // that index changes on every poll, so it is rewritten in uiIdleRefresh()
 // rather than captured once at build time.
 static int8_t s_nextIdx = -1;
+static lv_obj_t* s_faultCard, *s_faultTitle, *s_faultBody, *s_faultHint;
+static int8_t s_cFaultNet = -1;
 static int8_t s_rowIdx[IDLE_ROWS];
 static int8_t s_finIdx[IDLE_ROWS];
 
@@ -316,6 +319,28 @@ void uiIdleInit(lv_obj_t* parent) {
     s_finalScore[i] = lbl(s_root, 626, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
   }
 
+  // ── the fault card ───────────────────────────────────────────────────────
+  //
+  // A panel that will never show a game and a quiet night used to differ by
+  // 666 pixels — 0.17% of the screen, one 150x13 strip of grey text in the top
+  // bar. Both rendered the same layout with the same ink and 39.6% of the
+  // screen carrying no ink at all. This is the state a brand-new or
+  // newly-broken panel sits in, and it said nothing about what was wrong or
+  // what to do, while the device already knows both.
+  //
+  // Shown only for the faults where there is NO data — no wi-fi, no proxy,
+  // proxy unreachable. NET_STALE keeps its rows and says so in the header;
+  // covering real scores with an explanation would be the worse trade.
+  s_faultCard = glassPanel(s_root, 44, 300, 700, 128, R_LG);
+  lv_obj_add_flag(s_faultCard, LV_OBJ_FLAG_HIDDEN);
+  s_faultTitle = lbl(s_faultCard, 24, 18, S_ALERT, F_ABBR);
+  s_faultBody  = lbl(s_faultCard, 24, 48, C_INK, F_BODY);
+  lv_obj_set_width(s_faultBody, 652);
+  lv_label_set_long_mode(s_faultBody, LV_LABEL_LONG_WRAP);
+  s_faultHint  = lbl(s_faultCard, 24, 88, C_INK2, F_BODY);
+  lv_obj_set_width(s_faultHint, 652);
+  lv_label_set_long_mode(s_faultHint, LV_LABEL_LONG_WRAP);
+
   memset(s_cClock, 0, sizeof s_cClock);
   memset(s_cDate, 0, sizeof s_cDate);
   memset(s_cSummary, 0, sizeof s_cSummary);
@@ -524,6 +549,49 @@ void uiIdleRefresh() {
     default:          snprintf(hs, sizeof hs, "nothing live"); break;
   }
   lv_label_set_text(s_hdrStatus, hs);
+
+  // A fault is not the same kind of fact as "nothing live", and it used to be
+  // drawn in the identical grey. ui_board.cpp:1577 already routes the same
+  // four states to the alert token; this is the screen that did not.
+  const bool faulted = (g_net == NET_NOWIFI || g_net == NET_NOPROXY || g_net == NET_ERR);
+  if (s_cFaultNet != (int8_t)g_net) {
+    s_cFaultNet = (int8_t)g_net;
+    lv_obj_set_style_text_color(s_hdrStatus,
+        (faulted || g_net == NET_STALE) ? S_ALERT : kStateInk[GS_LIVE].ink3, 0);
+
+    if (faulted) {
+      char ip[24];
+      snprintf(ip, sizeof ip, "%s", WiFi.localIP().toString().c_str());
+      switch (g_net) {
+        case NET_NOWIFI:
+          lv_label_set_text(s_faultTitle, "NO WI-FI");
+          lv_label_set_text(s_faultBody,  "The panel is not on a network, so it cannot fetch anything.");
+          lv_label_set_text(s_faultHint,  "Touch SETUP above to join a network.");
+          break;
+        case NET_NOPROXY:
+          lv_label_set_text(s_faultTitle, "NO PROXY SET");
+          lv_label_set_text(s_faultBody,  "The panel is online but has nowhere to fetch scores from.");
+          {
+            char h[80];
+            snprintf(h, sizeof h, "Open  http://%s/  in a browser and set a proxy URL.", ip);
+            lv_label_set_text(s_faultHint, h);
+          }
+          break;
+        default:
+          lv_label_set_text(s_faultTitle, "PROXY UNREACHABLE");
+          lv_label_set_text(s_faultBody,
+              g_netDetail[0] ? g_netDetail : "The proxy did not answer.");
+          {
+            char h[80];
+            snprintf(h, sizeof h, "Check it is running, then open  http://%s/", ip);
+            lv_label_set_text(s_faultHint, h);
+          }
+          break;
+      }
+    }
+    faulted ? lv_obj_clear_flag(s_faultCard, LV_OBJ_FLAG_HIDDEN)
+            : lv_obj_add_flag(s_faultCard, LV_OBJ_FLAG_HIDDEN);
+  }
 
   // Coming up: the scheduled games after the hero, in start order.
   uint8_t row = 0;

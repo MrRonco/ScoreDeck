@@ -275,6 +275,14 @@ extern const lv_font_t* F_MICRO;
 
 void themeInit();
 
+/** The primary action: A_LIVE fill, badgeInk()-solved label, R_MD. The only
+ *  button on the panel that carries the accent — see the definition. */
+void uiPrimaryButton(lv_obj_t* b);
+
+/** Draw an lv_keyboard from the token system. Left to lv_theme_default its
+ *  keys render #282B30, which measures 1.04:1 on C_FROST_2. */
+void keyboardTheme(lv_obj_t* kb);
+
 /** Adopt the ONE pressed treatment: a 2 px C_LIVE outline, no fill change.
  *  Press was a fill (#243040) that measured +11 L* on a final tile and +0.85
  *  on the hero surface — feedback that varied 28x and vanished exactly on the
