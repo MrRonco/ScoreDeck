@@ -306,9 +306,21 @@ static void setMark(int i, int k, const char* league, const Side& s) {
   // Through the normaliser: setting bg_color directly leaves the label ink
   // unmatched and a Pittsburgh badge a hole in the card.
   teamBadgeSet(s_badge[i][k], s.color);
+  // A COLOUR CHIP, not a truncated mark. RES_BADGE is 24, and badgeLabelFit
+  // admits (24-6)*16/125 = 2 glyphs, so a three-letter abbreviation came out
+  // "AT" for the Athletics and "CH" for the White Sox — which name the wrong
+  // teams. The card cannot hold a 30 px chip (the one size that fits three
+  // glyphs) because its two rows sit on a 30 px pitch inside 100 px.
+  //
+  // But the full abbreviation is ALREADY printed immediately to the right of
+  // this chip, so the letters inside it were never carrying the identity —
+  // only the colour was. Drawn empty, the chip says the same thing without
+  // saying a wrong one. When a logo exists it replaces the chip entirely and
+  // none of this applies.
   char fit[6];
   badgeLabelFit(fit, sizeof fit, s.abbr, RES_BADGE);
-  lv_label_set_text(s_badgeLbl[i][k], fit);
+  const bool whole = (fit[0] && strlen(fit) == strlen(s.abbr));
+  lv_label_set_text(s_badgeLbl[i][k], whole ? fit : "");
 }
 
 static void showCard(int i, bool on) {
