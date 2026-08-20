@@ -72,27 +72,20 @@ void uiStandingsInit(lv_obj_t* parent) {
   lv_obj_set_style_bg_opa(s_root, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(s_root, LV_OBJ_FLAG_CLICKABLE);
+  // Clickable only so the swipe reaches it — there is no tap handler here, so
+  // it is an input surface and not a control. uiTapZone() is that statement.
+  uiTapZone(s_root);
   lv_obj_add_event_cb(s_root, onGesture, LV_EVENT_GESTURE, nullptr);
 
   lv_obj_t* bar = glassPanel(s_root, 0, 0, SCR_W, BAR_H, 0);
-  lv_obj_t* back = lv_btn_create(bar);
-  lv_obj_set_size(back, 48, 34);
-  lv_obj_set_pos(back, 14, 7);
-  lv_obj_set_style_bg_color(back, C_EDGE, 0);
-  lv_obj_set_style_border_width(back, 0, 0);
-  lv_obj_set_style_radius(back, 8, 0);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* bl = lv_label_create(back);
-  lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
-  lv_obj_set_style_text_color(bl, C_INK, 0);
-  lv_obj_center(bl);
+  // The bare chevron, not "< BOARD": the screen title sits at x=74 and a
+  // worded chip measures 88 px, so the word would cost the title its column.
+  backChip(bar, nullptr, onBack);
 
   s_title = lb(bar, 74, 15, C_INK, F_ABBR);
   s_hint  = lb(bar, SCR_W - 18 - 320, 17, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 320);
 
-  lv_obj_t* card = glassPanel(s_root, 16, 60, 768, 404, 12);
+  lv_obj_t* card = glassPanel(s_root, 16, 60, 768, 404, R_LG);
 
   for (uint8_t c = 0; c < ST_MAX_COLS; c++)
     s_colHdr[c] = lb(card, 0, 10, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 58);
@@ -106,7 +99,13 @@ void uiStandingsInit(lv_obj_t* parent) {
     lv_obj_set_style_bg_opa(s_edge[r], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_edge[r], LV_OBJ_FLAG_HIDDEN);
 
-    s_rank[r]  = lb(card, 14, y + 6, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 22);
+    // DATA, so F_NUM at C_INK2 — the same treatment as every stat cell in the
+    // same row, and for the same reason: a rank is a number you read off the
+    // table. It rendered C_INK3/F_MICRO, which measured 9 px tall at #8496AD:
+    // bit-identical to the column HEADERS above it and to the screen hint in
+    // the bar, i.e. one treatment doing three different jobs. Now 11 px at
+    // #ADBECE, matching s_cell.
+    s_rank[r]  = lb(card, 14, y + 5, C_INK2, F_NUM, LV_TEXT_ALIGN_RIGHT, 22);
     // 30, not 22. badgeLabelFit() allows (size-6)*16/125 glyphs, so a 22 px chip
     // holds TWO — and every NHL/NFL/MLB abbreviation is three. F_MICRO is mono at
     // 7.8125 px, so "FLA" measures 23.44 px inside a 22 px box: wider than its own

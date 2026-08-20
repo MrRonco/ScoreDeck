@@ -226,7 +226,9 @@ void uiRailInit(lv_obj_t* parent) {
     s_sliver = lv_canvas_create(parent);
     lv_canvas_set_buffer(s_sliver, s_cbuf, SLIVER_W, RAIL_H, LV_IMG_CF_TRUE_COLOR);
     lv_obj_set_pos(s_sliver, 0, RAIL_TOP);
-    lv_obj_add_flag(s_sliver, LV_OBJ_FLAG_CLICKABLE);
+    // The rail's PRIMARY opener when collapsed, and it pressed like nothing:
+    // 16 px of canvas with a handler and no feedback at all.
+    uiPressable(s_sliver);
     lv_obj_set_ext_click_area(s_sliver, 8);
     lv_obj_add_event_cb(s_sliver, onSliver, LV_EVENT_CLICKED, nullptr);
     sliverPaint();
@@ -243,7 +245,7 @@ void uiRailInit(lv_obj_t* parent) {
   lv_obj_set_pos(s_overlay, 0, 0);
   lv_obj_set_size(s_overlay, SCR_W, SCR_H);
   lv_obj_set_style_bg_opa(s_overlay, LV_OPA_TRANSP, 0);
-  lv_obj_add_flag(s_overlay, LV_OBJ_FLAG_CLICKABLE);
+  uiTapZone(s_overlay);   // a tap CATCHER, so deliberately no outline
   lv_obj_add_event_cb(s_overlay, onOverlay, LV_EVENT_CLICKED, nullptr);
 
   s_root = lv_obj_create(parent);
@@ -328,7 +330,7 @@ void uiRailInit(lv_obj_t* parent) {
   // C_INK3 measures 4.0 — the review's AODA-relevant AA miss.
   lv_obj_set_style_text_color(edit, kStateInk[GS_PRE].ink3, 0);
   lv_label_set_text(edit, "EDIT SPORTS  >");
-  lv_obj_add_flag(edit, LV_OBJ_FLAG_CLICKABLE);
+  uiPressable(edit);      // the one way into the sports editor, from here
   lv_obj_set_ext_click_area(edit, 8);
   lv_obj_add_event_cb(edit, onEdit, LV_EVENT_CLICKED, nullptr);
 }

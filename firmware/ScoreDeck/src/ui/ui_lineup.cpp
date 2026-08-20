@@ -111,21 +111,14 @@ void uiLineupInit(lv_obj_t* parent) {
   lv_obj_set_style_bg_opa(s_root, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(s_root, LV_OBJ_FLAG_CLICKABLE);
+  // Clickable only so the swipe reaches it — there is no tap handler here, so
+  // it is an input surface and not a control. uiTapZone() is that statement.
+  uiTapZone(s_root);
   lv_obj_add_event_cb(s_root, onGesture, LV_EVENT_GESTURE, nullptr);
 
   lv_obj_t* bar = glassPanel(s_root, 0, 0, SCR_W, BAR_H, 0);
-  lv_obj_t* back = lv_btn_create(bar);
-  lv_obj_set_size(back, 48, 34); lv_obj_set_pos(back, 14, 7);
-  lv_obj_set_style_bg_color(back, C_EDGE, 0);
-  lv_obj_set_style_border_width(back, 0, 0);
-  lv_obj_set_style_radius(back, 8, 0);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* bl = lv_label_create(back);
-  lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
-  lv_obj_set_style_text_color(bl, C_INK, 0);
-  lv_obj_center(bl);
+  // Bare chevron: the title sits at x=74 and a worded chip measures 88 px.
+  backChip(bar, nullptr, onBack);
   s_title = lb(bar, 74, 15, C_INK, F_ABBR);
   s_hint  = lb(bar, SCR_W - 18 - 240, 17, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 240);
 
@@ -133,15 +126,15 @@ void uiLineupInit(lv_obj_t* parent) {
     s_sideBtn[i] = lv_btn_create(bar);
     lv_obj_set_size(s_sideBtn[i], 74, 30);
     lv_obj_set_pos(s_sideBtn[i], 200 + i * 82, 9);
-    lv_obj_set_style_border_width(s_sideBtn[i], 0, 0);
-    lv_obj_set_style_radius(s_sideBtn[i], 7, 0);
+    uiButton(s_sideBtn[i]);
+    lv_obj_set_style_radius(s_sideBtn[i], R_MD, 0);   // was 7, beside a back at 8
     lv_obj_add_event_cb(s_sideBtn[i], onSide, LV_EVENT_CLICKED, (void*)(intptr_t)i);
     s_sideLbl[i] = lv_label_create(s_sideBtn[i]);
     lv_obj_set_style_text_font(s_sideLbl[i], F_MICRO, 0);
     lv_obj_center(s_sideLbl[i]);
   }
 
-  lv_obj_t* card = glassPanel(s_root, 16, 60, 768, 404, 12);
+  lv_obj_t* card = glassPanel(s_root, 16, 60, 768, 404, R_LG);
   for (uint8_t c = 0; c < LU_COLS; c++)
     s_colHdr[c] = lb(card, 0, 8, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 70);
 
@@ -154,7 +147,7 @@ void uiLineupInit(lv_obj_t* parent) {
     lv_obj_set_size(s_rowObj[r], 764, 32);
     lv_obj_set_pos(s_rowObj[r], 0, y);
     lv_obj_set_style_bg_opa(s_rowObj[r], LV_OPA_TRANSP, 0);
-    lv_obj_add_flag(s_rowObj[r], LV_OBJ_FLAG_CLICKABLE);
+    uiPressable(s_rowObj[r]);   // opens the player sheet, and now says so
     lv_obj_clear_flag(s_rowObj[r], LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(s_rowObj[r], onRow, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)r);
 
@@ -170,17 +163,17 @@ void uiLineupInit(lv_obj_t* parent) {
   lv_obj_remove_style_all(s_sheet);
   lv_obj_set_size(s_sheet, SCR_W, SCR_H);
   lv_obj_set_pos(s_sheet, 0, 0);
-  lv_obj_set_style_bg_color(s_sheet, lv_color_hex(0x04070C), 0);
-  lv_obj_set_style_bg_opa(s_sheet, 150, 0);
-  lv_obj_add_flag(s_sheet, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_clear_flag(s_sheet, LV_OBJ_FLAG_SCROLLABLE);
+  uiScrim(s_sheet, 150);
   lv_obj_add_event_cb(s_sheet, onSheetDismiss, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_flag(s_sheet, LV_OBJ_FLAG_HIDDEN);
 
-  lv_obj_t* sc = glassPanel(s_sheet, 380, 140, 404, 324, 14);
+  lv_obj_t* sc = glassPanel(s_sheet, 380, 140, 404, 324, R_LG);
   // The card is the obvious thing to tap to close the sheet, and it was the
   // one place that did not close it — same defect as the goal alert's card,
-  // and this one has no auto-dismiss timer to rescue it.
+  // and this one has no auto-dismiss timer to rescue it. uiPressable(), not a
+  // bare handler: glassPanel() no longer leaves its panels hit-testable, so
+  // the handler alone would now bind to something a finger cannot reach.
+  uiPressable(sc);
   lv_obj_add_event_cb(sc, onSheetDismiss, LV_EVENT_CLICKED, nullptr);
 
   s_shEdge = lv_obj_create(sc);
@@ -192,7 +185,7 @@ void uiLineupInit(lv_obj_t* parent) {
 
   s_shBadge = teamBadge(sc, "", 0x5D6D7E, 68);
   lv_obj_set_pos(s_shBadge, 18, 16);
-  lv_obj_set_style_radius(s_shBadge, 12, 0);
+  lv_obj_set_style_radius(s_shBadge, R_LG, 0);   // 68 px: the hero-badge rung
   lv_obj_clear_flag(s_shBadge, LV_OBJ_FLAG_CLICKABLE);
   s_shBadgeLbl = lv_obj_get_child(s_shBadge, 0);
 

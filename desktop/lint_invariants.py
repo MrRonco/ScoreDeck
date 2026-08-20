@@ -4,15 +4,26 @@
 Written in Python rather than the C++ the plan named, because most of these
 invariants are properties of the SOURCE TEXT — "no colour literal outside the
 theme", "no chromatic token at partial opacity" — and a C++ binary that greps
-its own repository is a worse tool for that than a script. The two rules that
-genuinely need a live object tree (badge fit, and pressed-but-inert objects)
-stay in the C++ font lint, which already walks it.
+its own repository is a worse tool for that than a script. Badge fit stays in
+the C++ font lint, which already walks a live tree.
 
 Run by `make lint`. Exit code is the number of violations.
 
-Some rules are scheduled to pass only once phase 21 lands. Those are listed in
-PENDING with the phase that clears them, so the gate is honest about what it is
-not yet enforcing rather than silently omitting it.
+Phase 20 left two rules as PENDING for phase 21 to implement. Phase 21 did, and
+they are source rules after all — not the object-tree walk the docstring above
+first assumed. The reason is worth writing down, because it is also the
+measurement that made the phase bigger than filed:
+
+  lv_obj.c:436 gives EVERY lv_obj_create LV_OBJ_FLAG_CLICKABLE, and
+  lv_obj_pos.c:955 hit-tests on exactly that flag. So "is this object
+  hit-testable" is not a runtime question at all — it is true by default, and
+  the only thing a source file can do is take it away. Which means both halves
+  of the press invariant are decidable from the text: a control is an object
+  the source hands to uiPressable()/uiButton(), and everything else is a
+  surface whether the source noticed or not.
+
+PENDING is empty. Nothing here is aspirational; if a rule cannot be enforced it
+does not belong in this file.
 """
 import os
 import re
@@ -24,11 +35,20 @@ UI = os.path.join(ROOT, '..', 'firmware', 'ScoreDeck', 'src', 'ui')
 RADII = {2, 6, 10, 14, 18}
 CHROMATIC = ('A_LIVE', 'C_LIVE', 'S_ALERT', 'C_WARN', 'C_LIVE_TX')
 
-# Rules phase 21 is scheduled to clear. Listed, not hidden.
-PENDING = {
-    'btn-style-reset': 'phase 21 — every lv_btn needs lv_obj_remove_style_all() first',
-    'inert-pressed':   'phase 21 — glassPanel() must not attach the press style by default',
-}
+# Rules that are declared but not yet enforceable. Kept as a dict rather than
+# deleted so that "we know and are not checking" stays visible; phase 21
+# emptied it.
+PENDING = {}
+
+# The calls that make an object a control, and the two that deliberately make
+# one an input surface WITHOUT the press outline (see uiTapZone in theme.h).
+PRESS_CALLS = ('uiPressable(', 'uiPrimaryButton(', 'uiButton(', 'backChip(')
+EXEMPT_CALLS = ('uiScrim(', 'uiTapZone(')
+# A strictly smaller set, and the distinction is the whole point of the rule:
+# uiPressable() ADOPTS our press, it does not remove lv_theme_default's. An
+# lv_btn that only gets uiPressable() ends up wearing BOTH — the 2 px teal
+# outline and the 20% darken underneath it. Only these drop the theme first.
+RESET_CALLS = ('uiPrimaryButton(', 'uiButton(', 'backChip(', 'lv_obj_remove_style_all(')
 
 violations = []
 def bad(rule, where, msg):
@@ -99,6 +119,110 @@ for name, lines in ui_sources():
             continue
         bad('radius-family', f'{name}:{n}',
             f'radius {r} is not in the R_XS/SM/MD/LG/XL family (2/6/10/14/18)')
+
+# glassPanel()'s LAST ARGUMENT is a radius too, and it was the hole in the rule
+# above: six cards shipped a literal 12 — a rung that does not exist — and the
+# gate above never saw them because they are an argument, not a style write.
+for name, lines in ui_sources():
+    if name == 'theme.cpp':
+        continue
+    for n, line in enumerate(lines, 1):
+        code = strip_comment(line)
+        m = re.search(r'glassPanel\s*\(.*,\s*(\d+)\s*\)', code)
+        if not m:
+            continue
+        r = int(m.group(1))
+        if r == 0 or r in RADII:
+            continue
+        bad('radius-family', f'{name}:{n}',
+            f'glassPanel radius {r} is not in the family (2/6/10/14/18)')
+
+# ── 4b. one press, and it is attached to the things you can press ───────────
+#
+# Two halves, and the second is the one that bites.
+#
+# (a) glassPanel() must hand back an INERT surface. It cannot stop attaching
+#     the press STYLE — the board tiles and the hero card are promoted to
+#     controls in a different file and would silently lose their feedback —
+#     so what it must drop is the FLAG, which is what LVGL hit-tests.
+#
+# (b) Nothing may be made hit-testable without saying which it is. Every
+#     lv_obj_add_flag(x, CLICKABLE) and every lv_btn_create needs x to reach
+#     one of PRESS_CALLS, or to be declared an input surface via EXEMPT_CALLS.
+#     Objects are matched by NAME within a file, which is coarse and is the
+#     right amount of coarse: this catches the shape of the defect (a handler
+#     with nothing to show for it) without pretending to understand scope.
+theme = open(os.path.join(UI, 'theme.cpp')).read()
+gp = theme[theme.find('lv_obj_t* glassPanel('):]
+gp = gp[:gp.find('\nlv_obj_t* teamBadge')]
+if 'lv_obj_clear_flag(o, LV_OBJ_FLAG_CLICKABLE)' not in gp:
+    bad('inert-pressed', 'theme.cpp:glassPanel',
+        'glassPanel() must clear LV_OBJ_FLAG_CLICKABLE — a panel is a surface')
+
+def base_name(v):
+    """s_card[i] and s_card[0] are one object here; t.root and t.edge are NOT.
+    The first version stripped the member too, which made every write to any
+    field of a tile look like a write to the tile itself — seven false
+    positives on ui_board alone, and a rule that cries wolf gets deleted."""
+    return re.sub(r'\[[^\]]*\]', '[]', v)
+
+for name, lines in ui_sources():
+    if name == 'theme.cpp':
+        continue
+    # Subscripts are normalised on BOTH sides or nothing matches: the source
+    # writes uiPressable(s_rowBg[r]) and the declaration is s_rowBg[i].
+    src = base_name('\n'.join(strip_comment(l) for l in lines))
+    # A glassPanel() result already carries the press style — see glassPanel()
+    # — so adding the flag to one IS the whole promotion. Only objects built
+    # some other way have to ask for the treatment separately.
+    glass = {base_name(m) for m in
+             re.findall(r'([\w\[\]\.>-]+?)\s*=\s*glassPanel\(', src)}
+    # A struct member names a ROLE, so tile.root built by glassPanel() in one
+    # function is the same thing as s_tile[].root promoted in another. Without
+    # this the board's twelve tiles read as untreated, which they are not.
+    glass_roles = {g.rsplit('.', 1)[1] for g in glass if '.' in g}
+    def treated(v, calls):
+        return any(f'{c}{v}' in src for c in calls)
+    def is_glass(v):
+        return v in glass or ('.' in v and v.rsplit('.', 1)[1] in glass_roles)
+    for n, line in enumerate(lines, 1):
+        code = strip_comment(line)
+        m = re.search(r'lv_obj_add_flag\(\s*([\w\[\]\.>-]+?)\s*,\s*LV_OBJ_FLAG_CLICKABLE', code)
+        if m:
+            v = base_name(m.group(1))
+            if is_glass(v):
+                continue
+            if not treated(v, PRESS_CALLS) and not treated(v, EXEMPT_CALLS):
+                bad('inert-pressed', f'{name}:{n}',
+                    f'{v} is hit-testable with no press treatment — uiPressable() '
+                    f'it, or declare it an input surface with uiTapZone()')
+        m = re.search(r'([\w\[\]\.>-]+?)\s*=\s*lv_btn_create\(', code)
+        if m:
+            v = base_name(m.group(1))
+            if not treated(v, RESET_CALLS):
+                bad('btn-style-reset', f'{name}:{n}',
+                    f'{v} is an lv_btn, so it carries lv_theme_default\'s OWN 20% '
+                    f'darken press — uiButton() resets it and adopts ours')
+
+# ── 4c. a glass panel's fill and its shade move together ────────────────────
+#
+# The contact shadow is solved per surface (StateInk.shade) and lives in a
+# child, so a bare bg_color write repaints the card and leaves its own shadow
+# behind. glassSetFill() writes both.
+for name, lines in ui_sources():
+    if name == 'theme.cpp':
+        continue
+    src = '\n'.join(strip_comment(l) for l in lines)
+    src = base_name(src)
+    panels = {base_name(m) for m in
+              re.findall(r'([\w\[\]\.>-]+?)\s*=\s*glassPanel\(', src)}
+    for n, line in enumerate(lines, 1):
+        code = strip_comment(line)
+        m = re.search(r'lv_obj_set_style_bg_color\(\s*([\w\[\]\.>-]+?)\s*,', code)
+        if m and base_name(m.group(1)) in panels:
+            bad('glass-fill', f'{name}:{n}',
+                f'{base_name(m.group(1))} is a glassPanel — route the fill through '
+                f'glassSetFill() so the solved shade follows it')
 
 # ── 5. the accent has one meaning ───────────────────────────────────────────
 # Settings is a persistent-choice surface: nothing on it is "happening now".
