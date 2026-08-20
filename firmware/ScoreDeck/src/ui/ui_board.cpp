@@ -1086,19 +1086,36 @@ static void onGesture(lv_event_t*) {
 static void layoutFiller(const DensitySpec& d, uint8_t used, uint8_t per) {
   const uint8_t usedRows = (used + d.cols - 1) / d.cols;
   const uint8_t freeRows = d.rows > usedRows ? d.rows - usedRows : 0;
-  if (freeRows == 0 || used == 0) { lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN); return; }
+  const uint8_t tailCols = used % d.cols;          // trailing empties in the last row
+  if (used == 0 || (freeRows == 0 && tailCols == 0)) {
+    lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN); return;
+  }
 
-  const int y = d.gridTop + usedRows * (d.tileH + d.gut) + s_gridYOff;
-  const int hMax = freeRows * d.tileH + (freeRows - 1) * d.gut;
-  const int w = d.cols * d.tileW + (d.cols - 1) * d.gut;
-  const int colW = w / 2;
+  // Whole free rows if there are any; otherwise the trailing cells of a
+  // part-full last row. The filler used to refuse the second case outright,
+  // which is why a five-game Roomy board left cell (1,2) holding zero lit
+  // pixels — 12.5% of the panel — whenever the count was not a multiple of
+  // the column count, i.e. most nights.
+  const bool tail = (freeRows == 0);
+  const uint8_t emptyCols = tail ? (uint8_t)(d.cols - tailCols) : d.cols;
+  const int x0 = tail ? d.marg + tailCols * (d.tileW + d.gut) : d.marg;
+  const int y = tail ? d.gridTop + (usedRows - 1) * (d.tileH + d.gut) + s_gridYOff
+                     : d.gridTop + usedRows * (d.tileH + d.gut) + s_gridYOff;
+  const int hMax = tail ? d.tileH : freeRows * d.tileH + (freeRows - 1) * d.gut;
+  const int w = emptyCols * d.tileW + (emptyCols - 1) * d.gut;
+  // One column when the hole is one cell wide — two 124 px columns of
+  // "TOR  4  MTL  2" is not a layout, it is a collision.
+  const int cols2 = (w >= 2 * d.tileW) ? 2 : 1;
+  const int colW = w / cols2;
   const int rowsFit = (hMax - 46) / 22;
   const int nRows = rowsFit < FILL_ROWS ? (rowsFit < 0 ? 0 : rowsFit) : FILL_ROWS;
 
   for (int c = 0; c < 2; c++) {
-    lv_obj_set_pos(s_fillHdr[c], 16 + c * colW, 12);
+    // The second column folds under the first when there is only room for one.
+    const int cx = (c < cols2) ? 16 + c * colW : 16;
+    lv_obj_set_pos(s_fillHdr[c], cx, 12);
     for (int r = 0; r < FILL_ROWS; r++) {
-      lv_obj_set_pos(s_fillRow[c][r], 16 + c * colW, 34 + r * 22);
+      lv_obj_set_pos(s_fillRow[c][r], cx, 34 + r * 22);
       lv_label_set_text(s_fillRow[c][r], "");
       if (r >= nRows) lv_obj_add_flag(s_fillRow[c][r], LV_OBJ_FLAG_HIDDEN);
       else            lv_obj_clear_flag(s_fillRow[c][r], LV_OBJ_FLAG_HIDDEN);
@@ -1130,10 +1147,16 @@ static void layoutFiller(const DensitySpec& d, uint8_t used, uint8_t per) {
 
   // Height follows the content, not the hole — a half-empty panel is the same
   // "something is missing" signal in a smaller size.
-  const int rows = fin > nxt ? fin : nxt;
+  if (cols2 == 1) {
+    // Stacked, so the two headings cannot sit on the same line.
+    lv_obj_set_y(s_fillHdr[1], 34 + fin * 22 + 6);
+    for (int r = 0; r < FILL_ROWS; r++)
+      lv_obj_set_y(s_fillRow[1][r], 34 + (fin + 1 + r) * 22 + 6);
+  }
+  const int rows = (cols2 == 1) ? (fin + nxt + 1) : (fin > nxt ? fin : nxt);
   int h = 46 + rows * 22;
   if (h > hMax) h = hMax;
-  lv_obj_set_pos(s_fill, d.marg, y);
+  lv_obj_set_pos(s_fill, x0, y);
   lv_obj_set_size(s_fill, w, h);
   lv_obj_clear_flag(s_fill, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_style_opa(s_fillHdr[0], fin ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
