@@ -385,14 +385,17 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
     const bool tie = g.home.score == g.away.score;
     for (int k = 0; k < 2; k++) {
       const bool won = tie ? true : ((k == 1) == homeWon);
-      const lv_color_t c = won ? si.ink : si.ink3;
       const uint8_t code = inkCode(GS_FINAL, won ? 1 : 2);
-      // ONE cache for the pair: the abbreviation and the score on a side are
-      // written from the same decision and can never disagree.
+      // Still one cache for the pair — one decision drives both — but the two
+      // no longer take the same rung. The winning SCORE sits at ink2, mirroring
+      // ui_board.cpp's FINAL-winner sentinel: a finished number must not be the
+      // brightest number on a screen that also has live ones. The team NAME
+      // stays at ink so a result still reads winner-first, and because ink2 is
+      // already the status ink two rows below it.
       if (s_cInk[slot][k] != code) {
         s_cInk[slot][k] = code;
-        lv_obj_set_style_text_color(s_abbr[slot][k],  c, 0);
-        lv_obj_set_style_text_color(s_score[slot][k], c, 0);
+        lv_obj_set_style_text_color(s_abbr[slot][k],  won ? si.ink  : si.ink3, 0);
+        lv_obj_set_style_text_color(s_score[slot][k], won ? si.ink2 : si.ink3, 0);
       }
     }
     setTextCached(s_meta[slot], s_cMeta[slot], sizeof s_cMeta[slot], g.status);

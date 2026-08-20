@@ -1404,9 +1404,26 @@ void uiBoardRefresh() {
       // Sentinels (lv_color_t is RGB565; round-tripping a state ink through
       // the cache would shift it):
       //   0xFFFFFFFF  si.ink2  — ties and PRE
-      //   0xFFFFFFFE  si.ink   — a FINAL's winner (finals surrender colour)
+      //   0xFFFFFFFE  si.ink2  — a FINAL's winner (finals surrender colour)
       //   0xFFFFFFFD  si.ink3  — the recessive side (FINAL loser, LIVE trailer)
       //
+      // FE used to resolve to si.ink, and on a nine-up board with three finals
+      // the three brightest NUMBERS on the panel were all games that had ended.
+      // Measured on --scenario 0: final winners scored 3526 / 2130 / 2321 on
+      // alpha-weighted salience against live leaders at 1837 / 1484 / 981 /
+      // 816, and even the final LOSER at 1642 beat three of the four.
+      //
+      // The lever is this SENTINEL, not the token. Darkening
+      // kStateInk[GS_FINAL].ink instead would be a 45% ratio regression on
+      // every FINAL team name too, and the team name is the one thing on a
+      // finished tile that must stay first. FE resolving to ink2 moves ONE
+      // element down ONE existing rung: 10.31 -> 7.13:1 as rendered, with the
+      // loser still at ink3 5.91 so the winner/loser ladder survives at 1.21x.
+      // No ink anywhere is darkened; nothing else on any tile changes.
+      //
+      // The abbreviation deliberately does NOT follow it down. si.ink2 is
+      // already the status ink, so a team name at ink2 would render in the
+      // identical grey as the game clock two rows below it on the same tile.
       // The LIVE leader lifts its team colour to 5.5:1, not teamInk()'s 3.5 —
       // the review measured the leader at 3.5 against the trailer's neutral
       // 7.3, so the winning score was the DIMMEST number in the tile. The
@@ -1423,7 +1440,7 @@ void uiBoardRefresh() {
         t.cScoreInk[k] = want;
         lv_obj_set_style_text_color(t.score[k],
             want == 0xFFFFFFFFu ? si.ink2 :
-            want == 0xFFFFFFFEu ? si.ink  :
+            want == 0xFFFFFFFEu ? si.ink2 :
             want == 0xFFFFFFFDu ? si.ink3 : lv_color_hex(want), 0);
       }
 
