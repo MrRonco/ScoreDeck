@@ -6,6 +6,10 @@
 #include <esp_heap_caps.h>
 #include <time.h>
 
+const char* const kNetLabel[6] = {
+  "STARTING", "NO WI-FI", "NO PROXY", "PROXY UNREACHABLE", "LIVE", "STALE",
+};
+
 Settings g_set;
 
 Game        g_board[MAX_GAMES];

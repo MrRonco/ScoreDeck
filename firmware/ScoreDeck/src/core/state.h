@@ -161,6 +161,19 @@ const char* standingsLeague();
 
 // ── status, for the top bar ─────────────────────────────────────────────────
 enum NetStatus : uint8_t { NET_BOOT = 0, NET_NOWIFI, NET_NOPROXY, NET_ERR, NET_OK, NET_STALE };
+
+/** ONE vocabulary for the six network states, indexed by NetStatus.
+ *
+ *  There were three. The top bar said "NO PROXY", the idle header said
+ *  "no proxy configured" and the browser console said "no proxy" — one enum,
+ *  three tables, and no way to tell from a support conversation which surface
+ *  someone was reading. The panel's own two are unified here; the console
+ *  mirrors this list at portal/index.html's paintNet(), which is the closest
+ *  a served-from-flash page can get to sharing a header.
+ *
+ *  Caps because the top bar's face is caps-only; the idle header lower-cases
+ *  it for its own register. */
+extern const char* const kNetLabel[6];
 extern NetStatus g_net;
 extern char      g_netDetail[48];
 

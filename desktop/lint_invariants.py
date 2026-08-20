@@ -286,26 +286,42 @@ known = set()
 if os.path.exists(BASE):
     known = {l.split('#')[0].strip() for l in open(BASE) if l.split('#')[0].strip()}
 
-now = {f'{rule} {where}' for rule, where, _ in violations}
-new = sorted(now - known)
-fixed = sorted(known - now)
+# Keyed on rule + FILE + count, not rule + line. Line numbers drift on every
+# unrelated edit above them, and a baseline that has to be re-anchored after
+# each one is a baseline people start regenerating blindly — which defeats the
+# only thing it is for. The count still makes the file shrink-only: fix one of
+# five radii in a file and the expected count drops to four.
+import collections as _c
+def key(rule, where):
+    return f'{rule} {where.split(":")[0]}'
+nowc = _c.Counter(key(rule, where) for rule, where, _ in violations)
+knownc = _c.Counter()
+for line in known:
+    parts = line.rsplit(' ', 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        knownc[parts[0]] += int(parts[1])
+    else:
+        knownc[line] += 1
+
+new   = sorted(k for k in nowc if nowc[k] > knownc.get(k, 0))
+fixed = sorted(k for k in knownc if nowc.get(k, 0) < knownc[k])
 
 print('source invariants')
 for rule, where, msg in violations:
-    tag = 'FAIL' if f'{rule} {where}' in new else 'base'
+    tag = 'FAIL' if key(rule, where) in new else 'base'
     print(f'  {tag}  {rule:<20} {where:<28} {msg}')
 for rule, why in sorted(PENDING.items()):
     print(f'  todo  {rule:<20} {"":<28} {why}')
 
 if new:
-    print(f'\n{len(new)} NEW violation(s) — not in the baseline:')
+    print(f'\n{len(new)} rule/file pair(s) OVER the baseline:')
     for k in new:
-        print(f'    {k}')
+        print(f'    {k}: {nowc[k]} now, {knownc.get(k, 0)} allowed')
 if fixed:
-    print(f'\n{len(fixed)} baseline entr(y/ies) no longer violated — remove from '
+    print(f'\n{len(fixed)} baseline entr(y/ies) now over-stated — lower the count in '
           f'desktop/lint_baseline.txt so the list keeps shrinking:')
     for k in fixed:
-        print(f'    {k}')
+        print(f'    {k}: {nowc.get(k, 0)} now, {knownc[k]} allowed')
 
 print(f'\n{len(violations)} violation(s): {len(violations) - len(new)} baselined, '
       f'{len(new)} new. {len(PENDING)} rule(s) not yet enforced.')

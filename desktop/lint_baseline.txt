@@ -34,15 +34,11 @@
 #     Until they land, the board's pre/live/final strips all render live's
 #     #001021 rather than #001018 / #001021 / #081018.
 #
-# rule                 site
-btn-style-reset ui_board.cpp:739
-colour-literal ui_board.cpp:419
-glass-fill ui_board.cpp:1210
-glass-fill ui_hero.cpp:229
-inert-pressed ui_board.cpp:1885
-radius-family ui_board.cpp:339
-radius-family ui_board.cpp:509
-radius-family ui_board.cpp:720
-radius-family ui_board.cpp:801
-radius-family ui_board.cpp:828
-radius-family ui_hero.cpp:179
+# rule                 file                        count
+btn-style-reset ui_board.cpp 1
+colour-literal ui_board.cpp 1
+glass-fill ui_board.cpp 1
+glass-fill ui_hero.cpp 1
+inert-pressed ui_board.cpp 1
+radius-family ui_board.cpp 5
+radius-family ui_hero.cpp 1

@@ -13,6 +13,7 @@
 #include "../core/state.h"
 #include "../net/logos.h"
 #include <WiFi.h>
+#include <ctype.h>
 #include <time.h>
 #include <cstdio>
 
@@ -638,13 +639,17 @@ void uiIdleRefresh() {
   }
   setCached(s_summary, s_cSummary, sizeof s_cSummary, buf);
 
+  // One vocabulary, lower-cased for this header's register — kNetLabel in
+  // state.h. This screen used to say "no proxy configured" where the top bar
+  // said "NO PROXY" and the browser said "no proxy": one enum, three answers.
   char hs[80];
-  switch (g_net) {
-    case NET_NOWIFI:  snprintf(hs, sizeof hs, "no wi-fi"); break;
-    case NET_NOPROXY: snprintf(hs, sizeof hs, "no proxy configured"); break;
-    case NET_ERR:     snprintf(hs, sizeof hs, "%s", g_netDetail[0] ? g_netDetail : "proxy unreachable"); break;
-    case NET_STALE:   snprintf(hs, sizeof hs, "stale data"); break;
-    default:          snprintf(hs, sizeof hs, "nothing live"); break;
+  if (g_net == NET_OK) {
+    snprintf(hs, sizeof hs, "nothing live");
+  } else if (g_net == NET_ERR && g_netDetail[0]) {
+    snprintf(hs, sizeof hs, "%s", g_netDetail);
+  } else {
+    snprintf(hs, sizeof hs, "%s", kNetLabel[g_net]);
+    for (char* c = hs; *c; c++) *c = (char)tolower((unsigned char)*c);
   }
   lv_label_set_text(s_hdrStatus, hs);
 

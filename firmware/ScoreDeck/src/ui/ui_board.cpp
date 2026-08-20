@@ -1671,9 +1671,12 @@ static void zoneCApply() {
   lv_color_t ink = C_INK2;
 
   switch (g_net) {
-    case NET_NOWIFI:  snprintf(buf, sizeof buf, "NO WI-FI"); ink = C_WARN; break;
-    case NET_NOPROXY: snprintf(buf, sizeof buf, "NO PROXY"); ink = C_WARN; break;
-    case NET_ERR:     snprintf(buf, sizeof buf, "PROXY UNREACHABLE"); ink = C_WARN; break;
+    // kNetLabel, not a local copy — see state.h. Three tables for one enum is
+    // how "NO PROXY" / "no proxy configured" / "no proxy" came to be the same
+    // state on three surfaces.
+    case NET_NOWIFI:  snprintf(buf, sizeof buf, "%s", kNetLabel[NET_NOWIFI]);  ink = S_ALERT; break;
+    case NET_NOPROXY: snprintf(buf, sizeof buf, "%s", kNetLabel[NET_NOPROXY]); ink = S_ALERT; break;
+    case NET_ERR:     snprintf(buf, sizeof buf, "%s", kNetLabel[NET_ERR]);     ink = S_ALERT; break;
     case NET_STALE: {
       const char* t = lastGoodClock();
       if (t[0]) snprintf(buf, sizeof buf, "AS OF %s", t);
@@ -1681,7 +1684,10 @@ static void zoneCApply() {
       ink = C_WARN;
       break;
     }
-    case NET_BOOT:    snprintf(buf, sizeof buf, "STARTING"); break;
+    // NEUTRAL. Booting is not a fault — the web console painted it as a red
+    // "bad" pill, which told a user something was broken during the four
+    // seconds every panel spends starting up.
+    case NET_BOOT:    snprintf(buf, sizeof buf, "%s", kNetLabel[NET_BOOT]); break;
     default:
       if (s_deltaCount && millis() < s_deltaUntil) {
         snprintf(buf, sizeof buf, "+%u NEW", (unsigned)s_deltaCount);

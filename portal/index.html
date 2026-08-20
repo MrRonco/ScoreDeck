@@ -189,6 +189,9 @@ h1.mark{font:600 var(--t-lg)/1.55 var(--sans);letter-spacing:var(--ls-mark);marg
 .pill.ok::before{animation:pulse 1.8s ease-in-out infinite}
 .pill.warn{color:var(--warn);background:rgb(var(--warn-rgb) / .1)}
 .pill.bad{color:var(--bad);background:rgb(var(--bad-rgb) / .1)}
+/* Starting up is a state, not a fault. */
+.pill.neutral{color:var(--ink2);background:rgb(var(--line-rgb) / .08)}
+.pill.neutral::before{animation:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.32}}
 
 nav{display:flex;gap:var(--s1);overflow-x:auto;padding-bottom:var(--s2);scrollbar-width:none}
@@ -488,7 +491,7 @@ td.empty-cell{padding:0;border-top:0}
     <div class="top">
       <div class="brand">
         <svg class="brand-mark" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
-          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          stroke-width="1.636" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="5" width="18" height="12" rx="1.5"></rect>
           <path d="M8 20h8M12 17v3"></path>
         </svg>
@@ -537,7 +540,7 @@ td.empty-cell{padding:0;border-top:0}
     <h2>Add a team</h2>
     <div class="card">
       <div class="row"><div class="k search-field">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25"
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>
         </svg>
@@ -642,7 +645,7 @@ td.empty-cell{padding:0;border-top:0}
       <div class="mirror-hero-head">
         <div>
           <p class="mirror-hero-title">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.0"
               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
               <circle cx="12" cy="14" r="3.6"></circle>
@@ -653,7 +656,7 @@ td.empty-cell{padding:0;border-top:0}
             800&times;480, ~1.15&nbsp;MB — and it blocks the display for about two seconds. Manual only, never polled.</p>
         </div>
         <button id="mirBtn" class="primary">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
             style="margin-right:var(--s2);vertical-align:-3px">
             <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
@@ -668,7 +671,7 @@ td.empty-cell{padding:0;border-top:0}
           <div class="device-screen" id="mirWrap">
             <img id="mirImg" alt="Live panel screenshot">
             <div class="device-placeholder" id="mirPlaceholder">
-              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5"
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.2"
                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
                 <circle cx="12" cy="14" r="3.6"></circle>
@@ -704,7 +707,7 @@ td.empty-cell{padding:0;border-top:0}
         <small id="otaWarn" hidden>Do not power off. The screen will shake; that is expected.</small>
         <div class="bar" id="otaBarWrap" role="progressbar" aria-labelledby="otaMsg"
           aria-valuemin="0" aria-valuemax="100"><i id="otaBar"></i></div></div>
-        <div class="v"><button id="flash" disabled>Flash &amp; reboot</button></div></div>
+        <div class="v"><button id="flash" class="danger" disabled>Flash &amp; reboot</button></div></div>
     </div>
 
     <h2>Portal access</h2>
@@ -740,7 +743,12 @@ function svgIcon(d, size) {
   svg.setAttribute('height', size || 22);
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.6');
+  // Constant RENDERED weight, not a constant attribute. stroke-width is in
+  // viewBox units, so a flat 1.6 across a 24-unit box draws 1.20 device px at
+  // size 18 and 1.87 at 28 — a 1.56x spread across the page's eight icons, on
+  // top of the four different literals they were declared with. Solve for the
+  // size instead: 1.5 device px everywhere.
+  svg.setAttribute('stroke-width', String(1.5 * 24 / (size || 22)));
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
@@ -777,9 +785,20 @@ async function api(path, opts) {
 }
 /* The status pill is global chrome — it must not go stale just because you
    are looking at a different tab. */
+/* Mirrors kNetLabel[] in firmware/ScoreDeck/src/core/state.h, indexed by
+   NetStatus. One enum had three vocabularies — the top bar said "NO PROXY",
+   the idle header "no proxy configured", and this pill "no proxy" — so a
+   support conversation could not tell which surface someone was reading.
+   Lower-cased here for this page's register, exactly as the idle header
+   lower-cases it for its own. */
+const NET_LABEL = ['starting', 'no wi-fi', 'no proxy', 'proxy unreachable', 'live', 'stale'];
 function paintNet(s) {
-  $('#net').className = 'pill ' + (s.net === 4 ? 'ok' : s.net === 5 ? 'warn' : 'bad');
-  $('#net').textContent = ['booting','no wi-fi','no proxy','error','live','stale'][s.net] || '?';
+  // BOOTING IS NOT A FAULT. It painted as a red "bad" pill, telling the user
+  // something was broken during the seconds every panel spends starting up.
+  // Neutral, matching the panel's own top bar, which already did this right.
+  const kind = s.net === 4 ? 'ok' : (s.net === 5 || s.net === 0) ? 'warn' : 'bad';
+  $('#net').className = 'pill ' + kind + (s.net === 0 ? ' neutral' : '');
+  $('#net').textContent = NET_LABEL[s.net] || '?';
 }
 /* ---------- what the console knows ----------
    Three kinds of message, and they used to be one. toast() built a
@@ -1519,6 +1538,10 @@ $('#bin').onchange = () => {
 };
 $('#flash').onclick = () => {
   const f = $('#bin').files[0]; if (!f) return;
+  // The only destructive control on the page without a confirm — and the one
+  // with the worst failure mode. Reboot, Forget Wi-Fi and Factory reset all
+  // gated; the one that overwrites firmware did not.
+  if (!confirm('Flash ' + f.name + ' and reboot the panel?')) return;
   $('#flash').disabled = true;
   const fd = new FormData(); fd.append('f', f);
   const x = new XMLHttpRequest();
