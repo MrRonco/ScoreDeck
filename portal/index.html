@@ -80,6 +80,10 @@
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
+/* .row .k small and label small both set display:block, and an author
+   display beats the UA sheet's [hidden] — so #otaWarn rendered "Do not
+   power off" on an idle System tab, before any file was chosen. */
+[hidden]{display:none!important}
 html{scroll-behavior:smooth}
 body{margin:0;color:var(--ink);font:15px/1.55 var(--sans);background:var(--plate);
   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
@@ -123,7 +127,10 @@ header{position:sticky;top:0;z-index:5;background:rgb(10 15 24 / .92);
 .top{display:flex;align-items:center;gap:14px;padding:14px 0;flex-wrap:wrap}
 .brand{display:inline-flex;align-items:center;gap:9px;min-width:0}
 .brand-mark{color:var(--accent);flex:0 0 auto}
-.mark{font-weight:600;letter-spacing:.02em}
+/* The page had 17 <h2> and no <h1> at all — a flat sibling list with no
+   root, so every outline tool showed 17 top-level things and no page.
+   The name is already on screen in the header; it just was not a heading. */
+h1.mark{font:600 15px/1.55 var(--sans);letter-spacing:.02em;margin:0}
 .host{font:12px/1 var(--mono);color:var(--ink3)}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:var(--r-pill);
   font:500 11px/1.6 var(--mono);text-transform:uppercase;margin-left:auto}
@@ -144,6 +151,16 @@ nav a.on{background:var(--frost);color:var(--ink);box-shadow:inset 0 0 0 1px var
 /* Unsaved work follows you out of the tab. */
 nav a.has-dirty::after{content:"";width:6px;height:6px;border-radius:50%;
   background:var(--warn);margin-left:7px;flex:0 0 auto}
+/* On a phone the six tabs measured scrollWidth 484 against clientWidth 335 at
+   375 px — Diagnostics and System were 149 px off the right edge, behind
+   `scrollbar-width:none`, with no fade, no arrow and nothing to say they were
+   there. The two tabs you go looking for when something is wrong were the two
+   you could not find. Wrap instead of scroll: two rows of three fit inside
+   335 px and every tab keeps its 44 px target. */
+@media(max-width:560px){
+  nav{flex-wrap:wrap;overflow-x:visible}
+  nav a{flex:0 0 auto;padding:0 12px}
+}
 
 h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);
   font-weight:500;margin:26px 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -157,6 +174,14 @@ h2 svg{color:var(--ink3);flex:0 0 auto}
 .row .k small{display:block;color:var(--ink3);font-size:12.5px;margin-top:2px}
 .row .v{flex:0 0 auto;display:flex;gap:8px;align-items:center}
 label.row{cursor:pointer}
+/* A row whose control depends on a switch that is off. The console had exactly
+   ONE [disabled] element in it — the whole page modelled dependent state with
+   nothing at all, so From and To stayed live, focusable and editable while
+   Quiet hours was off, and typing into them changed nothing. Same .45 the
+   disabled button already uses; the labels are exempt from the contrast floor
+   because the control is genuinely unavailable, not merely quiet. */
+.row.is-off{opacity:.45}
+.row.is-off input{pointer-events:none}
 
 button,.btn{min-height:var(--tap);padding:0 16px;border-radius:var(--r);
   border:1px solid var(--edge);background:var(--frost);color:var(--ink);
@@ -175,9 +200,30 @@ button[disabled]{opacity:.45;cursor:default;filter:none}
 input:not([type=checkbox]),select{width:100%;min-height:var(--tap);padding:0 12px;background:var(--plate);
   border:1px solid var(--edge);border-radius:var(--r);color:var(--ink);
   font:16px/1 var(--sans)}  /* 16px: iOS zooms the page below it */
-input[data-mono]{font-family:var(--mono);font-size:14px}
-input[type=file]{min-height:0;padding:11px 12px;font-size:13px;line-height:1.4;cursor:pointer}
+/* Mono, but NOT smaller. `font-size:14px` here quietly overrode the 16px rule
+   one line up for #proxy, #token and #favsRaw, and the file rule took #bin to
+   13px — measured 14/14/14/13. Those are exactly the fields you type standing
+   at the panel with a phone, and every one of them made iOS zoom the page on
+   focus. Mono is a family, not a size. */
+input[data-mono]{font-family:var(--mono)}
+/* No max-width and no width:100%. At 16px the 230px cap clipped the native
+   label to "No fil...hosen" — the control that tells you WHICH firmware you
+   are about to flash, truncated. It sizes to its own content instead. */
+input[type=file]{min-height:0;padding:11px 12px;line-height:1.4;cursor:pointer;
+  width:auto;max-width:100%}
+/* The one .v on the page that must be allowed to shrink: a native file
+   control's intrinsic width belongs to the OS, and at 375 px an unshrinkable
+   .v pushed it 55 px past the card's right edge. */
+.row .v:has(input[type=file]){flex:0 1 auto;min-width:0}
+/* Widths that used to be inline `style=` on the elements themselves —
+   3 of them — where any later JS could not tell config from override. */
+.w-time{width:150px}
 label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
+/* An inline field error. Solid --bad, never a tint: this is the sentence
+   standing between the owner and a panel that has to be walked to. */
+.err,.row .k small.err,label small.err{display:block;color:var(--bad);
+  font-size:12.5px;margin:6px 0 0}
+input[aria-invalid=true]{border-color:rgb(var(--bad-rgb) / .7)}
 .grid{display:grid;gap:14px}
 @media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}}
 @media(min-width:420px){.grid.four{grid-template-columns:1fr 1fr}}
@@ -190,8 +236,18 @@ label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
 .search-field svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink3);pointer-events:none}
 .search-field input{padding-left:38px}
 
-.seg{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r);overflow:hidden}
+/* No `overflow:hidden`. It was there to clip the children's square corners to
+   the group's radius, and it also clipped the 2 px focus ring: focusing
+   #dens.children[0] and counting teal pixels in the element shot found the
+   ring surviving as exactly ONE 2 px column (x 90-91), because that is the
+   only edge of an outline-offset:2px ring that falls INSIDE the group. Left,
+   top and bottom: zero teal pixels. The keyboard user could not see where
+   they were. The children round their own outer corners instead — same
+   picture, nothing clipped. */
+.seg{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r)}
 .seg button{border:0;border-radius:0;background:transparent;color:var(--ink3);min-height:44px}
+.seg button:first-child{border-radius:calc(var(--r) - 1px) 0 0 calc(var(--r) - 1px)}
+.seg button:last-child{border-radius:0 calc(var(--r) - 1px) calc(var(--r) - 1px) 0}
 .seg button[aria-pressed=true]{background:var(--accent-dim);color:var(--accent);
   box-shadow:inset 0 0 0 1px rgb(var(--accent-rgb) / .35)}
 .sw{appearance:none;-webkit-appearance:none;width:52px;height:30px;min-height:0;padding:0;border-radius:var(--r-pill);background:var(--edge);
@@ -305,8 +361,19 @@ td.empty-cell{padding:0;border-top:0}
 
 .view{display:none}.view.on{display:block;animation:fadein .18s var(--ease)}
 @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+/* This block used to be `*` alone, and `*` is element-only: it cannot match a
+   pseudo-element. So the gating was exactly INVERTED. Measured under real
+   emulation with matchMedia('(prefers-reduced-motion: reduce)').matches true:
+   `.view.on` -> `none / 0s` (the 180 ms FINITE fade, correctly killed) while
+   `#net::before` stayed `pulse / 1.8s / infinite` and `#mirWrap::after` stayed
+   `shimmer / 1.4s / infinite`. It killed the one transition that was fine and
+   spared both animations that run forever — a vestibular-sensitive user who
+   set Reduce Motion still got a dot pulsing 33 times a minute in the sticky
+   header. The panel's motion budget is a rule for an 800x480 display with no
+   OS to ask; a browser page has to ask. */
 @media(prefers-reduced-motion:reduce){
-  *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  *,*::before,*::after{animation:none!important;transition:none!important;
+    scroll-behavior:auto!important}
 }
 </style>
 </head>
@@ -316,29 +383,29 @@ td.empty-cell{padding:0;border-top:0}
 <header>
   <div class="wrap">
     <div class="top">
-      <span class="brand">
+      <div class="brand">
         <svg class="brand-mark" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
           stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="5" width="18" height="12" rx="1.5"></rect>
           <path d="M8 20h8M12 17v3"></path>
         </svg>
-        <span class="mark">ScoreDeck</span>
-      </span>
+        <h1 class="mark">ScoreDeck</h1>
+      </div>
       <span class="host" id="host"></span>
-      <span class="pill" id="net">…</span>
+      <span class="pill" id="net" role="status">…</span>
     </div>
     <nav id="nav" aria-label="Sections"></nav>
   </div>
 </header>
 
-<main class="wrap" id="main">
+<main class="wrap" id="main" tabindex="-1">
   <div id="warn" role="region" aria-live="polite" aria-label="Standing notices"></div>
   <div id="toasts" role="status" aria-live="polite" aria-label="Recent activity"></div>
 
   <!-- BOARD -->
   <section class="view" id="v-board">
     <div class="grid four" id="stats" data-skel="4"></div>
-    <h2>On the board now <span class="host" id="boardAge"></span></h2>
+    <h2>On the board now <span class="host" id="boardAge" aria-live="polite"></span></h2>
     <div class="card"><div class="wrapx"><table id="board">
       <caption class="sr-only">Current games across your selected leagues</caption>
       <thead><tr><th scope="col">LG</th><th scope="col">Matchup</th><th scope="col">Score</th>
@@ -349,7 +416,7 @@ td.empty-cell{padding:0;border-top:0}
 
   <!-- TEAMS -->
   <section class="view" id="v-teams">
-    <h2>Sports on the board <span id="lgN" class="host"></span></h2>
+    <h2>Sports on the board <span id="lgN" aria-live="polite" class="host"></span></h2>
     <div class="card">
       <p class="hint" style="margin-top:0">Your favourite teams always show.
         Pick the leagues that fill the rest of the board — up to 12. Empty
@@ -360,7 +427,7 @@ td.empty-cell{padding:0;border-top:0}
         <div class="v"><button id="saveLg" class="primary">Save sports</button></div></div>
     </div>
 
-    <h2>Your teams <span id="favN" class="host"></span></h2>
+    <h2>Your teams <span id="favN" aria-live="polite" class="host"></span></h2>
     <div class="card"><div id="favs" class="list"></div></div>
     <p class="hint">Order breaks ties on the board — the first team wins.</p>
 
@@ -371,15 +438,20 @@ td.empty-cell{padding:0;border-top:0}
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>
         </svg>
-        <input id="q" placeholder="Search 25 leagues…" autocomplete="off"></div></div>
-      <div class="row"><div class="k"><small id="catInfo">Catalog not loaded.</small></div>
+        <label class="sr-only" for="q">Search teams</label>
+        <input id="q" placeholder="Search 25 leagues…" autocomplete="off"
+          autocapitalize="none" spellcheck="false"></div></div>
+      <div class="row"><div class="k"><small id="catInfo" aria-live="polite">Catalog not loaded.</small></div>
         <div class="v"><button id="loadCat" class="primary">Load catalog</button></div></div>
       <div id="results" class="list"></div>
     </div>
 
     <h2>Enter ids by hand</h2>
     <div class="card"><div class="row">
-      <div class="k"><input id="favsRaw" data-mono placeholder="nhl:21,eng.1:359">
+      <div class="k"><label class="sr-only" for="favsRaw">Team ids, comma separated</label>
+        <input id="favsRaw" data-mono placeholder="nhl:21,eng.1:359"
+          autocapitalize="none" spellcheck="false" autocomplete="off"
+          maxlength="240">
         <small>Always available, even with no catalog and no proxy.</small></div>
       <div class="v"><button id="saveRaw" class="primary">Save</button></div>
     </div></div>
@@ -401,11 +473,12 @@ td.empty-cell{padding:0;border-top:0}
     <div class="card">
       <label class="row" for="qen"><div class="k">Enabled</div>
         <div class="v"><input type="checkbox" class="sw" id="qen"></div></label>
-      <div class="row"><div class="k"><label for="qfr">From</label></div>
-        <div class="v"><input type="time" id="qfr" style="width:150px"></div></div>
-      <div class="row"><div class="k"><label for="qto">To</label></div>
-        <div class="v"><input type="time" id="qto" style="width:150px"></div></div>
-      <div class="row"><div class="k"><small id="tznow"></small></div></div>
+      <div class="row" data-needs="qen"><div class="k"><label for="qfr">From</label></div>
+        <div class="v"><input type="time" id="qfr" class="w-time"></div></div>
+      <div class="row" data-needs="qen"><div class="k"><label for="qto">To</label></div>
+        <div class="v"><input type="time" id="qto" class="w-time"></div></div>
+      <div class="row"><div class="k"><small id="qsum" aria-live="polite"></small>
+        <small id="tznow"></small></div></div>
     </div>
     <p class="hint">Alerts lag the broadcast by 30–80 seconds either way — the proxy polls, it is not pushed.</p>
     <div class="row"><div class="v"><button id="saveAlerts" class="primary">Save</button></div></div>
@@ -415,8 +488,10 @@ td.empty-cell{padding:0;border-top:0}
   <section class="view" id="v-network">
     <h2>Wi-Fi</h2>
     <div class="card">
-      <div class="row"><div class="k"><label for="ssid">Network</label><input id="ssid" autocomplete="off"></div></div>
-      <div class="row"><div class="k"><label for="wpass">Password</label><input id="wpass" type="password" autocomplete="new-password">
+      <div class="row"><div class="k"><label for="ssid">Network</label><input id="ssid" autocomplete="off" autocapitalize="none" spellcheck="false"
+          required maxlength="32"></div></div>
+      <div class="row"><div class="k"><label for="wpass">Password</label><input id="wpass" type="password" autocomplete="new-password" autocapitalize="none"
+        spellcheck="false" maxlength="64">
         <small>Blank keeps the stored one. A single “-” clears it.</small></div></div>
       <div class="row"><div class="k"><small>Saving reboots the panel.</small></div>
         <div class="v"><button id="saveWifi" class="danger">Save &amp; reboot</button></div></div>
@@ -424,11 +499,14 @@ td.empty-cell{padding:0;border-top:0}
 
     <h2>Proxy</h2>
     <div class="card">
-      <div class="row"><div class="k"><label for="proxy">URL</label><input id="proxy" data-mono placeholder="http://192.168.1.50:8787"></div></div>
-      <div class="row"><div class="k"><label for="token">Token</label><input id="token" data-mono placeholder="unchanged">
+      <div class="row"><div class="k"><label for="proxy">URL</label><input id="proxy" data-mono placeholder="http://192.168.1.50:8787"
+          autocapitalize="none" spellcheck="false" autocomplete="off"
+          maxlength="96" pattern="https?://[^\s;'&quot;&lt;&gt;]+"></div></div>
+      <div class="row"><div class="k"><label for="token">Token</label><input id="token" data-mono placeholder="unchanged"
+          autocapitalize="none" spellcheck="false" autocomplete="off">
         <small>Blank keeps the stored one. A single “-” clears it.</small></div></div>
       <div class="row"><div class="k">Reachability
-        <small id="reach">Not tested.</small></div>
+        <small id="reach" aria-live="polite">Not tested.</small></div>
         <div class="v"><button id="probe" aria-label="Test proxy reachability">Test</button></div></div>
     </div>
 
@@ -455,7 +533,7 @@ td.empty-cell{padding:0;border-top:0}
 
   <!-- DIAGNOSTICS -->
   <section class="view" id="v-diag">
-    <h2>Diagnostics <span class="host" id="diagAge"></span></h2>
+    <h2>Diagnostics <span class="host" id="diagAge" aria-live="polite"></span></h2>
 
     <div class="card">
       <div class="mirror-hero-head">
@@ -498,7 +576,7 @@ td.empty-cell{padding:0;border-top:0}
           <div class="device-chin"><span class="device-led"></span>ScoreDeck</div>
         </div>
       </div>
-      <p class="hint" id="mirHint" hidden></p>
+      <p class="hint" id="mirHint" aria-live="polite" hidden></p>
     </div>
 
     <h2>At a glance</h2>
@@ -517,15 +595,19 @@ td.empty-cell{padding:0;border-top:0}
     <h2>Firmware</h2>
     <div class="card">
       <div class="row"><div class="k">Running <small id="fwv"></small></div>
-        <div class="v"><input type="file" id="bin" accept=".bin" style="max-width:230px"></div></div>
-      <div class="row"><div class="k"><small id="otaMsg">Choose a .bin to flash.</small>
-        <div class="bar"><i id="otaBar"></i></div></div>
+        <div class="v"><label class="sr-only" for="bin">Firmware image (.bin)</label>
+          <input type="file" id="bin" accept=".bin"></div></div>
+      <div class="row"><div class="k"><small id="otaMsg" role="status">Choose a .bin to flash.</small>
+        <small id="otaWarn" hidden>Do not power off. The screen will shake; that is expected.</small>
+        <div class="bar" id="otaBarWrap" role="progressbar" aria-labelledby="otaMsg"
+          aria-valuemin="0" aria-valuemax="100"><i id="otaBar"></i></div></div>
         <div class="v"><button id="flash" disabled>Flash &amp; reboot</button></div></div>
     </div>
 
     <h2>Portal access</h2>
     <div class="card"><div class="row">
-      <div class="k"><label for="ppass">Password</label><input id="ppass" type="password" autocomplete="new-password">
+      <div class="k"><label for="ppass">Password</label><input id="ppass" type="password" autocomplete="new-password" autocapitalize="none"
+          spellcheck="false" maxlength="64">
         <small>Protects this page and firmware updates. Blank keeps, “-” clears.
           You can also clear it on the panel itself.</small></div>
       <div class="v"><button id="savePass" class="primary">Set</button></div>
@@ -700,8 +782,22 @@ function markStale(sel, when) {
 function clearStale(sel) { const v = $(sel); if (v) delete v.dataset.stale; }
 
 /* ---------- routing ---------- */
+const KNOWN = new Set(VIEWS.map(([v]) => v));
 function route() {
-  const id = (location.hash.replace('#/', '') || 'board');
+  const want = (location.hash.replace('#/', '') || 'board');
+  // A hash that is not one of the six is NOT a route, and the router has to
+  // say so out loud. It used to fall straight through: the skip link's own
+  // '#main' arrived here as the view name 'main', matched nothing, and the
+  // loop below turned .on OFF for all six — measured ['v-board'] -> [] with
+  // #main collapsing 493.28 px -> 154 px. Pressing the accessibility
+  // affordance emptied the application.
+  //
+  // And the guard must be a NO-OP, never a redirect. Defaulting to 'board'
+  // here reads fine from Board and is a silent yank off System or
+  // Diagnostics — the same bug, quieter. If something is already on, stay on
+  // it; only a first load with a junk hash falls back to Board.
+  if (!KNOWN.has(want) && document.querySelector('.view.on')) return;
+  const id = KNOWN.has(want) ? want : 'board';
   VIEWS.forEach(([v]) => {
     const on = v === id;
     $('#v-' + v).classList.toggle('on', on);
@@ -714,8 +810,23 @@ function route() {
 }
 VIEWS.forEach(([v, label]) => {
   const a = el('a', '', label); a.href = '#/' + v; $('#nav').append(a);
+  // Six anonymous <section>s under one <h1>. Naming them is what lets the h1
+  // be the page rather than a seventeenth sibling heading.
+  const s = $('#v-' + v);
+  s.setAttribute('role', 'region');
+  s.setAttribute('aria-label', label);
 });
 addEventListener('hashchange', route);
+/* Move focus explicitly rather than trusting the fragment. Measured: pressing
+   the link from Board landed activeElement on #main, pressing it from
+   /#system landed it on nothing — and a second press, with '#main' already in
+   the bar, fires no hashchange and moves nothing at all. A skip link that
+   sometimes skips is not one. */
+document.querySelector('.skip').addEventListener('click', e => {
+  e.preventDefault();
+  $('#main').focus();
+  $('#main').scrollIntoView();
+});
 
 /* ---------- config ---------- */
 const REGIONS = [['us','United States'],['ca','Canada'],['gb','United Kingdom'],
@@ -785,6 +896,7 @@ async function loadConfig() {
   $('#focus').checked = !!CFG.focus;
   $('#qen').checked = !!CFG.qen;
   $('#qfr').value = hhmm(CFG.qfr); $('#qto').value = hhmm(CFG.qto);
+  syncQuiet();
   $('#favsRaw').value = CFG.favs || '';
   $('#tznow').textContent = CFG.now
     ? 'The panel currently reads ' + CFG.now + '. If that is wrong, the time zone is.'
@@ -846,6 +958,53 @@ async function loadConfig() {
 const hhmm = m => String((m / 60) | 0).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 const mins = s => { const [h, m] = (s || '0:0').split(':').map(Number); return h * 60 + m; };
 
+/* ---------- dependent state ----------
+   Quiet hours shipped as three independent controls that happen to sit in one
+   card. Unchecking Enabled left From and To live, focusable and editable, and
+   what you typed into them went nowhere — measured qfr.disabled false,
+   qto.disabled false, row opacity 1 with #qen unchecked. The whole console
+   had exactly one [disabled] element in it, which is the same defect stated
+   as a census.
+
+   The window also crosses midnight in the shipped config (1380 -> 420) and
+   nothing anywhere said so. Two times and a hyphen do not tell you which
+   night they mean. */
+function syncQuiet() {
+  const on = $('#qen').checked;
+  document.querySelectorAll('[data-needs="qen"]').forEach(r => {
+    r.classList.toggle('is-off', !on);
+    r.querySelectorAll('input').forEach(i => { i.disabled = !on; });
+  });
+  const f = mins($('#qfr').value), t = mins($('#qto').value);
+  $('#qsum').textContent = !on ? 'Quiet hours are off — alerts arrive at any time.'
+    : f === t ? 'From and To are the same, so quiet hours never start.'
+    : 'Quiet from ' + $('#qfr').value + ' to ' + $('#qto').value +
+      (f > t ? ' the next day.' : ' the same day.');
+}
+['#qen', '#qfr', '#qto'].forEach(s => $(s).addEventListener('change', syncQuiet));
+
+/* Seventeen helper <small>s and zero aria-describedby: every one of them was
+   decoration to a screen reader, including "Blank keeps the stored one. A
+   single '-' clears it." — the sentence without which the password field is
+   unusable. Wired once, here, rather than seventeen hand-written id pairs
+   that the next edit would desynchronise. Ids already in use (#catInfo,
+   #reach, #otaMsg, #tznow…) are left alone. */
+function wireHelpText() {
+  let n = 0;
+  document.querySelectorAll('.row small, label.row small').forEach(s => {
+    const row = s.closest('.row'); if (!row) return;
+    let ctrls = [...row.querySelectorAll('input,select')];
+    if (!ctrls.length) ctrls = [...row.querySelectorAll('button')];
+    if (!ctrls.length) return;
+    if (!s.id) s.id = 'help' + (++n);
+    ctrls.forEach(c => {
+      const prev = c.getAttribute('aria-describedby');
+      if (prev && prev.split(' ').includes(s.id)) return;
+      c.setAttribute('aria-describedby', prev ? prev + ' ' + s.id : s.id);
+    });
+  });
+}
+
 /* ---------- board ---------- */
 async function refreshBoard() {
   let s;
@@ -903,6 +1062,102 @@ async function refreshBoard() {
   }
 }
 
+/* ---------- validation, against the DEVICE's rules ----------
+   Every bound below was read out of firmware/ScoreDeck/src/svc/web.cpp, not
+   guessed and not borrowed from this page's own catalog regex. That
+   distinction is the whole finding:
+
+     cleanCatalog()'s slug shape is /^[a-z0-9.]{2,8}$/ — lower case, bounded.
+     validFavs() (web.cpp:215) accepts the league part as `isalnum || '.'`,
+     UPPERCASE INCLUDED and with NO length bound, and the team id as digits
+     only.
+
+   So the slug regex rejects "NHL:21", which the device stores happily, and
+   accepts "nhl:abc", which the device 400s with "team id must be digits".
+   A validator that disagrees with the thing it is protecting is worse than
+   none: it blocks work that would have succeeded and waves through work that
+   will not.
+
+   apiWifi() (web.cpp:574) is the one that matters. It checks the SSID is
+   non-empty and NOTHING ELSE — the password goes straight through
+   applySecret() into settingsSave() and then ESP.restart(). A five-character
+   key is accepted, written to NVS and rebooted into; the panel then cannot
+   associate, cannot serve this page, and the only way back is the button on
+   the device. 0 of 15 inputs carried a single validation attribute. */
+const FAVS_MAX_BYTES = 240;   // web.cpp:216 — FAVS_MAX_LEN, and it is BYTES
+const SSID_MAX = 32;          // 802.11. The device stores 33 and never joins.
+const WPA_MIN = 8, WPA_MAX = 63;   // WPA2-PSK passphrase; 64 hex is the raw PSK
+const bytes = v => new TextEncoder().encode(v).length;
+
+/** The device's own walk, in the device's own words. Returns null if it would
+ *  be accepted, or the message web.cpp would have sent back after a round
+ *  trip, with the offending token named — validFavs() cannot name it because
+ *  it has no room in a 400 body, and this does. */
+function favsProblem(v) {
+  if (bytes(v) > FAVS_MAX_BYTES)
+    return 'favourites list too long — ' + bytes(v) + ' bytes, and the panel takes ' + FAVS_MAX_BYTES + '.';
+  if (!v.length) return null;
+  const parts = v.split(',');
+  if (parts.length > FAV_MAX) return 'at most 20 favourites — this is ' + parts.length + '.';
+  for (const e of parts) {
+    // Unreachable from #favsRaw today — favList() already trims and drops
+    // empties before anything is sent — but it is validFavs()'s rule and it
+    // belongs with the other four, not in whichever caller remembers it.
+    if (!e.length) return 'empty entry in the favourites list';
+    const c = e.indexOf(':');
+    if (c <= 0 || c === e.length - 1) return '“' + e + '” — each favourite must look like league:teamId';
+    if (!/^[A-Za-z0-9.]+$/.test(e.slice(0, c))) return '“' + e + '” — bad league in a favourite';
+    if (!/^[0-9]+$/.test(e.slice(c + 1))) return '“' + e + '” — team id must be digits';
+  }
+  return null;
+}
+
+/** [selector, message] or null. Blank and "-" are the console's own keep /
+ *  clear verbs and both reach applySecret() safely, so neither is a length. */
+function wifiProblem() {
+  const ssid = $('#ssid').value.trim(), pass = $('#wpass').value;
+  if (!ssid.length) return ['#ssid', 'network name required'];       // web.cpp:578, verbatim
+  if (bytes(ssid) > SSID_MAX)
+    return ['#ssid', 'A network name is at most ' + SSID_MAX + ' bytes — this one is ' + bytes(ssid) +
+                     '. The panel would store it and never find the network.'];
+  if (!pass.length || pass === '-') return null;
+  if (/^[0-9a-fA-F]{64}$/.test(pass)) return null;                   // a raw PSK, not a passphrase
+  if (pass.length < WPA_MIN || pass.length > WPA_MAX)
+    return ['#wpass', 'A Wi-Fi password is ' + WPA_MIN + ' to ' + WPA_MAX +
+                      ' characters, or exactly 64 hex digits — this one is ' + pass.length +
+                      '. The panel does not check, so it would save this, reboot, fail to join, ' +
+                      'and the only way back would be the button on the panel itself.'];
+  return null;
+}
+
+/** An error that sits WITH the field, not in a banner at the top of a page
+ *  you have already scrolled past. role="alert" on a freshly inserted node so
+ *  it is announced, and aria-errormessage so it is reachable afterwards. */
+function fieldError(sel, msg) {
+  const f = $(sel); if (!f) return;
+  // Idempotent on identical text. #favsRaw validates on every keystroke, and
+  // re-inserting a role="alert" node per character would announce the same
+  // sentence six times while you type one league name.
+  const cur = document.getElementById('err-' + sel.replace('#', ''));
+  if (cur && cur.textContent === msg) return;
+  clearFieldError(sel);
+  const e = el('small', 'err', msg);
+  e.id = 'err-' + sel.replace('#', '');
+  e.dataset.for = sel;
+  e.setAttribute('role', 'alert');
+  f.insertAdjacentElement('afterend', e);
+  f.setAttribute('aria-invalid', 'true');
+  f.setAttribute('aria-errormessage', e.id);
+}
+function clearFieldError(sel) {
+  const f = $(sel); if (!f) return;
+  const e = document.getElementById('err-' + sel.replace('#', ''));
+  if (e) e.remove();
+  f.removeAttribute('aria-invalid');
+  f.removeAttribute('aria-errormessage');
+}
+['#ssid', '#wpass'].forEach(sel => $(sel).addEventListener('input', () => clearFieldError(sel)));
+
 /* ---------- teams ----------
    Picking teams is the primary job of this console and it was the one path
    that lost data silently. Add, reorder and remove all edited #favsRaw and
@@ -930,7 +1185,13 @@ function syncFavDirty() {
       ? (delta ? 'Save teams · ' + delta + ' unsaved' : 'Save teams · edited')
       : 'Save teams';
     btn.classList.toggle('primary', dirty);
-    btn.disabled = !dirty;
+    // Refuse to arm the control at all while the list would 400. The device
+    // does answer with its reason today, so this is not about a silent
+    // failure — it is about not spending a round trip and a scroll on
+    // something the page can see from here.
+    const bad = favsProblem(favList().join(','));
+    btn.disabled = !dirty || !!bad;
+    if (bad) fieldError('#favsRaw', bad); else clearFieldError('#favsRaw');
   }
   const tab = document.querySelector('#nav a[href="#/teams"]');
   if (tab) tab.classList.toggle('has-dirty', dirty);
@@ -1056,9 +1317,15 @@ function search() {
 }
 $('#loadCat').onclick = loadCatalog;
 $('#saveRaw').onclick = () => postFavs();
+// The field was write-only to the page: nothing listened to it, so a typed id
+// did not reach the list, the counter or the Save control until some other
+// action happened to call renderFavs().
+$('#favsRaw').addEventListener('input', renderFavs);
 
 async function postFavs() {
   const sent = favList().join(',');
+  const bad = favsProblem(sent);
+  if (bad) { fieldError('#favsRaw', bad); $('#favsRaw').focus(); return; }
   try {
     await api('/api/favs', { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ favs: sent }) });
@@ -1096,6 +1363,12 @@ $('#saveNet').onclick = () => postConfig({
   clk24: CFG.clk24 ? 1 : 0 });
 $('#savePass').onclick = () => postConfig({ ppass: $('#ppass').value }, 'Password updated.');
 $('#saveWifi').onclick = async () => {
+  // BEFORE the confirm, not after. A dialog that asks "reboot the panel?"
+  // about a password the panel cannot use is asking the wrong question, and
+  // the answer costs a trip to the device.
+  const bad = wifiProblem();
+  if (bad) { fieldError(bad[0], bad[1]); $(bad[0]).focus(); return; }
+  clearFieldError('#ssid'); clearFieldError('#wpass');
   if (!confirm('Save Wi-Fi and reboot the panel?')) return;
   try {
     await api('/api/wifi', { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -1147,11 +1420,20 @@ $('#flash').onclick = () => {
   const fd = new FormData(); fd.append('f', f);
   const x = new XMLHttpRequest();
   x.open('POST', '/update');
+  // The percentage and the warning used to share ONE text node, so the
+  // sentence re-flowed underneath itself while it read "do not power off":
+  // measured, the phrase's own left edge walked 128.20 px -> 141.80 px across
+  // 0 -> 100 %, and jumped 5.67 px on the 9 -> 10 digit rollover alone. The
+  // block's width never changed, which is why this reads as fine from the
+  // source — it is the text INSIDE the line that moves. Two nodes: one that
+  // counts, one that does not move.
+  $('#otaWarn').hidden = false;
   x.upload.onprogress = e => {
     if (!e.lengthComputable) return;
     const p = (e.loaded / e.total * 100) | 0;
     $('#otaBar').style.width = p + '%';
-    $('#otaMsg').textContent = p + '% — do not power off. The screen will shake; that is expected.';
+    $('#otaBarWrap').setAttribute('aria-valuenow', String(p));
+    $('#otaMsg').textContent = 'Uploading — ' + p + '%';
   };
   // A failed flash used to be a dead end: nothing re-enabled the button, and
   // #otaBar kept its last teal width — so the highest-stakes screen in the
@@ -1160,6 +1442,7 @@ $('#flash').onclick = () => {
   // try again. Chrome will not re-fire `change` for the same file, so the only
   // way out was a page reload.
   const otaFailed = (why) => {
+    $('#otaWarn').hidden = true;
     $('#otaBar').style.width = '0';
     $('#otaBar').parentElement.classList.add('bad');
     $('#flash').disabled = false;
@@ -1169,6 +1452,7 @@ $('#flash').onclick = () => {
   x.onload = () => {
     $('#otaBar').parentElement.classList.remove('bad');
     if (x.status !== 200) return otaFailed(x.responseText || ('HTTP ' + x.status));
+    $('#otaWarn').hidden = true;
     $('#otaMsg').textContent = 'Flashed. Rebooting…';
     // Say when it is back, rather than leaving "Rebooting." on screen forever.
     let tries = 0;
@@ -1265,8 +1549,10 @@ document.addEventListener('visibilitychange', poll);
 
    /api/state was also fetched twice on load — once here and once by the board
    view — so the boot cost three round-trips where two would do. */
+wireHelpText();
 skeleton(true);
 route();
+syncQuiet();
 poll();
 
 Promise.allSettled([loadConfig(), api('/api/state')]).then(([cfg, state]) => {
