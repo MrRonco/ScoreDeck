@@ -141,6 +141,9 @@ nav a{flex:0 0 auto;min-height:var(--tap);display:flex;align-items:center;paddin
   transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
 nav a:hover{color:var(--ink)}
 nav a.on{background:var(--frost);color:var(--ink);box-shadow:inset 0 0 0 1px var(--edge-hi)}
+/* Unsaved work follows you out of the tab. */
+nav a.has-dirty::after{content:"";width:6px;height:6px;border-radius:50%;
+  background:var(--warn);margin-left:7px;flex:0 0 auto}
 
 h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);
   font-weight:500;margin:26px 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -214,11 +217,41 @@ tr.is-focus td:first-child{border-left:3px solid var(--accent);padding-left:9px}
 .banner svg{flex:0 0 auto}
 .banner.warn{border-color:rgb(var(--warn-rgb) / .4);background:rgb(var(--warn-rgb) / .08);color:var(--warn)}
 .banner.bad{border-color:rgb(var(--bad-rgb) / .4);background:rgb(var(--bad-rgb) / .08);color:var(--bad)}
+.banner.ok{border-color:rgb(var(--ok-rgb) / .4);background:rgb(var(--ok-rgb) / .08);color:var(--ok)}
 .banner span{color:var(--ink)}
 .banner button{margin-left:auto}
+.banner .icon-btn{margin-left:0;min-width:32px;min-height:32px;font-size:18px;
+  color:inherit;border-color:transparent;opacity:.7}
+.banner .icon-btn:hover{opacity:1;background:transparent}
+
+/* Transient messages sit in their own host. #warn keeps the STANDING ones —
+   the no-password warning has a call to action and no timer, and pinning that
+   to the viewport would park it over the page forever. */
+#toasts{display:grid;gap:10px}
+#toasts:empty{display:none}
+
+/* Frozen data. A rule and a hatch, never a dim: opacity .5 measured 2.67:1 on
+   this table, below AA, so the marker would have made the thing it marks
+   harder to read. Every ink value is untouched. */
+[data-stale]{position:relative}
+[data-stale] .card,[data-stale] table{
+  border-left:3px solid var(--warn);
+  background-image:repeating-linear-gradient(135deg,
+    rgb(var(--warn-rgb) / .05) 0 6px,transparent 6px 12px)}
+[data-stale]::before{content:"Frozen — last update " attr(data-stale);
+  display:block;font:600 11px/1 var(--mono);letter-spacing:.09em;
+  text-transform:uppercase;color:var(--warn);margin:0 0 8px}
+
+/* Boot. The page says "not known yet" instead of rendering an empty truth. */
+.booting .skel{color:transparent!important;background:var(--frost);
+  border-radius:var(--r-xs);animation:shimmer 1.4s linear infinite;
+  background-image:linear-gradient(100deg,transparent 15%,rgb(var(--line-rgb) / .10) 50%,transparent 85%);
+  background-size:250% 100%}
+.booting .skel *{visibility:hidden}
 @keyframes slidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .hint{color:var(--ink3);font-size:13px;margin:10px 0 0}
 .bar{height:6px;border-radius:var(--r-xs);background:var(--edge);overflow:hidden;margin:10px 0}
+.bar.bad i{background:var(--bad)}
 .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .12s linear}
 .list{max-height:340px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--edge-hi) transparent}
 .list::-webkit-scrollbar,.wrapx::-webkit-scrollbar{width:8px;height:8px}
@@ -299,11 +332,12 @@ td.empty-cell{padding:0;border-top:0}
 </header>
 
 <main class="wrap" id="main">
-  <div id="warn" role="region" aria-live="polite" aria-label="Notifications"></div>
+  <div id="warn" role="region" aria-live="polite" aria-label="Standing notices"></div>
+  <div id="toasts" role="status" aria-live="polite" aria-label="Recent activity"></div>
 
   <!-- BOARD -->
   <section class="view" id="v-board">
-    <div class="grid four" id="stats"></div>
+    <div class="grid four" id="stats" data-skel="4"></div>
     <h2>On the board now <span class="host" id="boardAge"></span></h2>
     <div class="card"><div class="wrapx"><table id="board">
       <caption class="sr-only">Current games across your selected leagues</caption>
@@ -468,7 +502,7 @@ td.empty-cell{padding:0;border-top:0}
     </div>
 
     <h2>At a glance</h2>
-    <div class="grid four" id="diagStats"></div>
+    <div class="grid four" id="diagStats" data-skel="4"></div>
     <h2>Detail</h2>
     <div class="card"><div class="wrapx"><table id="diagTable">
       <caption class="sr-only">Diagnostic detail values</caption>
@@ -538,7 +572,10 @@ function emptyState(msg, d) {
   box.append(el('span', '', msg));
   return box;
 }
-function bannerIcon() {
+/** The mark matches the message. A success used to be announced with a
+ *  warning triangle, which is the whole tell that success had no treatment. */
+function bannerIcon(kind) {
+  if (kind === 'ok') return svgIcon('M20 6L9 17l-5-5', 18);
   return svgIcon('M12 9v4M12 17h.01M10.3 3.9L2.6 18a1.8 1.8 0 001.5 2.7h15.8a1.8 1.8 0 001.5-2.7L13.7 3.9a1.8 1.8 0 00-3.4 0z', 18);
 }
 const VIEWS = [['board','Board'],['teams','Teams'],['alerts','Alerts'],
@@ -559,12 +596,108 @@ function paintNet(s) {
   $('#net').className = 'pill ' + (s.net === 4 ? 'ok' : s.net === 5 ? 'warn' : 'bad');
   $('#net').textContent = ['booting','no wi-fi','no proxy','error','live','stale'][s.net] || '?';
 }
-function toast(msg, bad) {
-  const b = el('div', 'banner ' + (bad ? 'bad' : 'warn'));
-  b.append(bannerIcon(), el('span', '', msg));
-  $('#warn').prepend(b);
+/* ---------- what the console knows ----------
+   Three kinds of message, and they used to be one. toast() built a
+   `banner warn` for EVERYTHING, so "Teams saved." rendered in amber with a
+   warning triangle — the success path and the failure path were the same
+   colour — and both were mixed into #warn alongside the persistent
+   no-password security banner, which is a different kind of thing again:
+   it has no timer and a call to action.
+
+     ok(msg)              transient, green, 4 s      "it worked"
+     fail(msg, opts)      persistent, red, dismissible, optionally field-linked
+     warn(id, msg, cta)   persistent, amber, DEDUPED by id — a standing condition
+
+   Failures no longer auto-dismiss. A 4-second amber flash carrying the
+   device's raw error body, with nothing marking the field that was rejected,
+   is not a report — it is a shrug you have to catch. */
+function msgOf(e) { return String((e && e.message) || e || 'unknown error'); }
+
+function banner(kind, msg, opts = {}) {
+  const b = el('div', 'banner ' + kind);
+  if (opts.id) b.dataset.id = opts.id;
+  b.append(bannerIcon(kind), el('span', '', msg));
+  if (opts.cta) {
+    const go = el('button', 'primary', opts.cta.label);
+    go.onclick = opts.cta.onClick;
+    b.append(go);
+  }
+  if (opts.dismissible !== false && !opts.timeout) {
+    const x = el('button', 'ghost icon-btn', '×');
+    x.setAttribute('aria-label', 'Dismiss');
+    x.onclick = () => b.remove();
+    b.append(x);
+  }
+  return b;
+}
+
+/** Transient success. The only message on the page that expires by itself. */
+function ok(msg) {
+  const b = banner('ok', msg, { dismissible: false, timeout: true });
+  $('#toasts').prepend(b);
   setTimeout(() => b.remove(), 4000);
 }
+
+/** A failure. Persistent, because the user has to be able to read it. */
+function fail(msg, opts = {}) {
+  const b = banner('bad', msg, opts);
+  ($('#toasts')).prepend(b);
+  if (opts.field) {
+    const f = $(opts.field);
+    if (f) { f.setAttribute('aria-invalid', 'true'); f.focus(); }
+  }
+  return b;
+}
+
+/** A standing condition. Deduped by id, so it cannot stack.
+ *  loadConfig() runs after every save and used to APPEND the no-password
+ *  banner each time: three saves, three identical copies, 520 px of the
+ *  mobile Board tab consumed before any content. */
+function warn(id, msg, cta) {
+  const host = $('#warn');
+  const existing = host.querySelector('[data-id="' + id + '"]');
+  if (existing) return existing;
+  const b = banner('warn', msg, { id, cta, dismissible: false });
+  host.append(b);
+  return b;
+}
+function clearWarn(id) {
+  const b = $('#warn').querySelector('[data-id="' + id + '"]');
+  if (b) b.remove();
+}
+
+/** Kept as the old name so nothing silently loses its message; success now
+ *  actually looks like success. */
+function toast(msg, bad) { bad ? fail(msg) : ok(msg); }
+
+/** Skeleton state: the page says "I do not know this yet" rather than
+ *  rendering an empty truth. Reuses the shimmer already written for the
+ *  device mirror. */
+function skeleton(on) {
+  document.documentElement.classList.toggle('booting', !!on);
+  document.querySelectorAll('[data-skel]').forEach(host => {
+    if (!on) { if (host.dataset.filled === 'skel') { host.textContent = ''; delete host.dataset.filled; } return; }
+    if (host.textContent.trim()) return;               // real content already there
+    const n = Number(host.dataset.skel) || 3;
+    for (let i = 0; i < n; i++) {
+      const c = el('div', 'stat skel');
+      c.append(el('b', '', '—'), el('span', '', '—'));
+      host.append(c);
+    }
+    host.dataset.filled = 'skel';
+  });
+}
+
+/** Mark a view's data as frozen. NEVER by dimming it: measured, opacity .5
+ *  takes the table text from 6.78:1 to 2.67:1, below AA — a stale marker
+ *  that makes the data harder to read is a contrast regression, and the
+ *  standing rule forbids it. A rule and a hatch carry it instead, and every
+ *  ink value stays exactly where it was. */
+function markStale(sel, when) {
+  const v = $(sel); if (!v) return;
+  v.dataset.stale = when || new Date().toLocaleTimeString();
+}
+function clearStale(sel) { const v = $(sel); if (v) delete v.dataset.stale; }
 
 /* ---------- routing ---------- */
 function route() {
@@ -690,12 +823,24 @@ async function loadConfig() {
     d.append(b);
   });
 
+  // Deduped by id. This ran on every save (postConfig calls loadConfig) and
+  // appended a fresh copy each time — three saves, three identical banners.
   if (!CFG.hasPass) {
-    const b = el('div', 'banner warn');
-    b.append(bannerIcon(), el('span', '', 'No portal password. Anyone on this network can reflash this panel.'));
-    const go = el('button', 'primary', 'Set one'); go.onclick = () => location.hash = '#/system';
-    b.append(go); $('#warn').append(b);
-  }
+    warn('nopass', 'No portal password. Anyone on this network can reflash this panel.',
+         { label: 'Set one', onClick: () => location.hash = '#/system' });
+  } else clearWarn('nopass');
+
+  // The one condition that makes the whole product inert, and the console
+  // never mentioned it: with no proxy set, the board renders "No games right
+  // now." — which is not merely unhelpful, it is false. There are games; the
+  // panel has no way to ask for them. The banner-with-a-CTA pattern was
+  // already written for the password thirty lines up.
+  if (!String(CFG.proxy || '').trim()) {
+    warn('noproxy', 'No proxy set. The panel cannot fetch scores until it has one.',
+         { label: 'Set proxy', onClick: () => { location.hash = '#/network';
+                                                setTimeout(() => $('#proxy').focus(), 60); } });
+  } else clearWarn('noproxy');
+
   renderFavs();
 }
 const hhmm = m => String((m / 60) | 0).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
@@ -706,10 +851,21 @@ async function refreshBoard() {
   let s;
   try { s = await api('/api/state'); }
   catch {
+    // The catch used to return BEFORE the table and the stat tiles were
+    // rebuilt, so nine rows of scores and four counters stayed on screen at
+    // full strength with a 12 px grey caption as the only contradiction. A
+    // stopped clock presented as a live one is the most misleading thing this
+    // console can show, and this is the surface people open BECAUSE they think
+    // something is wrong.
     $('#net').className = 'pill bad'; $('#net').textContent = 'offline';
     $('#boardAge').textContent = 'connection lost';
+    markStale('#v-board');
+    warn('boardstale', 'Lost the panel at ' + new Date().toLocaleTimeString() +
+                       ' — these scores are frozen.');
     return;
   }
+  clearStale('#v-board');
+  clearWarn('boardstale');
   paintNet(s);
   $('#boardAge').textContent = 'updated just now';
   const st = $('#stats'); st.textContent = '';
@@ -721,7 +877,14 @@ async function refreshBoard() {
   const tb = $('#board tbody'); tb.textContent = '';
   if (!s.b || !s.b.length) {
     const tr = el('tr'); const td = el('td', 'empty-cell'); td.colSpan = 5;
-    td.append(emptyState('No games right now.', 'M4 4h16v4H4z M4 10h7v10H4z M13 10h7v4h-7z M13 16h7v4h-7z'));
+    // Branch on WHY it is empty. "No games right now." is a statement about
+    // the world; with no proxy configured the truth is a statement about the
+    // panel, and saying the first when the second is true sends the user
+    // looking for a fault in their sport rather than in their settings.
+    td.append(String(CFG.proxy || '').trim()
+      ? emptyState('No games right now.', 'M4 4h16v4H4z M4 10h7v10H4z M13 10h7v4h-7z M13 16h7v4h-7z')
+      : emptyState('No proxy set — the panel has nothing to fetch from.',
+                   'M12 9v4M12 17h.01M10.3 3.9L2.6 18a1.8 1.8 0 001.5 2.7h15.8a1.8 1.8 0 001.5-2.7L13.7 3.9a1.8 1.8 0 00-3.4 0z'));
     tr.append(td); tb.append(tr);
   } else {
     s.b.forEach(g => {
@@ -740,9 +903,38 @@ async function refreshBoard() {
   }
 }
 
-/* ---------- teams ---------- */
+/* ---------- teams ----------
+   Picking teams is the primary job of this console and it was the one path
+   that lost data silently. Add, reorder and remove all edited #favsRaw and
+   fired NO POST at all; the only Save control sat 311 px below the card under
+   a different heading; and any unrelated save elsewhere called loadConfig(),
+   which repopulated #favsRaw from the device and destroyed the edit. A user
+   could add three teams, watch the list update, change the density on
+   Network, press Save, and lose them with no signal at any point. */
 function favList() { return ($('#favsRaw').value || '').split(',').map(s => s.trim()).filter(Boolean); }
 function setFavs(list) { $('#favsRaw').value = list.join(','); renderFavs(); }
+
+/** The favourites as the DEVICE currently has them. Anything else is unsaved. */
+function favsSaved() { return String(CFG.favs || ''); }
+function favsDirty() { return favList().join(',') !== favsSaved(); }
+
+/** Reflect unsaved work: the Save control names how many, and the Teams tab
+ *  carries a dot, so leaving the tab cannot look like committing. */
+function syncFavDirty() {
+  const dirty = favsDirty();
+  const btn = $('#saveRaw');
+  if (btn) {
+    const list = favList(), saved = favsSaved().split(',').filter(Boolean);
+    const delta = Math.abs(list.length - saved.length);
+    btn.textContent = dirty
+      ? (delta ? 'Save teams · ' + delta + ' unsaved' : 'Save teams · edited')
+      : 'Save teams';
+    btn.classList.toggle('primary', dirty);
+    btn.disabled = !dirty;
+  }
+  const tab = document.querySelector('#nav a[href="#/teams"]');
+  if (tab) tab.classList.toggle('has-dirty', dirty);
+}
 
 function nameFor(key) {
   if (!CAT) return null;
@@ -752,11 +944,21 @@ function nameFor(key) {
   return t ? { n: t[2], a: t[1], c: t[3], lg: row[1] } : null;
 }
 
+const FAV_MAX = 20;                      // web.cpp:215 validFavs() — the device's own cap
+
 function renderFavs() {
   const list = favList(), box = $('#favs');
   box.textContent = '';
-  $('#favN').textContent = list.length + ' of 20';
-  if (!list.length) {
+  const n = list.length;
+  $('#favN').textContent = n + ' of ' + FAV_MAX;
+  // At the cap, say so. #favN rendered byte-identically at 20 of 20 and at 3
+  // of 20, while the LEAGUE cap two cards away goes amber and disables its
+  // boxes — the same limit, two behaviours, on one page.
+  $('#favN').style.color = n >= FAV_MAX ? 'var(--warn)' : '';
+  if (n >= FAV_MAX) warn('favcap', 'Twenty teams is the panel\'s limit. Remove one to add another.');
+  else clearWarn('favcap');
+  syncFavDirty();
+  if (!n) {
     box.append(emptyState('None yet. Search below, or type ids by hand.', 'M12 3v18M3 12h18'));
     return;
   }
@@ -856,22 +1058,33 @@ $('#loadCat').onclick = loadCatalog;
 $('#saveRaw').onclick = () => postFavs();
 
 async function postFavs() {
+  const sent = favList().join(',');
   try {
     await api('/api/favs', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ favs: favList().join(',') }) });
-    toast('Teams saved.');
-  } catch (e) { toast(String(e.message || e), true); }
+      body: JSON.stringify({ favs: sent }) });
+    CFG.favs = sent;              // the device now agrees; nothing is pending
+    syncFavDirty();
+    ok('Teams saved.');
+  } catch (e) { fail('Could not save teams: ' + msgOf(e), { field: '#favsRaw' }); }
 }
 
 /* ---------- saves ---------- */
 async function postConfig(fields, msg) {
   if (busy) return; busy = true;
+  // Hold anything the user has typed and not saved. loadConfig() below
+  // repopulates every field from the device, which is right for the fields
+  // this save just wrote and destructive for the ones it did not touch —
+  // favourites being the case that actually lost work.
+  const pendingFavs = favsDirty() ? $('#favsRaw').value : null;
   try {
     await api('/api/config', { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify(fields) });
-    toast(msg || 'Saved.');
+    ok(msg || 'Saved.');
     await loadConfig();
-  } catch (e) { toast(String(e.message || e), true); }
+    if (pendingFavs !== null) { $('#favsRaw').value = pendingFavs; renderFavs(); }
+  } catch (e) {
+    fail((msg ? msg.replace(/\.$/, '') + ' failed: ' : 'Save failed: ') + msgOf(e));
+  }
   busy = false;
 }
 $('#saveAlerts').onclick = () => postConfig({
@@ -940,9 +1153,34 @@ $('#flash').onclick = () => {
     $('#otaBar').style.width = p + '%';
     $('#otaMsg').textContent = p + '% — do not power off. The screen will shake; that is expected.';
   };
-  x.onload = () => { $('#otaMsg').textContent = x.status === 200
-    ? 'Flashed. Rebooting.' : 'Failed: ' + x.responseText; };
-  x.onerror = () => { $('#otaMsg').textContent = 'Upload failed.'; };
+  // A failed flash used to be a dead end: nothing re-enabled the button, and
+  // #otaBar kept its last teal width — so the highest-stakes screen in the
+  // product, on the state where you are already worried the panel is bricked,
+  // answered with a bar that looks like progress and a control that refuses to
+  // try again. Chrome will not re-fire `change` for the same file, so the only
+  // way out was a page reload.
+  const otaFailed = (why) => {
+    $('#otaBar').style.width = '0';
+    $('#otaBar').parentElement.classList.add('bad');
+    $('#flash').disabled = false;
+    $('#otaMsg').textContent = 'Not flashed. The panel is untouched — you can try again.';
+    fail('Firmware update failed: ' + why);
+  };
+  x.onload = () => {
+    $('#otaBar').parentElement.classList.remove('bad');
+    if (x.status !== 200) return otaFailed(x.responseText || ('HTTP ' + x.status));
+    $('#otaMsg').textContent = 'Flashed. Rebooting…';
+    // Say when it is back, rather than leaving "Rebooting." on screen forever.
+    let tries = 0;
+    const probe = setInterval(async () => {
+      if (++tries > 40) { clearInterval(probe);
+        $('#otaMsg').textContent = 'Flashed, but the panel has not come back. Check it.'; return; }
+      try { await api('/api/config'); clearInterval(probe);
+            $('#otaMsg').textContent = 'Flashed. The panel is back.'; ok('Panel is back online.'); }
+      catch { /* still rebooting */ }
+    }, 2000);
+  };
+  x.onerror = () => otaFailed('the upload did not complete');
   x.send(fd);
 };
 
@@ -1016,10 +1254,29 @@ function poll() {
 }
 document.addEventListener('visibilitychange', poll);
 
-loadConfig().then(() => { route(); poll(); api('/api/state').then(paintNet).catch(() => {}); }).catch(e => {
-  const b = el('div', 'banner bad');
-  b.append(bannerIcon(), el('span', '', 'Could not load settings: ' + e.message));
-  document.body.prepend(b);
+/* ---------- boot ----------
+   route() FIRST. It used to run inside loadConfig().then, so between load and
+   the first /api/config the page was 0 px of content — measured: #main
+   innerText '', 0 of 6 views on, 85% of the document bare. This is served off
+   an ESP32 over Wi-Fi while the device is also polling, so that window is real,
+   and if the config call FAILED the page simply stayed empty behind a banner.
+   Routing first means the requested view is on screen immediately, in a
+   skeleton state, and every later path only has to fill it in.
+
+   /api/state was also fetched twice on load — once here and once by the board
+   view — so the boot cost three round-trips where two would do. */
+skeleton(true);
+route();
+poll();
+
+Promise.allSettled([loadConfig(), api('/api/state')]).then(([cfg, state]) => {
+  skeleton(false);
+  if (cfg.status === 'rejected') {
+    fail('Could not load settings — ' + msgOf(cfg.reason) +
+         '. The panel may be busy or unreachable.', { persist: true });
+  }
+  if (state.status === 'fulfilled') paintNet(state.value);
+  else markStale('#v-board');
 });
 </script>
 </body>
