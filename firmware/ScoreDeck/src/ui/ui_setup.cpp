@@ -125,7 +125,7 @@ void uiSetupInit(lv_obj_t* parent) {
   // so Connect is still reachable while a field is focused. The reference
   // material that does not need to be reachable goes below, into the 220 rows
   // this screen used to leave empty (45.8% of the first screen anyone sees).
-  lv_obj_t* card = glassPanel(s_root, 40, 20, SCR_W - 80, 252, 14);
+  lv_obj_t* card = glassPanel(s_root, 40, 20, SCR_W - 80, 252, R_LG);
 
   lv_obj_t* h = lv_label_create(card);
   // The wordmark is set in caps because the display face has no lowercase, and
@@ -204,6 +204,7 @@ void uiSetupInit(lv_obj_t* parent) {
     lv_obj_t* b = lv_btn_create(card);
     lv_obj_set_size(b, 150, 44);
     lv_obj_set_pos(b, x, y);
+    uiButton(b);
     lv_obj_set_style_bg_color(b, C_EDGE, 0);
     lv_obj_set_style_border_color(b, C_EDGE_HI, 0);
     lv_obj_set_style_border_width(b, 1, 0);

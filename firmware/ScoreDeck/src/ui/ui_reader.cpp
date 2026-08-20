@@ -247,22 +247,11 @@ void uiReaderInit(lv_obj_t* parent) {
   // One baseline for everything in the strip, from the face's own metrics.
   const int hdrY = (BAR_H - (int)lv_font_get_line_height(F_MICRO)) / 2;
 
-  // Back chip — same idiom as every other screen's return affordance.
-  lv_obj_t* back = lv_btn_create(bar);
-  lv_obj_remove_style_all(back);
-  lv_obj_set_size(back, 96, 32);
-  lv_obj_set_pos(back, 16, (BAR_H - 32) / 2);
-  lv_obj_set_style_radius(back, R_MD, 0);
-  lv_obj_set_style_bg_color(back, C_SURF_1, 0);
-  lv_obj_set_style_bg_opa(back, LV_OPA_COVER, 0);
-  uiPressable(back);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* bl = lv_label_create(back);
-  lv_obj_set_style_text_font(bl, F_MICRO, 0);
-  lv_obj_set_style_text_letter_space(bl, 1, 0);
-  lv_obj_set_style_text_color(bl, C_INK2, 0);
-  lv_label_set_text(bl, "< NEWS");
-  lv_obj_center(bl);
+  // Back chip. This site was the idiom the other five were measured against —
+  // it is now backChip() itself, so "same idiom" is enforced rather than
+  // asserted. The only thing that changes here is the width: 96 px was hand
+  // set, and the chip is content-sized around its own word.
+  backChip(bar, "NEWS", onBack);
 
   s_meta = lv_label_create(bar);
   lv_obj_set_style_text_font(s_meta, F_MICRO, 0);
@@ -350,7 +339,7 @@ void uiReaderInit(lv_obj_t* parent) {
   lv_obj_remove_style_all(s_zone);
   lv_obj_set_pos(s_zone, 0, BAR_H);
   lv_obj_set_size(s_zone, SCR_W, SCR_H - BAR_H);
-  lv_obj_add_flag(s_zone, LV_OBJ_FLAG_CLICKABLE);
+  uiTapZone(s_zone);   // the page turning IS the feedback; see uiTapZone()
   lv_obj_clear_flag(s_zone, LV_OBJ_FLAG_GESTURE_BUBBLE);
   lv_obj_add_event_cb(s_zone, onTap, LV_EVENT_SHORT_CLICKED, nullptr);
   lv_obj_add_event_cb(s_zone, onGesture, LV_EVENT_GESTURE, nullptr);

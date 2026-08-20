@@ -83,10 +83,7 @@ void uiAlertInit(lv_obj_t* parent) {
   lv_obj_remove_style_all(s_scrim);
   lv_obj_set_size(s_scrim, SCR_W, SCR_H);
   lv_obj_set_pos(s_scrim, 0, 0);
-  lv_obj_set_style_bg_color(s_scrim, lv_color_hex(0x04070C), 0);
-  lv_obj_set_style_bg_opa(s_scrim, 158, 0);          // ~62%
-  lv_obj_clear_flag(s_scrim, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(s_scrim, LV_OBJ_FLAG_CLICKABLE);
+  uiScrim(s_scrim, 158);                             // ~62% of C_SCRIM
   lv_obj_add_flag(s_scrim, LV_OBJ_FLAG_HIDDEN);
   // Clickable both to dismiss and to stop taps falling through to the board.
   lv_obj_add_event_cb(s_scrim, onDismiss, LV_EVENT_CLICKED, nullptr);
@@ -99,6 +96,13 @@ void uiAlertInit(lv_obj_t* parent) {
   // scrim OUTSIDE the card instead. On the product's flagship moment, with the
   // card filling 40.6% of the screen. There is no EVENT_BUBBLE anywhere in the
   // tree, so the handler is bound directly.
+  //
+  // uiPressable(), not a bare handler: phase 21 took the unconditional
+  // CLICKABLE away from glassPanel() — 20 glass SURFACES were lighting the
+  // "touch this" outline and doing nothing — so this card, which relied on
+  // exactly that default, now has to ask. It is the one glass panel on the
+  // product that wanted the flag and never said so.
+  uiPressable(s_card);
   lv_obj_add_event_cb(s_card, onDismiss, LV_EVENT_CLICKED, nullptr);
 
   s_edge = lv_obj_create(s_card);

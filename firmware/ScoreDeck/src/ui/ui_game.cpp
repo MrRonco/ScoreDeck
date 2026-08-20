@@ -73,18 +73,10 @@ void uiGameInit(lv_obj_t* parent) {
   lv_obj_set_pos(s_edge, 0, 0);
   lv_obj_set_style_bg_opa(s_edge, LV_OPA_COVER, 0);
 
-  s_back = lv_btn_create(hdr);
-  lv_obj_set_size(s_back, 54, 44);
-  lv_obj_set_pos(s_back, 14, 24);
-  lv_obj_set_style_bg_color(s_back, C_EDGE, 0);
-  lv_obj_set_style_border_width(s_back, 0, 0);
-  lv_obj_set_style_radius(s_back, 9, 0);
-  lv_obj_add_event_cb(s_back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* bl = lv_label_create(s_back);
-  lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
-  lv_obj_set_style_text_color(bl, C_INK, 0);
-  lv_obj_center(bl);
+  // Bare chevron: the away badge starts at x=82 and a worded chip measures
+  // 88 px. Centred in the 92 px header by the helper, which is where the old
+  // 54x44 at y=24 already was — the size, radius and x were what differed.
+  s_back = backChip(hdr, nullptr, onBack);
 
   s_badgeA = teamBadge(hdr, "", 0x5D6D7E, 44);  lv_obj_set_pos(s_badgeA, 82, 24);
   s_lblA = lv_obj_get_child(s_badgeA, 0);
@@ -110,7 +102,7 @@ void uiGameInit(lv_obj_t* parent) {
   s_liveDot = lv_obj_create(hdr);
   lv_obj_remove_style_all(s_liveDot);
   lv_obj_set_size(s_liveDot, 9, 9);
-  lv_obj_set_style_radius(s_liveDot, 5, 0);
+  lv_obj_set_style_radius(s_liveDot, LV_RADIUS_CIRCLE, 0);   // a dot, not a rung
   lv_obj_set_style_bg_color(s_liveDot, A_LIVE, 0);
   lv_obj_set_style_bg_opa(s_liveDot, LV_OPA_COVER, 0);
   lv_obj_set_pos(s_liveDot, (SCR_W - 240) / 2 - 18, 30);
@@ -119,7 +111,7 @@ void uiGameInit(lv_obj_t* parent) {
   s_venue  = lb(hdr, (SCR_W - 240) / 2, 52, C_INK3, F_MICRO, LV_TEXT_ALIGN_CENTER, 240);
 
   // ── linescore ────────────────────────────────────────────────────────────
-  lv_obj_t* ls = glassPanel(s_root, 16, 104, 768, 74, 12);
+  lv_obj_t* ls = glassPanel(s_root, 16, 104, 768, 74, R_LG);
   s_lsTeamA = lb(ls, 16, 26, C_INK2, F_MICRO);
   s_lsTeamH = lb(ls, 16, 48, C_INK, F_MICRO);
   for (int i = 0; i < LS_COLS; i++) {
@@ -143,7 +135,7 @@ void uiGameInit(lv_obj_t* parent) {
   // advance = 70.3 px. The stats card is therefore 14 + 60 + 8 + 72 + 8 + 60 +
   // 14 = 236, pinned to the 784 right frame, and the scoring card takes the
   // rest of the row less the 12 px gutter.
-  lv_obj_t* pc = glassPanel(s_root, 16, 190, 520, 242, 12);
+  lv_obj_t* pc = glassPanel(s_root, 16, 190, 520, 242, R_LG);
   lv_obj_t* ph = lb(pc, 16, 12, C_INK3, F_MICRO);
   lv_label_set_text(ph, "SCORING");
   for (int i = 0; i < PLAY_ROWS; i++) {
@@ -185,7 +177,7 @@ void uiGameInit(lv_obj_t* parent) {
   }
 
   // ── team comparison ──────────────────────────────────────────────────────
-  lv_obj_t* sc = glassPanel(s_root, 548, 190, 236, 242, 12);
+  lv_obj_t* sc = glassPanel(s_root, 548, 190, 236, 242, R_LG);
   lv_obj_t* sh = lb(sc, 16, 12, C_INK3, F_MICRO);
   lv_label_set_text(sh, "TEAM STATS");
   for (int i = 0; i < STAT_ROWS; i++) {
@@ -225,9 +217,9 @@ void uiGameInit(lv_obj_t* parent) {
   lv_obj_t* luBtn = lv_btn_create(s_root);
   lv_obj_set_size(luBtn, 96, 30);
   lv_obj_set_pos(luBtn, SCR_W - 16 - 96, 100);
+  uiButton(luBtn);
   lv_obj_set_style_bg_color(luBtn, C_EDGE, 0);
-  lv_obj_set_style_border_width(luBtn, 0, 0);
-  lv_obj_set_style_radius(luBtn, 7, 0);
+  lv_obj_set_style_radius(luBtn, R_MD, 0);   // was 7; the back beside it was 9
   lv_obj_add_event_cb(luBtn, onLineup, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* luLbl = lv_label_create(luBtn);
   lv_label_set_text(luLbl, "LINEUP");

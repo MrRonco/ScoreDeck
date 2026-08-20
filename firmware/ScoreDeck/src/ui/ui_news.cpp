@@ -89,22 +89,14 @@ void uiNewsInit(lv_obj_t* parent) {
   lv_obj_set_style_bg_opa(s_root, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(s_root, LV_OBJ_FLAG_CLICKABLE);
+  // Clickable only so the swipe reaches it — there is no tap handler here, so
+  // it is an input surface and not a control. uiTapZone() is that statement.
+  uiTapZone(s_root);
   lv_obj_add_event_cb(s_root, onGesture, LV_EVENT_GESTURE, nullptr);
 
   lv_obj_t* bar = glassPanel(s_root, 0, 0, SCR_W, BAR_H, 0);
-  lv_obj_t* back = lv_btn_create(bar);
-  lv_obj_set_size(back, 48, 34);
-  lv_obj_set_pos(back, 14, 7);
-  lv_obj_set_style_bg_color(back, C_EDGE, 0);
-  lv_obj_set_style_border_width(back, 0, 0);
-  lv_obj_set_style_radius(back, 8, 0);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* bl = lv_label_create(back);
-  lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
-  lv_obj_set_style_text_color(bl, C_INK, 0);
-  lv_obj_center(bl);
+  // Bare chevron: the title sits at x=74 and a worded chip measures 88 px.
+  backChip(bar, nullptr, onBack);
   lv_obj_t* ttl = lb(bar, 74, 15, C_INK, F_ABBR);
   lv_label_set_text(ttl, "NEWS");
   s_hint = lb(bar, SCR_W - 18 - 300, 17, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 300);
@@ -120,8 +112,8 @@ void uiNewsInit(lv_obj_t* parent) {
 
   for (uint8_t i = 0; i < NEWS_ROWS; i++) {
     const int y = NEWS_ROW_Y + i * (NEWS_ROW_H + 8);
-    s_card[i] = glassPanel(s_root, 16, y, 768, NEWS_ROW_H, 12);
-    lv_obj_add_flag(s_card[i], LV_OBJ_FLAG_CLICKABLE);
+    s_card[i] = glassPanel(s_root, 16, y, 768, NEWS_ROW_H, R_LG);
+    uiPressable(s_card[i]);
     lv_obj_clear_flag(s_card[i], LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(s_card[i], onItem, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
     lv_obj_add_event_cb(s_card[i], onGesture, LV_EVENT_GESTURE, nullptr);

@@ -180,12 +180,13 @@ void uiIdleInit(lv_obj_t* parent) {
   // ── next up ──────────────────────────────────────────────────────────────
   // The ONLY card on the screen, which is what makes it read as the one thing
   // worth acting on.
-  lv_obj_t* nextCard = glassPanel(s_root, 508, 94, 276, 230, 14);
+  lv_obj_t* nextCard = glassPanel(s_root, 508, 94, 276, 230, R_LG);
   s_nextCard = nextCard;
-  lv_obj_add_flag(nextCard, LV_OBJ_FLAG_CLICKABLE);
+  uiPressable(nextCard);
   lv_obj_add_event_cb(nextCard, onNextCard, LV_EVENT_SHORT_CLICKED, nullptr);
   s_nextEdge = lv_obj_create(nextCard);
   lv_obj_remove_style_all(s_nextEdge);
+  lv_obj_clear_flag(s_nextEdge, LV_OBJ_FLAG_CLICKABLE);   // 180 px hole
   lv_obj_set_size(s_nextEdge, EDGE_W, 60);
   lv_obj_set_pos(s_nextEdge, 0, 22);
   lv_obj_set_style_bg_opa(s_nextEdge, LV_OPA_COVER, 0);
@@ -300,14 +301,15 @@ void uiIdleInit(lv_obj_t* parent) {
     lv_obj_set_pos(h, x, y - 4);
     lv_obj_set_size(h, 348, 28);
     lv_obj_set_style_bg_opa(h, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_radius(h, 6, 0);
-    // Visible only while held. The rows must not look like buttons at rest —
-    // the ledger is a list, and 27 panels that light up on touch was already
-    // flagged once as making inert things look interactive.
-    lv_obj_set_style_bg_color(h, C_LINE, LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(h, 24, LV_STATE_PRESSED);
+    lv_obj_set_style_radius(h, R_SM, 0);
+    // Visible only while held — the rows must not look like buttons at rest,
+    // and uiPressable() is exactly that: nothing at rest, an outline under a
+    // finger. The wash this replaced (C_LINE at opa 24) was a FILL press, and
+    // the file that argued for it is the same file that argued fills were
+    // replaced by an outline everywhere else. Two rules, one product; the
+    // outline wins because it is the one the accent's second meaning names.
     lv_obj_clear_flag(h, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(h, LV_OBJ_FLAG_CLICKABLE);
+    uiPressable(h);
     lv_obj_add_event_cb(h, cb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
   };
 
