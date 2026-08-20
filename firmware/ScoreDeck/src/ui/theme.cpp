@@ -26,8 +26,15 @@ LV_FONT_DECLARE(font_num15)
 // The two focal faces. Both are 2 bpp rather than 4 — at 72 px and 96 px the
 // edge is many pixels long, so the extra two bits of coverage buy nothing a
 // desk viewer can see, and they halve the cost of the largest tables we ship.
-LV_FONT_DECLARE(font_hero72)    // digits + '-' ':' 'H' 'M'  — 36 KB
-LV_FONT_DECLARE(font_clock96)   // digits + ':'              — 47 KB
+// Sizes are LINKED FLASH, read from the map file, not the size of the .c on
+// disk — the two differ by roughly 6x and the numbers here used to be the
+// latter. Measured from flasher/image/ScoreDeck.ino.map:
+//   body15 15,997  clock96 7,307  display30 6,334  hero72 5,328  num15 5,139
+//   title20 3,996  score46 3,609  micro13 3,586  abbr17 3,060  score38 2,524
+//   = 56,880 B of custom faces, plus 13,633 B of lv_font_montserrat_14 = 68.9 KB.
+// font_micro11 is declared but not linked — nothing draws it.
+LV_FONT_DECLARE(font_hero72)    // digits + '-' ':' 'H' 'M'  — 5,328 B
+LV_FONT_DECLARE(font_clock96)   // digits + ':'              — 7,307 B
 
 const lv_font_t* F_SCORE = &font_score38;
 const lv_font_t* F_SCORE_BIG = &font_score46;

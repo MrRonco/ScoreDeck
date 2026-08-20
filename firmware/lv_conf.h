@@ -62,12 +62,27 @@
 /* Montserrat built-ins double as symbol carriers (gear/home/wifi glyphs) and
  * as fallbacks if the custom Inter fonts are not compiled in. */
 #define LV_FONT_MONTSERRAT_12 1
+// KEPT, and not for text. LVGL's keyboard labels backspace, enter, shift and
+// close with LV_SYMBOL_* strings and its default event handler dispatches by
+// strcmp against those same strings, so they cannot be relabelled without
+// breaking the keys — and the glyphs exist only in this face. The audit
+// proposed setting this to 0 for a 13,633 B reclaim; that would render five
+// keys on the first-run keyboard as hollow boxes. Reclaiming it means adding
+// the seven FontAwesome codepoints to font_body15 in tools/build-fonts.sh,
+// which needs a new upstream font and a THIRD-PARTY-NOTICES entry. Not free,
+// so not done here; the reclaim is real but it is a font-pipeline change.
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_28 1
 #define LV_FONT_MONTSERRAT_36 1
 #define LV_FONT_MONTSERRAT_48 1
+// STAYS Montserrat, and the reason is the keyboard. keyboardTheme() sets no
+// font precisely so the keys inherit this one and LV_SYMBOL_* resolves; point
+// the default at font_body15 and backspace, enter, shift and close render as
+// hollow boxes again. The audit's proposed 13,633 B reclaim is therefore not a
+// two-line config change — it is the font-pipeline change described above, and
+// it has to land before either of these lines can move.
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 /*==== WIDGETS (lean set; unlisted ones keep their defaults) ====*/

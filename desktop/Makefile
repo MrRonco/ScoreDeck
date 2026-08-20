@@ -83,6 +83,7 @@ mocks: $(BIN)
 
 lint: $(BIN)
 	@./$(BIN) --lint
+	@python3 lint_invariants.py
 
 spike: $(BIN)
 	@mkdir -p shots

@@ -1,0 +1,26 @@
+# Known invariant violations, as of phase 20.
+#
+# This file may only ever SHRINK. The lint fails on anything not listed here,
+# and equally on anything listed here that has since been fixed — so a fix
+# cannot land without also removing its line. Phase 21 empties it.
+#
+# rule                 site
+colour-literal ui_alert.cpp:86
+colour-literal ui_board.cpp:435
+colour-literal ui_lineup.cpp:173
+radius-family ui_board.cpp:355
+radius-family ui_board.cpp:525
+radius-family ui_board.cpp:736
+radius-family ui_board.cpp:817
+radius-family ui_board.cpp:844
+radius-family ui_game.cpp:113
+radius-family ui_game.cpp:230
+radius-family ui_game.cpp:81
+radius-family ui_hero.cpp:179
+radius-family ui_lineup.cpp:122
+radius-family ui_lineup.cpp:137
+radius-family ui_lineup.cpp:195
+radius-family ui_news.cpp:90
+radius-family ui_settings.cpp:168
+radius-family ui_settings.cpp:709
+radius-family ui_standings.cpp:84

@@ -255,7 +255,10 @@ void badgeLabelFit(char* dst, size_t cap, const char* src, int size);
 // ── FONT COVERAGE — read before choosing a face ────────────────────────────
 //
 // These are generated with the narrowest glyph range each job needs, which is
-// why the whole set costs less flash than LVGL's built-in Montserrat. The cost
+// why each is small. (The claim that the whole set costs less than LVGL's own
+// Montserrat was wrong by a factor of four: measured from the map, the custom
+// faces are 56,880 B against Montserrat 14's 13,633 B. What is true is that
+// each face carries only the glyphs its job needs.) The cost
 // is that picking the wrong face renders hollow boxes, silently. Three separate
 // bugs have been exactly this.
 //

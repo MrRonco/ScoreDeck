@@ -678,7 +678,10 @@ every score is two digits). The pager (`TILES_PER_PAGE`) already handles overflo
 `effectiveDensity()`'s existing count rule is reframed, not rewritten.
 
 **Flash:** ~8–10 KB (`score95`) + ~3 KB (`hero96`) + ~4.4 KB (`F_NUM` 20) + ~11 KB
-(`F_BODY` 19) ≈ 28 KB against ~1.4 MB free. The entire font set is 30 KB today.
+(`F_BODY` 19) ≈ 28 KB against ~1.4 MB free. The entire font set is **68.9 KB** today —
+56,880 B of custom faces plus 13,633 B of `lv_font_montserrat_14` — measured from
+`flasher/image/ScoreDeck.ino.map`, not from the size of the generated `.c` files. The
+"30 KB" this line used to carry was the latter and understated it by 2.3x.
 
 **Runtime:** a cap-70 two-digit score bbox is 91 × 70 = 6,370 px against today's
 44 × 34 = 1,496 px. Worst case (six Roomy tiles, all twelve scores change in one
