@@ -219,6 +219,11 @@ input[type=file]{min-height:0;padding:11px 12px;line-height:1.4;cursor:pointer;
    3 of them — where any later JS could not tell config from override. */
 .w-time{width:150px}
 label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
+/* An inline field error. Solid --bad, never a tint: this is the sentence
+   standing between the owner and a panel that has to be walked to. */
+.err,.row .k small.err,label small.err{display:block;color:var(--bad);
+  font-size:12.5px;margin:6px 0 0}
+input[aria-invalid=true]{border-color:rgb(var(--bad-rgb) / .7)}
 .grid{display:grid;gap:14px}
 @media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}}
 @media(min-width:420px){.grid.four{grid-template-columns:1fr 1fr}}
@@ -445,7 +450,8 @@ td.empty-cell{padding:0;border-top:0}
     <div class="card"><div class="row">
       <div class="k"><label class="sr-only" for="favsRaw">Team ids, comma separated</label>
         <input id="favsRaw" data-mono placeholder="nhl:21,eng.1:359"
-          autocapitalize="none" spellcheck="false" autocomplete="off">
+          autocapitalize="none" spellcheck="false" autocomplete="off"
+          maxlength="240">
         <small>Always available, even with no catalog and no proxy.</small></div>
       <div class="v"><button id="saveRaw" class="primary">Save</button></div>
     </div></div>
@@ -482,8 +488,10 @@ td.empty-cell{padding:0;border-top:0}
   <section class="view" id="v-network">
     <h2>Wi-Fi</h2>
     <div class="card">
-      <div class="row"><div class="k"><label for="ssid">Network</label><input id="ssid" autocomplete="off" autocapitalize="none" spellcheck="false"></div></div>
-      <div class="row"><div class="k"><label for="wpass">Password</label><input id="wpass" type="password" autocomplete="new-password" autocapitalize="none" spellcheck="false">
+      <div class="row"><div class="k"><label for="ssid">Network</label><input id="ssid" autocomplete="off" autocapitalize="none" spellcheck="false"
+          required maxlength="32"></div></div>
+      <div class="row"><div class="k"><label for="wpass">Password</label><input id="wpass" type="password" autocomplete="new-password" autocapitalize="none"
+        spellcheck="false" maxlength="64">
         <small>Blank keeps the stored one. A single “-” clears it.</small></div></div>
       <div class="row"><div class="k"><small>Saving reboots the panel.</small></div>
         <div class="v"><button id="saveWifi" class="danger">Save &amp; reboot</button></div></div>
@@ -492,7 +500,8 @@ td.empty-cell{padding:0;border-top:0}
     <h2>Proxy</h2>
     <div class="card">
       <div class="row"><div class="k"><label for="proxy">URL</label><input id="proxy" data-mono placeholder="http://192.168.1.50:8787"
-          autocapitalize="none" spellcheck="false" autocomplete="off"></div></div>
+          autocapitalize="none" spellcheck="false" autocomplete="off"
+          maxlength="96" pattern="https?://[^\s;'&quot;&lt;&gt;]+"></div></div>
       <div class="row"><div class="k"><label for="token">Token</label><input id="token" data-mono placeholder="unchanged"
           autocapitalize="none" spellcheck="false" autocomplete="off">
         <small>Blank keeps the stored one. A single “-” clears it.</small></div></div>
@@ -597,7 +606,8 @@ td.empty-cell{padding:0;border-top:0}
 
     <h2>Portal access</h2>
     <div class="card"><div class="row">
-      <div class="k"><label for="ppass">Password</label><input id="ppass" type="password" autocomplete="new-password" autocapitalize="none" spellcheck="false">
+      <div class="k"><label for="ppass">Password</label><input id="ppass" type="password" autocomplete="new-password" autocapitalize="none"
+          spellcheck="false" maxlength="64">
         <small>Protects this page and firmware updates. Blank keeps, “-” clears.
           You can also clear it on the panel itself.</small></div>
       <div class="v"><button id="savePass" class="primary">Set</button></div>
@@ -1052,6 +1062,102 @@ async function refreshBoard() {
   }
 }
 
+/* ---------- validation, against the DEVICE's rules ----------
+   Every bound below was read out of firmware/ScoreDeck/src/svc/web.cpp, not
+   guessed and not borrowed from this page's own catalog regex. That
+   distinction is the whole finding:
+
+     cleanCatalog()'s slug shape is /^[a-z0-9.]{2,8}$/ — lower case, bounded.
+     validFavs() (web.cpp:215) accepts the league part as `isalnum || '.'`,
+     UPPERCASE INCLUDED and with NO length bound, and the team id as digits
+     only.
+
+   So the slug regex rejects "NHL:21", which the device stores happily, and
+   accepts "nhl:abc", which the device 400s with "team id must be digits".
+   A validator that disagrees with the thing it is protecting is worse than
+   none: it blocks work that would have succeeded and waves through work that
+   will not.
+
+   apiWifi() (web.cpp:574) is the one that matters. It checks the SSID is
+   non-empty and NOTHING ELSE — the password goes straight through
+   applySecret() into settingsSave() and then ESP.restart(). A five-character
+   key is accepted, written to NVS and rebooted into; the panel then cannot
+   associate, cannot serve this page, and the only way back is the button on
+   the device. 0 of 15 inputs carried a single validation attribute. */
+const FAVS_MAX_BYTES = 240;   // web.cpp:216 — FAVS_MAX_LEN, and it is BYTES
+const SSID_MAX = 32;          // 802.11. The device stores 33 and never joins.
+const WPA_MIN = 8, WPA_MAX = 63;   // WPA2-PSK passphrase; 64 hex is the raw PSK
+const bytes = v => new TextEncoder().encode(v).length;
+
+/** The device's own walk, in the device's own words. Returns null if it would
+ *  be accepted, or the message web.cpp would have sent back after a round
+ *  trip, with the offending token named — validFavs() cannot name it because
+ *  it has no room in a 400 body, and this does. */
+function favsProblem(v) {
+  if (bytes(v) > FAVS_MAX_BYTES)
+    return 'favourites list too long — ' + bytes(v) + ' bytes, and the panel takes ' + FAVS_MAX_BYTES + '.';
+  if (!v.length) return null;
+  const parts = v.split(',');
+  if (parts.length > FAV_MAX) return 'at most 20 favourites — this is ' + parts.length + '.';
+  for (const e of parts) {
+    // Unreachable from #favsRaw today — favList() already trims and drops
+    // empties before anything is sent — but it is validFavs()'s rule and it
+    // belongs with the other four, not in whichever caller remembers it.
+    if (!e.length) return 'empty entry in the favourites list';
+    const c = e.indexOf(':');
+    if (c <= 0 || c === e.length - 1) return '“' + e + '” — each favourite must look like league:teamId';
+    if (!/^[A-Za-z0-9.]+$/.test(e.slice(0, c))) return '“' + e + '” — bad league in a favourite';
+    if (!/^[0-9]+$/.test(e.slice(c + 1))) return '“' + e + '” — team id must be digits';
+  }
+  return null;
+}
+
+/** [selector, message] or null. Blank and "-" are the console's own keep /
+ *  clear verbs and both reach applySecret() safely, so neither is a length. */
+function wifiProblem() {
+  const ssid = $('#ssid').value.trim(), pass = $('#wpass').value;
+  if (!ssid.length) return ['#ssid', 'network name required'];       // web.cpp:578, verbatim
+  if (bytes(ssid) > SSID_MAX)
+    return ['#ssid', 'A network name is at most ' + SSID_MAX + ' bytes — this one is ' + bytes(ssid) +
+                     '. The panel would store it and never find the network.'];
+  if (!pass.length || pass === '-') return null;
+  if (/^[0-9a-fA-F]{64}$/.test(pass)) return null;                   // a raw PSK, not a passphrase
+  if (pass.length < WPA_MIN || pass.length > WPA_MAX)
+    return ['#wpass', 'A Wi-Fi password is ' + WPA_MIN + ' to ' + WPA_MAX +
+                      ' characters, or exactly 64 hex digits — this one is ' + pass.length +
+                      '. The panel does not check, so it would save this, reboot, fail to join, ' +
+                      'and the only way back would be the button on the panel itself.'];
+  return null;
+}
+
+/** An error that sits WITH the field, not in a banner at the top of a page
+ *  you have already scrolled past. role="alert" on a freshly inserted node so
+ *  it is announced, and aria-errormessage so it is reachable afterwards. */
+function fieldError(sel, msg) {
+  const f = $(sel); if (!f) return;
+  // Idempotent on identical text. #favsRaw validates on every keystroke, and
+  // re-inserting a role="alert" node per character would announce the same
+  // sentence six times while you type one league name.
+  const cur = document.getElementById('err-' + sel.replace('#', ''));
+  if (cur && cur.textContent === msg) return;
+  clearFieldError(sel);
+  const e = el('small', 'err', msg);
+  e.id = 'err-' + sel.replace('#', '');
+  e.dataset.for = sel;
+  e.setAttribute('role', 'alert');
+  f.insertAdjacentElement('afterend', e);
+  f.setAttribute('aria-invalid', 'true');
+  f.setAttribute('aria-errormessage', e.id);
+}
+function clearFieldError(sel) {
+  const f = $(sel); if (!f) return;
+  const e = document.getElementById('err-' + sel.replace('#', ''));
+  if (e) e.remove();
+  f.removeAttribute('aria-invalid');
+  f.removeAttribute('aria-errormessage');
+}
+['#ssid', '#wpass'].forEach(sel => $(sel).addEventListener('input', () => clearFieldError(sel)));
+
 /* ---------- teams ----------
    Picking teams is the primary job of this console and it was the one path
    that lost data silently. Add, reorder and remove all edited #favsRaw and
@@ -1079,7 +1185,13 @@ function syncFavDirty() {
       ? (delta ? 'Save teams · ' + delta + ' unsaved' : 'Save teams · edited')
       : 'Save teams';
     btn.classList.toggle('primary', dirty);
-    btn.disabled = !dirty;
+    // Refuse to arm the control at all while the list would 400. The device
+    // does answer with its reason today, so this is not about a silent
+    // failure — it is about not spending a round trip and a scroll on
+    // something the page can see from here.
+    const bad = favsProblem(favList().join(','));
+    btn.disabled = !dirty || !!bad;
+    if (bad) fieldError('#favsRaw', bad); else clearFieldError('#favsRaw');
   }
   const tab = document.querySelector('#nav a[href="#/teams"]');
   if (tab) tab.classList.toggle('has-dirty', dirty);
@@ -1205,9 +1317,15 @@ function search() {
 }
 $('#loadCat').onclick = loadCatalog;
 $('#saveRaw').onclick = () => postFavs();
+// The field was write-only to the page: nothing listened to it, so a typed id
+// did not reach the list, the counter or the Save control until some other
+// action happened to call renderFavs().
+$('#favsRaw').addEventListener('input', renderFavs);
 
 async function postFavs() {
   const sent = favList().join(',');
+  const bad = favsProblem(sent);
+  if (bad) { fieldError('#favsRaw', bad); $('#favsRaw').focus(); return; }
   try {
     await api('/api/favs', { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ favs: sent }) });
@@ -1245,6 +1363,12 @@ $('#saveNet').onclick = () => postConfig({
   clk24: CFG.clk24 ? 1 : 0 });
 $('#savePass').onclick = () => postConfig({ ppass: $('#ppass').value }, 'Password updated.');
 $('#saveWifi').onclick = async () => {
+  // BEFORE the confirm, not after. A dialog that asks "reboot the panel?"
+  // about a password the panel cannot use is asking the wrong question, and
+  // the answer costs a trip to the device.
+  const bad = wifiProblem();
+  if (bad) { fieldError(bad[0], bad[1]); $(bad[0]).focus(); return; }
+  clearFieldError('#ssid'); clearFieldError('#wpass');
   if (!confirm('Save Wi-Fi and reboot the panel?')) return;
   try {
     await api('/api/wifi', { method: 'POST', headers: { 'content-type': 'application/json' },
