@@ -267,9 +267,19 @@ void uiHeroInit(lv_obj_t* parent) {
     lv_obj_add_flag(s_logo[k], LV_OBJ_FLAG_HIDDEN);
 
     // Created BEFORE the score so it sits behind it in z-order. Centred on
-    // where the digits land, and deliberately allowed to run off the row —
+    // where the digits land, and deliberately allowed to run off the ROW —
     // light does not stop at a boundary, and clipping it to the cell is what
     // would make it read as a shape rather than as illumination.
+    //
+    // Off the row, not off the CARD. That distinction is the phase-15 edit and
+    // it is not a reversal of the line above: this file's own logic already
+    // protects the specular pair with a row test in bloomComposite for exactly
+    // this reason, and the card's 1 px border is the same kind of object. Flat
+    // to the card edge, the glow erased that border on 154 of the 232 rows
+    // where the two border columns are true border pixels, and left the last
+    // interior column at L* 35.59 against a fill of 18.00. It is tapered over
+    // the last 24 visible columns and the 16 rows above the footer — both
+    // ramps, both measured to cost the digits under 0.4 L*.
     // Centred on where the DIGITS actually land, MEASURED rather than derived.
     // Two passes of reasoning from the label box were both wrong: F_HERO's
     // 72 px glyphs do not sit where the line box suggests, and the label is
@@ -465,18 +475,32 @@ void uiHeroShow(int8_t gameIdx) {
                          ((k == 1) == g.leaderHome) && (g.away.score != g.home.score);
     // 0xFFFFFFFF = "not leading, use si.ink2" — see the grid for why ink2 is
     // never round-tripped through the cache.
-    // Same emphasis rule as the tiles: the leader lifts to 5.5:1, the
-    // trailer drops to ink3, ties stay ink2. The hero only ever shows live.
-    uint32_t want;
-    if (g.away.score == g.home.score)
-      want = 0xFFFFFFFFu;
-    else
-      want = leading ? teamInkFor(side[k]->color, si.fill) : 0xFFFFFFFEu;
+    //
+    // The tiles drop the trailer to ink3. The hero CANNOT, and this is the one
+    // place the two surfaces are allowed to disagree, because the hero is the
+    // only cell with a glow behind the digits. Measured on --scenario 10 and
+    // --scenario 3, ink3 against its AA-masked local background: 3.15:1 and
+    // 3.16:1 worst, with 470 of 767 and 1,017 of 2,332 glyph pixels under the
+    // 4.5:1 floor. The same pixels in si.ink2 measure 5.00:1 and 5.02:1 worst,
+    // none below floor. theme.h's own table already calls ink2 "trailing
+    // score"; the hero was the file disagreeing with it.
+    //
+    // Nothing is lost by it. The hierarchy on this card is carried by HUE —
+    // the leader is in its team's colour and the trailer is neutral — so the
+    // leader/trailer distinction survives, and a tie has no leader to confuse
+    // it with. The row stencil in bloomComposite is the primary fix for the
+    // footer; it cannot help here, because the glow is centred on the LEADING
+    // row and the trailing digits sit ~84 px from that centre in whichever
+    // direction the lead runs.
+    //
+    // `leading` already requires the scores to differ, so the tie sentinel and
+    // the trailer sentinel now name the same colour and one of the two goes.
+    const uint32_t want = leading ? teamInkFor(side[k]->color, si.fill)
+                                  : 0xFFFFFFFFu;
     if (c_scoreInk[k] != want) {
       c_scoreInk[k] = want;
       lv_obj_set_style_text_color(s_score[k],
-          want == 0xFFFFFFFFu ? si.ink2 :
-          want == 0xFFFFFFFEu ? si.ink3 : lv_color_hex(want), 0);
+          want == 0xFFFFFFFFu ? si.ink2 : lv_color_hex(want), 0);
     }
 
     // The signature. Only the leading side, only while the game is live —
