@@ -292,8 +292,16 @@ void uiHeroInit(lv_obj_t* parent) {
   // Footer band, re-stacked for the refresh: situation (promoted to the
   // accent — it is the one "happening now" fact), then the last scoring play,
   // then the win-probability bar at the very foot.
+  // Two identical accent dots sit on this card 200 px apart and only the top
+  // one was ever registered — so one "live" marker pulsed and the other sat
+  // flat, measured (57,227,198) against (49,215,181) on the same frame.
   s_footDot = dot(s_root, HERO_PAD, 224);
-  s_foot    = lab(s_root, HERO_PAD + 14, 218, C_LIVE, F_NUM, 180);
+  pulseRegister(s_footDot);
+  // si.ink3 at full opacity, not C_LIVE at text_opa 180. The situation line is
+  // a fact about the game, like the clock beside it — and drawn blended it
+  // rendered #31AE9C, a colour that is neither the accent nor any declared
+  // token. PLAN item 1.9.
+  s_foot    = lab(s_root, HERO_PAD + 14, 218, HI().ink3, F_NUM);
   s_footR   = lab(s_root, HERO_W - 164, 218, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
   // F_BODY, not F_MICRO. This line is upstream prose — "Matthews (24) PP, from
   // Marner", and on any European or Nordic roster "Ødegaard", "Hedström",

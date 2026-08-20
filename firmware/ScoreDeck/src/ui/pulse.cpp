@@ -28,7 +28,7 @@
 #include "ui.h"
 #include "theme.h"
 
-#define PULSE_MAX   16          // 12 grid tiles + the hero + headroom
+#define PULSE_MAX   20          // 12 grid tiles + hero + hero foot + game sheet + headroom
 #define PULSE_MS    100         // tick period; the cycle is built from steps
 #define PULSE_STEPS 20          // 2.0 s round trip
 

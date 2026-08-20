@@ -338,9 +338,16 @@ void themeInit() {
   lv_style_set_text_font(&s_glass, F_BODY);
 
   // Press is an OUTLINE, never a fill — see uiPressable() in theme.h.
+  //
+  // COVER, not 150. A chromatic token drawn at partial opacity is not the
+  // token: lv_color_mix quantises opa to (opa+4)>>3 and blends toward the
+  // surface, losing chroma as well as lightness, so the "teal" outline
+  // rendered L* 49.9-55.9 at chroma 32-34 — inside the TEAM band, 27 L* below
+  // the value it is declared as, i.e. the one colour reserved for "touch this"
+  // came out looking like a team colour. PLAN item 1.10.
   lv_style_init(&s_glassPressed);
-  lv_style_set_border_color(&s_glassPressed, C_LIVE);
-  lv_style_set_border_opa(&s_glassPressed, 150);
+  lv_style_set_border_color(&s_glassPressed, A_LIVE);
+  lv_style_set_border_opa(&s_glassPressed, LV_OPA_COVER);
   lv_style_set_border_width(&s_glassPressed, 2);
 
   lv_style_init(&s_badge);

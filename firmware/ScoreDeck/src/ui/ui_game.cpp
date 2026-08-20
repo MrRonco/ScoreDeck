@@ -21,7 +21,7 @@ static lv_obj_t* s_edge;
 static lv_obj_t* s_back;
 static lv_obj_t* s_badgeA, *s_badgeH, *s_lblA, *s_lblH;
 static lv_obj_t* s_abbrA, *s_abbrH, *s_recA, *s_recH, *s_scoreA, *s_scoreH;
-static lv_obj_t* s_status, *s_venue;
+static lv_obj_t* s_status, *s_venue, *s_liveDot;
 static lv_obj_t* s_lsHdr[LS_COLS], *s_lsA[LS_COLS], *s_lsH[LS_COLS];
 static lv_obj_t* s_lsTeamA, *s_lsTeamH;
 static lv_obj_t* s_playT[PLAY_ROWS], *s_playX[PLAY_ROWS], *s_playS[PLAY_ROWS];
@@ -101,6 +101,21 @@ void uiGameInit(lv_obj_t* parent) {
   // Status is upstream prose ("3rd 04:21", "Bot 7", "Final/OT") and carries
   // lowercase, so it cannot use the caps-only F_ABBR.
   s_status = lb(hdr, (SCR_W - 240) / 2, 24, C_INK, F_BODY, LV_TEXT_ALIGN_CENTER, 240);
+
+  // The live marker. An exact-rung accent census over eleven settled renders
+  // found A_LIVE on ONE screen: the board carried 385 px, and the game sheet
+  // you reach BY TAPPING A LIVE TILE carried zero — no C_LIVE reference and no
+  // pulseRegister anywhere in this file. The state channel broke at exactly
+  // the navigation step where the user has committed to one game.
+  s_liveDot = lv_obj_create(hdr);
+  lv_obj_remove_style_all(s_liveDot);
+  lv_obj_set_size(s_liveDot, 9, 9);
+  lv_obj_set_style_radius(s_liveDot, 5, 0);
+  lv_obj_set_style_bg_color(s_liveDot, A_LIVE, 0);
+  lv_obj_set_style_bg_opa(s_liveDot, LV_OPA_COVER, 0);
+  lv_obj_set_pos(s_liveDot, (SCR_W - 240) / 2 - 18, 30);
+  lv_obj_add_flag(s_liveDot, LV_OBJ_FLAG_HIDDEN);
+  pulseRegister(s_liveDot);
   s_venue  = lb(hdr, (SCR_W - 240) / 2, 52, C_INK3, F_MICRO, LV_TEXT_ALIGN_CENTER, 240);
 
   // ── linescore ────────────────────────────────────────────────────────────
@@ -224,6 +239,16 @@ void uiGameInit(lv_obj_t* parent) {
   lv_label_set_text(s_loading, "Loading...");
 }
 
+/** The live marker and the status ink, together — the two things that say a
+ *  game is still being played. C_LIVE_TX rather than the flat accent: this is
+ *  a live-state VALUE ("3rd 04:21"), which is the exact job theme.h solves
+ *  that token for, and a running clock at A_LIVE would out-shout the dot. */
+static void setLive(bool live) {
+  live ? lv_obj_clear_flag(s_liveDot, LV_OBJ_FLAG_HIDDEN)
+       : lv_obj_add_flag(s_liveDot, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_style_text_color(s_status, live ? C_LIVE_TX : C_INK, 0);
+}
+
 /** Leading side gets its own colour lifted against the header's fill; the
  *  trailing side drops to ink-2. The header panel is the default glass, so the
  *  live surface is the right thing to solve against. */
@@ -254,6 +279,7 @@ void uiGameOpen(const Game& g) {
   setLeadInk(s_scoreA, g.away.color, g.state != GS_PRE && g.away.score > g.home.score);
   setLeadInk(s_scoreH, g.home.color, g.state != GS_PRE && g.home.score > g.away.score);
   lv_label_set_text(s_status, g.status);
+  setLive(g.state == GS_LIVE);
   lv_label_set_text(s_venue, g.bcast);
   lv_obj_set_style_bg_color(s_edge,
       lv_color_hex(g.state == GS_LIVE ? (g.leaderHome ? g.home.color : g.away.color) : 0x2A3646), 0);
@@ -275,6 +301,7 @@ void uiGameApply(const GameDetail& d) {
   lv_obj_add_flag(s_loading, LV_OBJ_FLAG_HIDDEN);
 
   lv_label_set_text(s_status, d.status);
+  setLive(d.live);
   if (d.venue[0]) lv_label_set_text(s_venue, d.venue);
   char b[8];
   snprintf(b, sizeof b, "%u", d.awayScore); lv_label_set_text(s_scoreA, b);

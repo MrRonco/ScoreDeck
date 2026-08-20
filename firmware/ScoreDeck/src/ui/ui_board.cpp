@@ -513,11 +513,16 @@ static void buildTile(TileUI& t, int idx) {
   // The state dot. The single accent, doing the one job it exists for: saying
   // "this is happening now" without spending luminance, which is already fully
   // committed to encoding state. Hidden unless the game is live.
+  // 10 px, not 6. PLAN item 1.5 costed this as the compensation for taking the
+  // accent off the rail, the idle countdown and the situation chip: with those
+  // gone the dots are what "live" MEANS on this screen, and an exact-rung
+  // census measured only 18.4% of the board's accent on them against the 70%
+  // the same plan set as its own acceptance criterion.
   t.dot = lv_obj_create(t.root);
   lv_obj_remove_style_all(t.dot);
-  lv_obj_set_size(t.dot, 6, 6);
-  lv_obj_set_pos(t.dot, TILE_PAD_X, d.tileH - TILE_PAD_Y - 10);
-  lv_obj_set_style_radius(t.dot, 3, 0);
+  lv_obj_set_size(t.dot, 10, 10);
+  lv_obj_set_pos(t.dot, TILE_PAD_X, d.tileH - TILE_PAD_Y - 12);
+  lv_obj_set_style_radius(t.dot, 5, 0);
   lv_obj_set_style_bg_color(t.dot, C_LIVE, 0);
   lv_obj_set_style_bg_opa(t.dot, LV_OPA_COVER, 0);
   lv_obj_add_flag(t.dot, LV_OBJ_FLAG_HIDDEN);
@@ -1741,14 +1746,15 @@ void uiSetStatus() {
   }
   // Tagged for display, plain for measurement — recolor tags must not count
   // toward the pill's content width.
+  // The pill names the FILTER; zone A already states the live count, 116 px to
+  // its left, in the same accent. Saying one number twice consumed 67.8% of the
+  // board's entire A_LIVE budget — the loudest thing on the screen was a header
+  // repeating itself, while the dots that mark the actual live games had 18.4%.
+  // The count also carried a raw "#3be0c0" recolour literal, invisible to any
+  // grep for the token it was copying.
   char pill[44], plain[30];
-  if (fLive) {
-    snprintf(pill, sizeof pill, "%s · #3be0c0 %u LIVE#", name, fLive);
-    snprintf(plain, sizeof plain, "%s · %u LIVE", name, fLive);
-  } else {
-    snprintf(pill, sizeof pill, "%s", name);
-    snprintf(plain, sizeof plain, "%s", name);
-  }
+  snprintf(pill, sizeof pill, "%s", name);
+  snprintf(plain, sizeof plain, "%s", name);
   setTextCached(s_pillLbl, c_pill, sizeof c_pill, pill);
   {
     // The pill is content-sized; read back what LVGL decided so the page

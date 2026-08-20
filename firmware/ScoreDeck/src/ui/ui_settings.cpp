@@ -394,7 +394,7 @@ static void buildSports(lv_obj_t* p) {
     lv_obj_remove_style_all(s_spFamEdge[f]);
     lv_obj_set_size(s_spFamEdge[f], 3, 34);
     lv_obj_set_pos(s_spFamEdge[f], 13, y);
-    lv_obj_set_style_bg_color(s_spFamEdge[f], C_LIVE, 0);
+    lv_obj_set_style_bg_color(s_spFamEdge[f], C_INK, 0);   // selection is INK_1 (PLAN §6)
     lv_obj_set_style_bg_opa(s_spFamEdge[f], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_spFamEdge[f], LV_OBJ_FLAG_HIDDEN);
     s_spFamLbl[f] = label(p, 28, y + 10, kFamName[f], kStateInk[GS_LIVE].ink3, F_MICRO);
@@ -418,12 +418,12 @@ static void buildSports(lv_obj_t* p) {
     lv_obj_remove_style_all(s_spPillEdge[i]);
     lv_obj_set_size(s_spPillEdge[i], 3, 52);
     lv_obj_set_pos(s_spPillEdge[i], 0, 0);
-    lv_obj_set_style_bg_color(s_spPillEdge[i], C_LIVE, 0);
+    lv_obj_set_style_bg_color(s_spPillEdge[i], C_INK, 0);  // selection is INK_1 (PLAN §6)
     lv_obj_set_style_bg_opa(s_spPillEdge[i], LV_OPA_COVER, 0);
     s_spPillName[i] = label(s_spPill[i], 14, 8, "", C_INK, F_BODY);
     s_spPillSub[i] = label(s_spPill[i], 14, 30, "", C_INK3, F_MICRO);
     lv_obj_set_style_text_letter_space(s_spPillSub[i], 1, 0);
-    s_spPillState[i] = label(s_spPill[i], 0, 18, "", C_LIVE, F_MICRO);
+    s_spPillState[i] = label(s_spPill[i], 0, 18, "", C_INK, F_MICRO);
     lv_obj_set_width(s_spPillState[i], 56);
     lv_obj_set_style_text_align(s_spPillState[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_x(s_spPillState[i], 276 - 14 - 56);
@@ -466,7 +466,7 @@ static void renderSports() {
   for (uint8_t i = 0; i < MAX_LEAGUES; i++) {
     lv_color_t c = C_EDGE;
     if (i < nAuto) c = C_EDGE_HI;                      // spoken for
-    else if (i < total) c = total >= MAX_LEAGUES ? C_WARN : C_LIVE_SD;
+    else if (i < total) c = total >= MAX_LEAGUES ? S_ALERT : C_INK3;   // structure, not liveness
     lv_obj_set_style_bg_color(s_spTick[i], c, 0);
   }
   if (total >= MAX_LEAGUES) {
@@ -530,14 +530,14 @@ static void renderSports() {
     else            snprintf(sub, sizeof sub, "%s", cat[i].slug);
     lv_label_set_text(s_spPillSub[sl], sub);
     lv_obj_set_style_text_color(s_spPillSub[sl],
-        (!au && liveN) ? C_LIVE_SD : C_INK3, 0);
+        (!au && liveN) ? C_LIVE_TX : C_INK3, 0);
 
     lv_label_set_text(s_spPillState[sl], au ? "AUTO" : (on ? "ON" : "-"));
     lv_obj_set_style_text_color(s_spPillState[sl],
-        au ? C_INK3 : (on ? C_LIVE : C_INK3), 0);
-    lv_obj_set_style_bg_color(s_spPill[sl], on ? C_SURF_2 : lv_color_hex(0x0B111B), 0);
-    lv_obj_set_style_border_color(s_spPill[sl], on ? C_LIVE_SD : lv_color_hex(0x1E2836), 0);
-    lv_obj_set_style_border_opa(s_spPill[sl], on ? 150 : LV_OPA_COVER, 0);
+        au ? C_INK3 : (on ? C_INK : C_INK3), 0);
+    lv_obj_set_style_bg_color(s_spPill[sl], on ? C_SURF_2 : C_PLATE, 0);
+    lv_obj_set_style_border_color(s_spPill[sl], on ? C_EDGE_HI : C_EDGE, 0);
+    lv_obj_set_style_border_opa(s_spPill[sl], LV_OPA_COVER, 0);
     on ? lv_obj_clear_flag(s_spPillEdge[sl], LV_OBJ_FLAG_HIDDEN)
        : lv_obj_add_flag(s_spPillEdge[sl], LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_text_color(s_spPillName[sl], on ? C_INK : C_INK2, 0);
