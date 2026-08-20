@@ -20,7 +20,7 @@ radius-family ui_hero.cpp:179
 radius-family ui_lineup.cpp:122
 radius-family ui_lineup.cpp:137
 radius-family ui_lineup.cpp:195
-radius-family ui_news.cpp:90
+radius-family ui_news.cpp:101
 radius-family ui_settings.cpp:168
 radius-family ui_settings.cpp:709
 radius-family ui_standings.cpp:84
