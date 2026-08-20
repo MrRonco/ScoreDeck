@@ -81,6 +81,7 @@ static int32_t     s_wpCur = -1;      // M5: displayed win-prob width (cache hol
 // visual change. setVis() below has always done this correctly for the nine
 // children; the root was the one object writing its flag raw.
 static bool     s_rootVis;
+static int      s_cx = -1, s_cy = -1;   // cached hero origin
 
 static void odoKill(int k) {
   if (s_odo[k]) { lv_timer_del(s_odo[k]); s_odo[k] = nullptr; }
@@ -192,6 +193,34 @@ static void upper(const char* in, char* out, size_t n) {
 
 static void onTap(lv_event_t*) {
   if (s_gameIdx >= 0 && s_gameIdx < g_gameCount) uiGameOpen(g_board[s_gameIdx]);
+}
+
+/**
+ * Centre the card when it is the only thing on the screen.
+ *
+ * PLAN item 4.8 costed this — "x = (800-508)/2 = 146, y = 48 + (432-268)/2 =
+ * 130. Two cached position writes on one object" — and it did not ship. The
+ * origin was two compile-time macros consumed once, with no game-count branch
+ * anywhere in the file, so on a quiet evening a 508x268 card sat in the
+ * top-left of an 800x480 panel with 118,128 px — 30.8% of the screen — holding
+ * no card pixels at all. That reads as content that failed to arrive.
+ *
+ * Cached, so the common path writes nothing, and applied to the hero and the
+ * results row TOGETHER (see the caller): centring one without the other leaves
+ * them on different left edges, which is worse than either alone.
+ */
+void uiHeroCentre(bool noStrip, bool noRow) {
+  if (!s_root) return;
+  // The two axes answer to different things. Horizontal centring is about the
+  // empty TILE STRIP beside the card; vertical centring is about the empty
+  // RESULTS ROW beneath it. Centring vertically while the row is populated
+  // drops the card straight through it — the hero ends at y=398 and the row
+  // starts at 340.
+  const int x = noStrip ? (SCR_W - HERO_W) / 2 : HERO_X;
+  const int y = (noStrip && noRow) ? (BAR_H + (SCR_H - BAR_H - HERO_H) / 2) : HERO_Y;
+  if (s_cx == x && s_cy == y) return;
+  s_cx = x; s_cy = y;
+  lv_obj_set_pos(s_root, x, y);
 }
 
 // ── build ──────────────────────────────────────────────────────────────────

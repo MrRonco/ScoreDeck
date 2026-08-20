@@ -14,6 +14,7 @@
 #include "../net/logos.h"
 #include <WiFi.h>
 #include <time.h>
+#include <cstdio>
 
 static lv_obj_t* s_root;
 static lv_obj_t* s_clock;
@@ -61,6 +62,8 @@ static char s_cNextId[12];
 static int8_t s_nextIdx = -1;
 static lv_obj_t* s_faultCard, *s_faultTitle, *s_faultBody, *s_faultHint;
 static int8_t s_cFaultNet = -1;
+static int8_t s_cBare = -1;           // the clock block's composition
+static int    s_ampmDy = 0;
 static int8_t s_rowIdx[IDLE_ROWS];
 static int8_t s_finIdx[IDLE_ROWS];
 
@@ -362,6 +365,35 @@ static const Game* nextGame() {
   return best;
 }
 
+/**
+ * The bare-clock composition.
+ *
+ * With nothing scheduled and nothing final, the idle screen kept the layout it
+ * uses when it has content: a clock hung at the top-left, a date under it, and
+ * then 207 rows — 43% of the panel, and a 55.8% contiguous void — of nothing,
+ * because the NEXT UP card and both ledger columns simply hid themselves and
+ * moved nothing. It read as a screen that had failed to finish drawing rather
+ * than a panel with nothing to report.
+ *
+ * Only the Y axis moves. x=44 is the optical ink-hang shared by the clock, the
+ * date and the summary, re-derived per minute from the leading glyph's own
+ * bearing; driving it from here would fight that and the clock would snap back
+ * on the next tick.
+ */
+static void idleCompose(bool bare) {
+  if (s_cBare == (int8_t)bare) return;
+  s_cBare = (int8_t)bare;
+  // Derived, not dialled: the block runs from the clock's top (68) to the
+  // summary's baseline (~280), so 212 px inside the 432 px content area below
+  // the bar. Centred, its top wants to sit at 48 + (432-212)/2 = 158, which is
+  // 90 px down from where it starts.
+  const int dy = bare ? 90 : 0;
+  lv_obj_set_y(s_clock,   68  + dy);
+  lv_obj_set_y(s_date,    232 + dy);
+  lv_obj_set_y(s_summary, 258 + dy);
+  s_ampmDy = dy;                       // the a.m./p.m. mark is placed per-tick
+}
+
 void uiIdleTick() {
   // Deliberately NOT gated on visibility. uiIdleRefresh() runs before
   // uiShow(SCR_IDLE), so an early return here left the clock, the countdown
@@ -412,7 +444,7 @@ void uiIdleTick() {
                              - (int)F_CLOCK->base_line;
       const int topAmpm = blClock - ((int)lv_font_get_line_height(F_DISPLAY)
                                    - (int)F_DISPLAY->base_line);
-      lv_obj_set_pos(s_ampm, 44 + w + 18, topAmpm);
+      lv_obj_set_pos(s_ampm, 44 + w + 18, topAmpm + s_ampmDy);
     }
   }
   // Tracked CAPS. The rule this build adopts is that +1 tracking with capitals
@@ -669,6 +701,15 @@ void uiIdleRefresh() {
     lv_obj_set_style_opa(s_ledHdr[c], o, 0);
     lv_obj_set_style_opa(s_ledRule[c], o, 0);
   }
+
+  // Nothing scheduled, nothing final, no next game and no fault to explain:
+  // the screen is a clock, so compose it as one.
+  // From the DATA, not from the cards' hidden flags: uiIdleTick() is what sets
+  // those and it runs at the END of this function, so reading them here reads
+  // the previous poll's answer.
+  const bool faultShown = (g_net == NET_NOWIFI || g_net == NET_NOPROXY || g_net == NET_ERR);
+  const bool bare = !todayRows && !finalRows && !nextGame() && !faultShown;
+  idleCompose(bare);
 
   uiIdleTick();
 }

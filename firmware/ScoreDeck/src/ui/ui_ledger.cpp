@@ -58,6 +58,7 @@ static lv_obj_t* s_bcast[RES_MAX];
 // See ui_hero.cpp: lv_obj_clear_flag invalidates unconditionally, and this
 // root is 800x140. Its own visibility is change-cached.
 static bool      s_rootVis;
+static int8_t    s_k = RES_MAX;        // how many cards the last render filled
 static int8_t    s_cardVis[RES_MAX];   // -1 unset, else 0/1 — same discipline
 
 static lv_obj_t* lab(lv_obj_t* p, const lv_font_t* f, lv_color_t c,
@@ -99,6 +100,8 @@ void uiLedgerInit(lv_obj_t* parent) {
 }
 
 lv_obj_t* uiLedgerRoot() { return s_root; }
+/** How many result cards the last render actually filled. */
+int uiLedgerCount() { return s_k < 0 ? 0 : s_k; }
 
 /**
  * Lay the row on the SAME x grid as the tiles above it, so the two cannot
@@ -107,26 +110,51 @@ lv_obj_t* uiLedgerRoot() { return s_root; }
  *   rail closed:  16 / 276 / 536, each 248 wide  (= the Standard grid)
  *   rail open:   156 / 376 / 596, 210 / 210 / 192  (= the narrowed grid)
  */
-void uiLedgerLayout(bool railOpen) {
-  if (!s_root) return;
-  static const int xC[RES_MAX] = { 16, 276, 536 };
-  static const int wC[RES_MAX] = { 248, 248, 248 };
-  static const int xO[RES_MAX] = { 156, 376, 596 };
-  static const int wO[RES_MAX] = { 210, 210, 192 };
+void uiLedgerLayout(bool railOpen) { uiLedgerLayoutK(railOpen, s_k); }
 
+/**
+ * ...and CENTRED when there are fewer than three of them.
+ *
+ * PLAN item 4.3 costed this ("row re-centred at k<3") and it never shipped:
+ * the row laid a fixed xC[] = {16,276,536} and simply hid the unused cards, so
+ * a one-result night left a single card pinned to the bottom-left corner with
+ * 508 x 100 = 50,800 px of empty plate beside it. FEATURE is chosen precisely
+ * when live is 1..3 — the quiet-evening case — so this is the layout's normal
+ * condition, not an edge case.
+ *
+ * The card WIDTH is invariant at every k. Widening the cards to fill the row
+ * would break the one-tileW assumption the whole grid derives from; the row
+ * keeps the grid's column pitch and moves as a block.
+ */
+void uiLedgerLayoutK(bool railOpen, int k) {
+  if (!s_root) return;
+  if (k < 0) k = 0;
+  if (k > RES_MAX) k = RES_MAX;
+  static const int wC[RES_MAX] = { 248, 248, 248 };
+  static const int wO[RES_MAX] = { 210, 210, 192 };
+  const int GUT = 12;
+  // The band the row lives in: the full frame, or what the rail leaves.
+  const int regX = railOpen ? 156 : 16;
+  const int regW = 784 - regX;
+
+  int used = 0;
+  for (int i = 0; i < k; i++) used += (railOpen ? wO[i] : wC[i]) + (i ? GUT : 0);
+  const int x0 = regX + (k >= RES_MAX ? 0 : (regW - used) / 2);
+
+  int x = x0;
   for (int i = 0; i < RES_MAX; i++) {
-    const int x = railOpen ? xO[i] : xC[i];
     const int w = railOpen ? wO[i] : wC[i];
     lv_obj_set_pos(s_card[i], x, 0);
     lv_obj_set_size(s_card[i], w, RES_H);
+    x += w + GUT;
 
     const int pad = 14, scoreW = 62;
-    for (int k = 0; k < 2; k++) {
-      const int y = 8 + k * 30;
-      lv_obj_set_pos(s_abbr[i][k], pad, y + 5);
-      lv_obj_set_width(s_abbr[i][k], w - 2 * pad - scoreW - 6);
-      lv_obj_set_pos(s_score[i][k], w - pad - scoreW, y);
-      lv_obj_set_width(s_score[i][k], scoreW);
+    for (int k2 = 0; k2 < 2; k2++) {
+      const int y = 8 + k2 * 30;
+      lv_obj_set_pos(s_abbr[i][k2], pad, y + 5);
+      lv_obj_set_width(s_abbr[i][k2], w - 2 * pad - scoreW - 6);
+      lv_obj_set_pos(s_score[i][k2], w - pad - scoreW, y);
+      lv_obj_set_width(s_score[i][k2], scoreW);
     }
     lv_obj_set_pos(s_meta[i], pad, RES_H - 24);
     lv_obj_set_width(s_meta[i], w - 2 * pad - 74);
@@ -238,6 +266,14 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
   }
 
   for (uint8_t i = slot; i < RES_MAX; i++) showCard(i, false);
+
+  // The row re-centres on how many cards it actually filled. Gated on a
+  // change: a layout pass per poll would rewrite every card's geometry for
+  // nothing on the overwhelming majority of them.
+  if (s_k != (int8_t)slot) {
+    s_k = (int8_t)slot;
+    uiLedgerLayoutK(uiRailOpen(), s_k);
+  }
 
   if (!slot) {
     if (s_rootVis) { s_rootVis = false; lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }

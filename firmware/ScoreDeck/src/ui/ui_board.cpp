@@ -1587,6 +1587,18 @@ void uiBoardRefresh() {
     for (uint8_t i = 0; i < filled; i++) used[nUsed++] = s_tile[i].gameIdx;
     uiLedgerLayout(uiRailOpen());
     uiLedgerRender(s_order, g_gameCount, used, nUsed, passesFilter);
+    // Hero and row share ONE composition rule, keyed off the tile strip.
+    //
+    // PLAN 4.8 gated the hero on "strip and row both empty" and 4.3 gated the
+    // row on its own k, which at k=1 renders a left-anchored hero above a
+    // centred card: two different alignments on one screen. Rendered, that is
+    // worse than either alone.
+    //
+    // With the strip empty the screen has one column of content, so everything
+    // takes the panel's centre line: the hero at x=146 and a k=1 row at x=276
+    // both centre on 400. With the strip present the grid is in force and the
+    // hero stays on its column.
+    uiHeroCentre(filled == 0, uiLedgerCount() == 0);
   } else {
     layoutFiller(d, filled, per);
   }

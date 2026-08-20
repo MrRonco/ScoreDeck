@@ -103,6 +103,10 @@ bool uiBoardPage(int delta);
 // there is nothing to promote. See ui_hero.cpp for why this exists at all.
 void uiHeroInit(lv_obj_t* parent);
 void uiHeroShow(int8_t gameIdx);
+/** Centre the hero when the tile strip AND the results row are both empty. */
+void uiHeroCentre(bool noStrip, bool noRow);
+/** How many result cards the ledger last filled. */
+int  uiLedgerCount();
 void uiHeroHide();
 lv_obj_t* uiHeroRoot();
 int8_t uiHeroGameIdx();
@@ -117,6 +121,8 @@ void uiLedgerHide();
 /** Reposition the ledger's columns for the rail state — a one-shot layout
  *  write on toggle, not a per-poll cost. */
 void uiLedgerLayout(bool railOpen);
+/** As above, but for an explicit card count — the row centres when k < 3. */
+void uiLedgerLayoutK(bool railOpen, int k);
 lv_obj_t* uiLedgerRoot();
 
 /** Game index shown in tile `slot`, or -1. Lets the logo fetcher bound its
