@@ -263,19 +263,11 @@ static InkBox inkBox(const lv_font_t* f) {
   return { baseline - (int)g.box_h - (int)g.ofs_y, (int)g.box_h };
 }
 
-static void setTextCached(lv_obj_t* o, char* cache, size_t cap, const char* v) {
-  if (strncmp(cache, v, cap - 1) == 0) return;
-  strncpy(cache, v, cap - 1);
-  cache[cap - 1] = '\0';
-  lv_label_set_text(o, cache);
-}
-static void setNumCached(lv_obj_t* o, int32_t* cache, int32_t v) {
-  if (*cache == v) return;
-  *cache = v;
-  char b[8];
-  snprintf(b, sizeof b, "%ld", (long)v);
-  lv_label_set_text(o, b);
-}
+// setTextCached / setNumCached / setHiddenCached now live in ui.h. They were
+// file-static here for three screens' worth of history, and being unreachable
+// is exactly why ui_ledger.cpp and ui_idle.cpp had to be taught the rule again
+// in Phase 19. Same bodies, same names, one copy.
+
 /** The bottom row's right-hand column, in px: 113 on Standard, 48 on Dense.
  *  One definition, because buildTile(), the situation vocabulary and the
  *  broadcast vocabulary all key off it and a drifted copy is how the comment
@@ -315,14 +307,6 @@ static void setStatusWidth(TileUI& t, const DensitySpec& d, const char* right) {
   if (t.cStatusW == (int16_t)w) return;
   t.cStatusW = (int16_t)w;
   lv_obj_set_width(t.status, w);
-}
-
-static void setHiddenCached(lv_obj_t* o, bool* cache, bool hide) {
-  if (!o) return;                // never panic on a tile that was not built
-  if (*cache == !hide) return;   // cache stores "visible"
-  *cache = !hide;
-  if (hide) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
-  else      lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
 }
 
 // ── build ──────────────────────────────────────────────────────────────────

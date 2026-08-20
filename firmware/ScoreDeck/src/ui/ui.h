@@ -2,9 +2,45 @@
 // Copyright (C) 2026 Franco Raso
 #pragma once
 #include <lvgl.h>
+#include <stdio.h>
+#include <string.h>
 #include "../core/types.h"
 
 enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_NEWS, SCR_LINEUP, SCR_SETUP, SCR_SETTINGS };
+
+// ── change caches ──────────────────────────────────────────────────────────
+// The one repaint rule on this panel: never write a property that already
+// holds the value. LVGL invalidates on the WRITE, not on the change —
+// lv_label_set_text re-lays the run and invalidates for a byte-identical
+// string, and add/clear_flag(HIDDEN) invalidates the object's whole area
+// whether or not the flag moved.
+//
+// These three were file-statics in ui_board.cpp, and that is the WHOLE reason
+// the other two rebuilding screens grew the defects Phase 19 fixes: the idle
+// screen cleared the NEXT UP card's hidden flag unconditionally every tick —
+// 71,446 px once a second, 143% of pulse.cpp:16's own per-tick ceiling, on the
+// screen the panel shows for twenty hours a day — and the ledger rewrote all
+// three cards per poll. The discipline existed and was unreachable.
+static inline void setTextCached(lv_obj_t* o, char* cache, size_t cap, const char* v) {
+  if (strncmp(cache, v, cap - 1) == 0) return;
+  strncpy(cache, v, cap - 1);
+  cache[cap - 1] = '\0';
+  lv_label_set_text(o, cache);
+}
+static inline void setNumCached(lv_obj_t* o, int32_t* cache, int32_t v) {
+  if (*cache == v) return;
+  *cache = v;
+  char b[8];
+  snprintf(b, sizeof b, "%ld", (long)v);
+  lv_label_set_text(o, b);
+}
+static inline void setHiddenCached(lv_obj_t* o, bool* cache, bool hide) {
+  if (!o) return;                // never panic on a tile that was not built
+  if (*cache == !hide) return;   // cache stores "visible"
+  *cache = !hide;
+  if (hide) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  else      lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
 
 /** Generate the background plate into PSRAM and park it behind every screen.
  *  Call once, before uiInit(). Costs ~230 ms at boot and nothing after —

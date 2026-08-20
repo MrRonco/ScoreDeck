@@ -61,6 +61,43 @@ static bool      s_rootVis;
 static int8_t    s_k = RES_MAX;        // how many cards the last render filled
 static int8_t    s_cardVis[RES_MAX];   // -1 unset, else 0/1 — same discipline
 
+// ── the rest of the change cache ───────────────────────────────────────────
+// The visibility half above shipped; the CONTENT half never did, so every poll
+// rewrote all three cards whether or not a byte had moved — 144,004 px on an
+// identical re-apply, measured with --measure poll --scenario 10.
+//
+// At the 60 s default poll that is 45 ms of flush per minute and nothing is
+// visible at 610 mm (§4 item 24 corrects the audit on exactly this point). It
+// is worth doing anyway because it is not only the poll: the boot burst fires
+// one refresh per logo arrival, ~18-24 of them, and the page-flip and filter
+// paths run the same function inside a touch response, where 45 ms lands.
+static char      s_cAbbr [RES_MAX][2][8];
+static char      s_cScore[RES_MAX][2][8];
+static char      s_cMeta [RES_MAX][20];
+static char      s_cBcast[RES_MAX][16];
+// Ink is cached by a CODE, never by the colour value: lv_color_t is RGB565
+// here, and round-tripping a solved state ink through a uint32 would quietly
+// shift it. Same reason ui_board.cpp:1417 uses sentinels rather than hexes.
+static uint8_t   s_cPlate[RES_MAX];
+static uint8_t   s_cInk  [RES_MAX][2];
+static uint8_t   s_cMetaInk[RES_MAX];
+static uint8_t   s_cBcastInk[RES_MAX];
+
+/** 0 means "nothing written yet"; otherwise state and role, packed. */
+static inline uint8_t inkCode(GameState st, uint8_t role) {
+  return (uint8_t)(1 + (uint8_t)st * 4 + role);
+}
+static void setInkCached(lv_obj_t* o, uint8_t* cache, uint8_t code, lv_color_t c) {
+  if (*cache == code) return;
+  *cache = code;
+  lv_obj_set_style_text_color(o, c, 0);
+}
+static void setPlateCached(lv_obj_t* o, uint8_t* cache, uint8_t code, lv_color_t c) {
+  if (*cache == code) return;
+  *cache = code;
+  lv_obj_set_style_bg_color(o, c, 0);
+}
+
 static lv_obj_t* lab(lv_obj_t* p, const lv_font_t* f, lv_color_t c,
                      lv_text_align_t al = LV_TEXT_ALIGN_LEFT) {
   lv_obj_t* l = lv_label_create(p);
@@ -95,6 +132,16 @@ void uiLedgerInit(lv_obj_t* parent) {
     lv_obj_add_flag(s_card[i], LV_OBJ_FLAG_HIDDEN);
     s_cardVis[i] = 0;
   }
+  // lab() writes "" into every label, so the text caches start matching what
+  // is on screen rather than at some value the first render would skip.
+  memset(s_cAbbr, 0, sizeof s_cAbbr);
+  memset(s_cScore, 0, sizeof s_cScore);
+  memset(s_cMeta, 0, sizeof s_cMeta);
+  memset(s_cBcast, 0, sizeof s_cBcast);
+  memset(s_cPlate, 0, sizeof s_cPlate);
+  memset(s_cInk, 0, sizeof s_cInk);
+  memset(s_cMetaInk, 0, sizeof s_cMetaInk);
+  memset(s_cBcastInk, 0, sizeof s_cBcastInk);
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
   s_rootVis = false;
 }
@@ -225,43 +272,58 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
   for (uint8_t i = 0; i < nFin && slot < RES_MAX; i++, slot++) {
     const Game& g = g_board[fin[i]];
     const StateInk& si = kStateInk[GS_FINAL];
-    lv_obj_set_style_bg_color(s_card[slot], si.plate, 0);
-    lv_label_set_text(s_abbr[slot][0], g.away.abbr);
-    lv_label_set_text(s_abbr[slot][1], g.home.abbr);
+    setPlateCached(s_card[slot], &s_cPlate[slot], inkCode(GS_FINAL, 0), si.plate);
+    setTextCached(s_abbr[slot][0], s_cAbbr[slot][0], sizeof s_cAbbr[slot][0], g.away.abbr);
+    setTextCached(s_abbr[slot][1], s_cAbbr[slot][1], sizeof s_cAbbr[slot][1], g.home.abbr);
     snprintf(buf, sizeof buf, "%u", (unsigned)g.away.score);
-    lv_label_set_text(s_score[slot][0], buf);
+    setTextCached(s_score[slot][0], s_cScore[slot][0], sizeof s_cScore[slot][0], buf);
     snprintf(buf, sizeof buf, "%u", (unsigned)g.home.score);
-    lv_label_set_text(s_score[slot][1], buf);
+    setTextCached(s_score[slot][1], s_cScore[slot][1], sizeof s_cScore[slot][1], buf);
     // Winner bright, loser recessive — the tiles' own rule, so a result reads
     // without parsing both numbers. Ties keep both sides equal.
     const bool homeWon = g.home.score > g.away.score;
     const bool tie = g.home.score == g.away.score;
     for (int k = 0; k < 2; k++) {
       const bool won = tie ? true : ((k == 1) == homeWon);
-      lv_obj_set_style_text_color(s_abbr[slot][k],  won ? si.ink : si.ink3, 0);
-      lv_obj_set_style_text_color(s_score[slot][k], won ? si.ink : si.ink3, 0);
+      const lv_color_t c = won ? si.ink : si.ink3;
+      const uint8_t code = inkCode(GS_FINAL, won ? 1 : 2);
+      // ONE cache for the pair: the abbreviation and the score on a side are
+      // written from the same decision and can never disagree.
+      if (s_cInk[slot][k] != code) {
+        s_cInk[slot][k] = code;
+        lv_obj_set_style_text_color(s_abbr[slot][k],  c, 0);
+        lv_obj_set_style_text_color(s_score[slot][k], c, 0);
+      }
     }
-    lv_label_set_text(s_meta[slot], g.status);      // "Final" | "Final/OT"
-    lv_obj_set_style_text_color(s_meta[slot], si.ink3, 0);
-    lv_label_set_text(s_bcast[slot], "");
+    setTextCached(s_meta[slot], s_cMeta[slot], sizeof s_cMeta[slot], g.status);
+    setInkCached(s_meta[slot], &s_cMetaInk[slot], inkCode(GS_FINAL, 3), si.ink3);
+    setTextCached(s_bcast[slot], s_cBcast[slot], sizeof s_cBcast[slot], "");
     showCard(slot, true);
   }
 
   for (uint8_t i = 0; i < nPre && slot < RES_MAX; i++, slot++) {
     const Game& g = g_board[pre[i]];
     const StateInk& si = kStateInk[GS_PRE];
-    lv_obj_set_style_bg_color(s_card[slot], si.plate, 0);
-    lv_label_set_text(s_abbr[slot][0], g.away.abbr);
-    lv_label_set_text(s_abbr[slot][1], g.home.abbr);
+    setPlateCached(s_card[slot], &s_cPlate[slot], inkCode(GS_PRE, 0), si.plate);
+    setTextCached(s_abbr[slot][0], s_cAbbr[slot][0], sizeof s_cAbbr[slot][0], g.away.abbr);
+    setTextCached(s_abbr[slot][1], s_cAbbr[slot][1], sizeof s_cAbbr[slot][1], g.home.abbr);
     // No score placeholders: the start time already says it has not begun.
-    lv_label_set_text(s_score[slot][0], "");
-    lv_label_set_text(s_score[slot][1], "");
-    for (int k = 0; k < 2; k++)
-      lv_obj_set_style_text_color(s_abbr[slot][k], si.ink, 0);
-    lv_label_set_text(s_meta[slot], g.status);      // "7:00 PM"
-    lv_obj_set_style_text_color(s_meta[slot], si.ink3, 0);
-    lv_label_set_text(s_bcast[slot], g.bcast);
-    lv_obj_set_style_text_color(s_bcast[slot], si.ink3, 0);
+    setTextCached(s_score[slot][0], s_cScore[slot][0], sizeof s_cScore[slot][0], "");
+    setTextCached(s_score[slot][1], s_cScore[slot][1], sizeof s_cScore[slot][1], "");
+    for (int k = 0; k < 2; k++) {
+      const uint8_t code = inkCode(GS_PRE, 1);
+      if (s_cInk[slot][k] != code) {
+        s_cInk[slot][k] = code;
+        lv_obj_set_style_text_color(s_abbr[slot][k], si.ink, 0);
+        // The score is empty here, but its colour rides the same cache — leave
+        // the two in step or a slot that goes PRE then FINAL again skips it.
+        lv_obj_set_style_text_color(s_score[slot][k], si.ink, 0);
+      }
+    }
+    setTextCached(s_meta[slot], s_cMeta[slot], sizeof s_cMeta[slot], g.status);   // "7:00 PM"
+    setInkCached(s_meta[slot], &s_cMetaInk[slot], inkCode(GS_PRE, 3), si.ink3);
+    setTextCached(s_bcast[slot], s_cBcast[slot], sizeof s_cBcast[slot], g.bcast);
+    setInkCached(s_bcast[slot], &s_cBcastInk[slot], inkCode(GS_PRE, 3), si.ink3);
     showCard(slot, true);
   }
 

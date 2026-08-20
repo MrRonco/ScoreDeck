@@ -36,6 +36,12 @@ static lv_obj_t*  s_dot[PULSE_MAX];
 static uint8_t    s_count;
 static lv_timer_t* s_timer;
 static uint8_t    s_step;
+// The rung last WRITTEN to each dot, 0xFF = unknown. Per-dot and not one
+// global, deliberately: a dot that was hidden is skipped by the loop below, so
+// a single global "current rung" would let a dot that un-hides mid-run sit on
+// a stale colour until the rung next changed — up to 300 ms, against the 100 ms
+// it takes today. 20 bytes to keep the behaviour that is already correct.
+static uint8_t    s_dotRung[PULSE_MAX];
 
 // Discrete, not a tween. UI.md §8 requires every fade on this panel to be a
 // small number of fixed steps, because a smooth ramp is indistinguishable at
@@ -48,19 +54,25 @@ static uint8_t    s_step;
 // rungs are pre-solved on the ramp toward A_LIVE: even 1.2-1.5 L* steps, a
 // 5.4 L* amplitude (still plainly a breath at 610 mm), and every rung is
 // >= 7.39:1 on every surface it can sit on.
-static lv_color_t stepColour(uint8_t step) {
-  static const lv_color_t kRung[5] = { A_LIVE_P0, A_LIVE_P1, A_LIVE_P2,
-                                       A_LIVE_P3, A_LIVE_P4 };
+static const lv_color_t kRung[5] = { A_LIVE_P0, A_LIVE_P1, A_LIVE_P2,
+                                     A_LIVE_P3, A_LIVE_P4 };
+
+/** Which of the five rungs step `s` lands on. Five rungs over a 20-step
+ *  triangle means the ramp REPEATS a rung on most steps: the sequence is
+ *  0 0 0 1 1 2 2 2 3 3 4 3 3 2 2 2 1 1 0 0, so only 8 of 20 steps are a
+ *  change and the other 12 used to write the colour the dot already had. */
+static uint8_t stepRung(uint8_t step) {
   const int half = PULSE_STEPS / 2;
   const int up = step < half ? step : PULSE_STEPS - step;   // triangle
   int i = up * 4 / half;                                    // 0..4
   if (i > 4) i = 4;
-  return kRung[i];
+  return (uint8_t)i;
 }
 
 static void tick(lv_timer_t*) {
   s_step = (uint8_t)((s_step + 1) % PULSE_STEPS);
-  const lv_color_t o = stepColour(s_step);
+  const uint8_t r = stepRung(s_step);
+  const lv_color_t o = kRung[r];
   for (uint8_t i = 0; i < s_count; i++) {
     lv_obj_t* d = s_dot[i];
     if (!d) continue;
@@ -68,12 +80,22 @@ static void tick(lv_timer_t*) {
     // invalidates its area when a style changes, and on a board with one live
     // game that would be eleven pointless invalidations per tick.
     if (lv_obj_has_flag(d, LV_OBJ_FLAG_HIDDEN)) continue;
+    // 12 of 20 ticks re-wrote the rung the dot already had, because
+    // lv_obj_set_style_bg_color invalidates on the WRITE and not on the
+    // change. Small — 1,080 px/s on a full board, 0.07% of the budget
+    // (§4 item 24) — but it is one byte and one comparison.
+    if (s_dotRung[i] == r) continue;
+    s_dotRung[i] = r;
     lv_obj_set_style_bg_color(d, o, 0);
   }
 }
 
 void pulseRegister(lv_obj_t* dot) {
   if (!dot || s_count >= PULSE_MAX) return;
+  // Arm the slot UNKNOWN, not rung 0: buildTile() paints the dot flat C_LIVE,
+  // which is not any of the five rungs, so a zero-initialised cache would make
+  // the first tick at rung 0 skip a dot that has never been written.
+  s_dotRung[s_count] = 0xFF;
   s_dot[s_count++] = dot;
   // ONE timer for every dot on the panel. One timer per dot would multiply the
   // wakeups by twelve to produce identical output.
@@ -85,4 +107,12 @@ void pulseForget() {
   // leaves every registered pointer dangling. Called from there, before the
   // rebuild, so the timer never walks freed objects.
   s_count = 0;
+  // AND the rung cache, which is indexed by REGISTRATION ORDER — the rebuild
+  // hands those slots to different dots. pulseRegister() re-arms each slot it
+  // claims, so this clears the tail a shorter rebuild leaves behind; without
+  // the pair, a density change, a rail toggle or closing settings can leave a
+  // freshly-built dot stranded at its build-time flat C_LIVE until the rung
+  // next changes — up to 300 ms, since the longest repeated run in the
+  // sequence above is three steps at 100 ms each.
+  memset(s_dotRung, 0xFF, sizeof s_dotRung);
 }

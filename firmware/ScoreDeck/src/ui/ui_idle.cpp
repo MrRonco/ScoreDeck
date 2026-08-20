@@ -54,6 +54,16 @@ static lv_obj_t* s_ledRule[2];
 // change caches
 static char s_cClock[8], s_cDate[24], s_cSummary[64], s_cCountdown[16], s_cMeta[64];
 static char s_cNextId[12];
+static char s_cAmpm[4];
+
+// ...and the NEXT UP block's VISIBILITY, which is the half that was missing.
+// setHiddenCached() (ui.h) stores "visible", so these are seeded from what
+// uiIdleInit() actually built rather than guessed. The countdown ticks once a
+// second and this block ran unconditionally with it: see uiIdleTick().
+static bool s_vCard, s_vNone, s_vAway, s_vHome, s_vCountdown, s_vEdge;
+static bool s_vLogoA, s_vLogoH, s_vBadgeA, s_vBadgeH;
+static const lv_img_dsc_t* s_cLogoA;
+static const lv_img_dsc_t* s_cLogoH;
 
 // Which game each tappable row is currently showing. The idle screen holds no
 // board of its own, so a tap has to resolve back into g_board by index — and
@@ -350,6 +360,14 @@ void uiIdleInit(lv_obj_t* parent) {
   memset(s_cCountdown, 0, sizeof s_cCountdown);
   memset(s_cMeta, 0, sizeof s_cMeta);
   memset(s_cNextId, 0, sizeof s_cNextId);
+  memset(s_cAmpm, 0, sizeof s_cAmpm);
+  // Seeded from what the builder above left on screen, not from zero: a
+  // visibility cache that disagrees with the tree is worse than no cache,
+  // because the first write that "matches" is the one that never happens.
+  s_vCard = true;  s_vNone = false; s_vAway = true;   s_vHome = true;
+  s_vCountdown = true; s_vEdge = true;
+  s_vLogoA = false; s_vLogoH = false; s_vBadgeA = true; s_vBadgeH = true;
+  s_cLogoA = s_cLogoH = nullptr;
 }
 
 /** The soonest scheduled game, favourites winning ties. */
@@ -398,7 +416,14 @@ void uiIdleTick() {
   // Deliberately NOT gated on visibility. uiIdleRefresh() runs before
   // uiShow(SCR_IDLE), so an early return here left the clock, the countdown
   // and the next-up matchup blank on the first frame the screen appeared.
-  // Every write below is change-cached, so running while hidden is nearly free.
+  //
+  // That licence is only paid for if every write below really is change-cached,
+  // and for a long time this comment certified the exact property the function
+  // violated: the NEXT UP block cleared six hidden flags and rewrote both
+  // badges every tick, and lv_obj_clear_flag invalidates on the WRITE whether
+  // or not the flag moved. Measured at 71,446 px per second — the whole
+  // 276x230 card plus its glow, 143% of pulse.cpp:16's own per-tick ceiling —
+  // on the screen the panel shows for twenty hours a day. It is true now.
   if (!s_root) return;
 
   const time_t now = time(nullptr);
@@ -430,7 +455,7 @@ void uiIdleTick() {
   // "11:37" are not the same width, so a fixed x is wrong for half the day.
   // Baselines are aligned through each face's own metrics rather than by eye:
   // a 96 px face and a 30 px face share no other reference point.
-  lv_label_set_text(s_ampm, lt.tm_hour < 12 ? "AM" : "PM");
+  setCached(s_ampm, s_cAmpm, sizeof s_cAmpm, lt.tm_hour < 12 ? "AM" : "PM");
   {
     // Measured from the TEXT, not from the object. lv_obj_get_width() is not
     // valid until layout has run, and on the first tick it returns 0 — which a
@@ -455,44 +480,31 @@ void uiIdleTick() {
   setCached(s_date, s_cDate, sizeof s_cDate, buf);
 
   const Game* nx = nextGame();
-  lv_obj_t* const matchup[] = { s_nextBadgeA, s_nextBadgeH, s_nextAway, s_nextHome };
   if (!nx) {
     // The whole card goes, not just its contents. A 276x230 panel holding one
     // line of small text is the same "content failed to arrive" signal as an
     // empty bordered region — and this is now the ONLY card on the screen, so
     // it carries that signal for the entire display. A clock on a bare plate
     // is a complete answer to "nothing is scheduled".
-    lv_obj_add_flag(s_nextCard, LV_OBJ_FLAG_HIDDEN);
+    setHiddenCached(s_nextCard, &s_vCard, true);
     setCached(s_nextMeta, s_cMeta, sizeof s_cMeta, "");
     s_cNextId[0] = '\0';
     return;
   }
-  lv_obj_clear_flag(s_nextCard, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(s_nextNone, LV_OBJ_FLAG_HIDDEN);
-  for (lv_obj_t* o : matchup) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(s_countdown, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(s_nextEdge, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(s_nextNone, LV_OBJ_FLAG_HIDDEN);
+  setHiddenCached(s_nextCard,  &s_vCard,      false);
+  setHiddenCached(s_nextNone,  &s_vNone,      true);
+  setHiddenCached(s_nextAway,  &s_vAway,      false);
+  setHiddenCached(s_nextHome,  &s_vHome,      false);
+  setHiddenCached(s_countdown, &s_vCountdown, false);
+  setHiddenCached(s_nextEdge,  &s_vEdge,      false);
 
   if (strncmp(s_cNextId, nx->id, sizeof s_cNextId - 1) != 0) {
     strncpy(s_cNextId, nx->id, sizeof s_cNextId - 1);
     lv_label_set_text(s_nextAway, nx->away.abbr);
     lv_label_set_text(s_nextHome, nx->home.abbr);
-  }
-  // Outside the id cache on purpose: a logo arrives LATER than the fixture it
-  // belongs to, so gating this on "the game changed" left the badge showing
-  // until the next fixture came round.
-  {
-    const lv_img_dsc_t* la = logoGetScaled(nx->league, nx->away.abbr, 34);
-    const lv_img_dsc_t* lh = logoGetScaled(nx->league, nx->home.abbr, 34);
-    if (la) { lv_img_set_src(s_nextLogoA, la); lv_obj_clear_flag(s_nextLogoA, LV_OBJ_FLAG_HIDDEN); }
-    else    { lv_obj_add_flag(s_nextLogoA, LV_OBJ_FLAG_HIDDEN); }
-    if (lh) { lv_img_set_src(s_nextLogoH, lh); lv_obj_clear_flag(s_nextLogoH, LV_OBJ_FLAG_HIDDEN); }
-    else    { lv_obj_add_flag(s_nextLogoH, LV_OBJ_FLAG_HIDDEN); }
-    la ? lv_obj_add_flag(s_nextBadgeA, LV_OBJ_FLAG_HIDDEN)
-       : lv_obj_clear_flag(s_nextBadgeA, LV_OBJ_FLAG_HIDDEN);
-    lh ? lv_obj_add_flag(s_nextBadgeH, LV_OBJ_FLAG_HIDDEN)
-       : lv_obj_clear_flag(s_nextBadgeH, LV_OBJ_FLAG_HIDDEN);
+    // The badge's own text and fill belong HERE, with the fixture, and not in
+    // the logo block below: they change only when the game does. Only which of
+    // the badge and the logo is showing has to be re-decided per tick.
     lv_label_set_text(s_nextLblA, nx->away.abbr);
     lv_label_set_text(s_nextLblH, nx->home.abbr);
     // Through the normaliser, like everywhere else: setting bg_color directly
@@ -502,6 +514,23 @@ void uiIdleTick() {
     lv_obj_set_style_bg_color(s_nextEdge,
         nx->isFav ? lv_color_hex(teamInkFor(nx->home.color, kStateInk[GS_LIVE].fill))
                   : C_EDGE, 0);
+  }
+  // Outside the id cache on purpose: a logo arrives LATER than the fixture it
+  // belongs to, so gating this on "the game changed" left the badge showing
+  // until the next fixture came round. Cached on the DESCRIPTOR instead — once
+  // the logo has landed it is the same pointer every second, and both
+  // lv_img_set_src and lv_obj_clear_flag invalidate on the write.
+  {
+    const lv_img_dsc_t* la = logoGetScaled(nx->league, nx->away.abbr, 34);
+    const lv_img_dsc_t* lh = logoGetScaled(nx->league, nx->home.abbr, 34);
+    if (la && la != s_cLogoA) lv_img_set_src(s_nextLogoA, la);
+    if (lh && lh != s_cLogoH) lv_img_set_src(s_nextLogoH, lh);
+    s_cLogoA = la;
+    s_cLogoH = lh;
+    setHiddenCached(s_nextLogoA,  &s_vLogoA,  la == nullptr);
+    setHiddenCached(s_nextLogoH,  &s_vLogoH,  lh == nullptr);
+    setHiddenCached(s_nextBadgeA, &s_vBadgeA, la != nullptr);
+    setHiddenCached(s_nextBadgeH, &s_vBadgeH, lh != nullptr);
   }
 
   // Countdown is the hero — it is the reason this screen exists.
