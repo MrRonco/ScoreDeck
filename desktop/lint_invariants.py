@@ -115,6 +115,38 @@ for name, lines in ui_sources():
         if 'C_LIVE_SD' in strip_comment(line):
             bad('dead-token', f'{name}:{n}', 'C_LIVE_SD was deleted in phase 12')
 
+# ── 7. a finished score does not outrank a live one ─────────────────────────
+#
+# Phase 23's decision, pinned so it cannot silently revert. The FINAL winner's
+# SCORE resolves to si.ink2, not si.ink. Measured on --scenario 0 with an
+# alpha-weighted salience census (ink px summed as contrast - 1 against each
+# tile's own measured fill): at si.ink the three brightest NUMBERS on a nine-up
+# board were 3526 / 2130 / 2321 and all three were games that had ended,
+# against live leaders at 1837 / 1484 / 981 / 816. At si.ink2 they are
+# 2332 / 1409 / 1536.
+#
+# The lever is this SENTINEL and not the token. Darkening
+# kStateInk[GS_FINAL].ink instead is a 45% ratio regression that takes every
+# FINAL team NAME down with it — which is why the third check exists: si.ink2
+# is already the status ink, so an abbreviation that followed the score down
+# would render in the identical grey as the game clock on the same tile.
+#
+# This is the source-level form of the no-regression gate. The RENDERED form —
+# no ink tier darker than it was — needs a render census and lives with the
+# other two object-tree rules, not here.
+board_src = open(os.path.join(UI, 'ui_board.cpp')).read()
+if not re.search(r'want\s*==\s*0xFFFFFFFEu\s*\?\s*si\.ink2', board_src):
+    bad('final-score-rung', 'ui_board.cpp',
+        'the FINAL-winner sentinel 0xFFFFFFFE must resolve to si.ink2 (phase 23)')
+ledger_src = open(os.path.join(UI, 'ui_ledger.cpp')).read()
+if not re.search(r's_score\[slot\]\[k\],\s*won\s*\?\s*si\.ink2', ledger_src):
+    bad('final-score-rung', 'ui_ledger.cpp',
+        "the ledger's winning score must mirror the tile at si.ink2 (phase 23)")
+if not re.search(r's_abbr\[slot\]\[k\],\s*won\s*\?\s*si\.ink\s*:', ledger_src):
+    bad('final-score-rung', 'ui_ledger.cpp',
+        'the team abbreviation must NOT follow the score down to si.ink2 — '
+        'that is already the status ink on the same card')
+
 # ── the baseline ────────────────────────────────────────────────────────────
 #
 # Phase 20 ships BEFORE phase 21, and phase 21 is what clears the radius family

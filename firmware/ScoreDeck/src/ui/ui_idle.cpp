@@ -43,6 +43,12 @@ static lv_obj_t* s_nextNone;
 // Three, not four. The ledger rows start at y=384 on a 30 px pitch, so a
 // fourth would put its baseline at 489 on a 480 px panel.
 #define IDLE_ROWS 3
+// The ledger band's frame. 16 and 784 are the panel's own horizontal frame —
+// the same edges the NEXT UP card and every board tile use — and 40 is the
+// gutter the two columns already had.
+#define LED_L 16
+#define LED_W 364
+#define LED_R (LED_L + LED_W + 40)      // 420; LED_R + LED_W = 784
 static lv_obj_t* s_todayTime[IDLE_ROWS];
 static lv_obj_t* s_todayGame[IDLE_ROWS];
 static lv_obj_t* s_todayLg[IDLE_ROWS];
@@ -54,6 +60,16 @@ static lv_obj_t* s_ledRule[2];
 // change caches
 static char s_cClock[8], s_cDate[24], s_cSummary[64], s_cCountdown[16], s_cMeta[64];
 static char s_cNextId[12];
+static char s_cAmpm[4];
+
+// ...and the NEXT UP block's VISIBILITY, which is the half that was missing.
+// setHiddenCached() (ui.h) stores "visible", so these are seeded from what
+// uiIdleInit() actually built rather than guessed. The countdown ticks once a
+// second and this block ran unconditionally with it: see uiIdleTick().
+static bool s_vCard, s_vNone, s_vAway, s_vHome, s_vCountdown, s_vEdge;
+static bool s_vLogoA, s_vLogoH, s_vBadgeA, s_vBadgeH;
+static const lv_img_dsc_t* s_cLogoA;
+static const lv_img_dsc_t* s_cLogoH;
 
 // Which game each tappable row is currently showing. The idle screen holds no
 // board of its own, so a tap has to resolve back into g_board by index — and
@@ -265,11 +281,16 @@ void uiIdleInit(lv_obj_t* parent) {
   // That module holds file-static state for exactly one instance, and coupling
   // two screens through it — parenting a single tree that has to move between
   // them — is a worse bug than thirty lines of repeated layout.
+  // Baseline delta between the row's body face and the score's title face.
+  // Measured from the fonts, not dialled: baseline-from-top is
+  // line_height - base_line for each.
+  const int scoreDy = ((int)lv_font_get_line_height(F_BODY)  - (int)F_BODY->base_line)
+                    - ((int)lv_font_get_line_height(F_TITLE) - (int)F_TITLE->base_line);
   auto ruleAt = [&](int x) {
     lv_obj_t* r = lv_obj_create(s_root);
     lv_obj_remove_style_all(r);
     lv_obj_set_pos(r, x, 368);
-    lv_obj_set_size(r, 348, 1);
+    lv_obj_set_size(r, LED_W, 1);
     lv_obj_set_style_bg_color(r, C_LINE, 0);
     lv_obj_set_style_bg_opa(r, OPA_HAIR, 0);
     return r;
@@ -284,10 +305,21 @@ void uiIdleInit(lv_obj_t* parent) {
   // Kept so uiIdleRefresh() can hide a column whole. A heading ruled over
   // nothing is the same "failed to load" signal a bordered empty card gives,
   // and on a July Tuesday BOTH columns are empty.
-  s_ledHdr[0] = hdrAt(24, "TODAY");
-  s_ledRule[0] = ruleAt(24);
-  s_ledHdr[1] = hdrAt(412, "LATEST");
-  s_ledRule[1] = ruleAt(412);
+  // LED_L / LED_R / LED_W, not 24 / 412 / 348. The deferred ledger:L10 move:
+  // the band's left edge was 24 while every card on this screen and every tile
+  // on the board frames at 16, and its right terminus fell at 760 against the
+  // NEXT UP card above it ending at 784. Both edges now belong to the same
+  // frame; the 40 px gutter between the columns is unchanged, so the columns
+  // absorb the 16 px each and nothing inside them re-flows.
+  //
+  // The clock/date/summary column at x = 44 does NOT move with them (§4 item
+  // 17): 44 is an optical INK-hang re-derived per minute from the leading
+  // glyph's own bearing at uiIdleTick(), and driving it from here would fight
+  // that and snap the clock back on the next tick.
+  s_ledHdr[0] = hdrAt(LED_L, "TODAY");
+  s_ledRule[0] = ruleAt(LED_L);
+  s_ledHdr[1] = hdrAt(LED_R, "LATEST");
+  s_ledRule[1] = ruleAt(LED_R);
 
   // Transparent hit targets over each ledger row. The rows are bare labels on
   // the plate, and a label is not clickable and is only as wide as its text —
@@ -298,7 +330,7 @@ void uiIdleInit(lv_obj_t* parent) {
     lv_obj_t* h = lv_obj_create(s_root);
     lv_obj_remove_style_all(h);
     lv_obj_set_pos(h, x, y - 4);
-    lv_obj_set_size(h, 348, 28);
+    lv_obj_set_size(h, LED_W, 28);
     lv_obj_set_style_bg_opa(h, LV_OPA_TRANSP, 0);
     lv_obj_set_style_radius(h, 6, 0);
     // Visible only while held. The rows must not look like buttons at rest —
@@ -313,13 +345,26 @@ void uiIdleInit(lv_obj_t* parent) {
 
   for (int i = 0; i < IDLE_ROWS; i++) {
     const int y = 384 + i * 30;
-    hit(24,  y, i, onTodayRow);
-    hit(412, y, i, onFinalRow);
-    s_todayTime[i]  = lbl(s_root, 24,  y, C_INK3, F_NUM);
-    s_todayGame[i]  = lbl(s_root, 98,  y, C_INK2, F_BODY);
-    s_todayLg[i]    = lbl(s_root, 238, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
-    s_finalGame[i]  = lbl(s_root, 412, y, C_INK2, F_BODY);
-    s_finalScore[i] = lbl(s_root, 626, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
+    hit(LED_L, y, i, onTodayRow);
+    hit(LED_R, y, i, onFinalRow);
+    s_todayTime[i]  = lbl(s_root, LED_L,       y, C_INK3, F_NUM);
+    s_todayGame[i]  = lbl(s_root, LED_L +  74, y, C_INK2, F_BODY);
+    s_todayLg[i]    = lbl(s_root, LED_L + 230, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
+    s_finalGame[i]  = lbl(s_root, LED_R,       y, C_INK2, F_BODY);
+    // The RESULT, at the face and the ink a result deserves.
+    //
+    // It rendered in the same 11 px cap and the same C_INK3 as the league tag
+    // in the column beside it: measured #8496AD against the fixture label's
+    // #ADBECE, i.e. the one number on the row was DIMMER and no larger than
+    // the label naming it. F_TITLE puts 14 px of cap under it and C_INK is the
+    // datum ink this screen already gives the clock. Nothing else on the row
+    // changes and no ratio anywhere falls.
+    //
+    // Baseline-matched to the fixture label rather than eyeballed: two faces
+    // hung from the same y sit on two different baselines, and 5 px of that is
+    // plainly visible at 610 mm.
+    s_finalScore[i] = lbl(s_root, LED_R + 230, y + scoreDy, C_INK, F_TITLE,
+                          LV_TEXT_ALIGN_RIGHT, 134);
   }
 
   // ── the fault card ───────────────────────────────────────────────────────
@@ -350,6 +395,14 @@ void uiIdleInit(lv_obj_t* parent) {
   memset(s_cCountdown, 0, sizeof s_cCountdown);
   memset(s_cMeta, 0, sizeof s_cMeta);
   memset(s_cNextId, 0, sizeof s_cNextId);
+  memset(s_cAmpm, 0, sizeof s_cAmpm);
+  // Seeded from what the builder above left on screen, not from zero: a
+  // visibility cache that disagrees with the tree is worse than no cache,
+  // because the first write that "matches" is the one that never happens.
+  s_vCard = true;  s_vNone = false; s_vAway = true;   s_vHome = true;
+  s_vCountdown = true; s_vEdge = true;
+  s_vLogoA = false; s_vLogoH = false; s_vBadgeA = true; s_vBadgeH = true;
+  s_cLogoA = s_cLogoH = nullptr;
 }
 
 /** The soonest scheduled game, favourites winning ties. */
@@ -398,7 +451,14 @@ void uiIdleTick() {
   // Deliberately NOT gated on visibility. uiIdleRefresh() runs before
   // uiShow(SCR_IDLE), so an early return here left the clock, the countdown
   // and the next-up matchup blank on the first frame the screen appeared.
-  // Every write below is change-cached, so running while hidden is nearly free.
+  //
+  // That licence is only paid for if every write below really is change-cached,
+  // and for a long time this comment certified the exact property the function
+  // violated: the NEXT UP block cleared six hidden flags and rewrote both
+  // badges every tick, and lv_obj_clear_flag invalidates on the WRITE whether
+  // or not the flag moved. Measured at 71,446 px per second — the whole
+  // 276x230 card plus its glow, 143% of pulse.cpp:16's own per-tick ceiling —
+  // on the screen the panel shows for twenty hours a day. It is true now.
   if (!s_root) return;
 
   const time_t now = time(nullptr);
@@ -430,7 +490,7 @@ void uiIdleTick() {
   // "11:37" are not the same width, so a fixed x is wrong for half the day.
   // Baselines are aligned through each face's own metrics rather than by eye:
   // a 96 px face and a 30 px face share no other reference point.
-  lv_label_set_text(s_ampm, lt.tm_hour < 12 ? "AM" : "PM");
+  setCached(s_ampm, s_cAmpm, sizeof s_cAmpm, lt.tm_hour < 12 ? "AM" : "PM");
   {
     // Measured from the TEXT, not from the object. lv_obj_get_width() is not
     // valid until layout has run, and on the first tick it returns 0 — which a
@@ -455,44 +515,31 @@ void uiIdleTick() {
   setCached(s_date, s_cDate, sizeof s_cDate, buf);
 
   const Game* nx = nextGame();
-  lv_obj_t* const matchup[] = { s_nextBadgeA, s_nextBadgeH, s_nextAway, s_nextHome };
   if (!nx) {
     // The whole card goes, not just its contents. A 276x230 panel holding one
     // line of small text is the same "content failed to arrive" signal as an
     // empty bordered region — and this is now the ONLY card on the screen, so
     // it carries that signal for the entire display. A clock on a bare plate
     // is a complete answer to "nothing is scheduled".
-    lv_obj_add_flag(s_nextCard, LV_OBJ_FLAG_HIDDEN);
+    setHiddenCached(s_nextCard, &s_vCard, true);
     setCached(s_nextMeta, s_cMeta, sizeof s_cMeta, "");
     s_cNextId[0] = '\0';
     return;
   }
-  lv_obj_clear_flag(s_nextCard, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(s_nextNone, LV_OBJ_FLAG_HIDDEN);
-  for (lv_obj_t* o : matchup) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(s_countdown, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(s_nextEdge, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(s_nextNone, LV_OBJ_FLAG_HIDDEN);
+  setHiddenCached(s_nextCard,  &s_vCard,      false);
+  setHiddenCached(s_nextNone,  &s_vNone,      true);
+  setHiddenCached(s_nextAway,  &s_vAway,      false);
+  setHiddenCached(s_nextHome,  &s_vHome,      false);
+  setHiddenCached(s_countdown, &s_vCountdown, false);
+  setHiddenCached(s_nextEdge,  &s_vEdge,      false);
 
   if (strncmp(s_cNextId, nx->id, sizeof s_cNextId - 1) != 0) {
     strncpy(s_cNextId, nx->id, sizeof s_cNextId - 1);
     lv_label_set_text(s_nextAway, nx->away.abbr);
     lv_label_set_text(s_nextHome, nx->home.abbr);
-  }
-  // Outside the id cache on purpose: a logo arrives LATER than the fixture it
-  // belongs to, so gating this on "the game changed" left the badge showing
-  // until the next fixture came round.
-  {
-    const lv_img_dsc_t* la = logoGetScaled(nx->league, nx->away.abbr, 34);
-    const lv_img_dsc_t* lh = logoGetScaled(nx->league, nx->home.abbr, 34);
-    if (la) { lv_img_set_src(s_nextLogoA, la); lv_obj_clear_flag(s_nextLogoA, LV_OBJ_FLAG_HIDDEN); }
-    else    { lv_obj_add_flag(s_nextLogoA, LV_OBJ_FLAG_HIDDEN); }
-    if (lh) { lv_img_set_src(s_nextLogoH, lh); lv_obj_clear_flag(s_nextLogoH, LV_OBJ_FLAG_HIDDEN); }
-    else    { lv_obj_add_flag(s_nextLogoH, LV_OBJ_FLAG_HIDDEN); }
-    la ? lv_obj_add_flag(s_nextBadgeA, LV_OBJ_FLAG_HIDDEN)
-       : lv_obj_clear_flag(s_nextBadgeA, LV_OBJ_FLAG_HIDDEN);
-    lh ? lv_obj_add_flag(s_nextBadgeH, LV_OBJ_FLAG_HIDDEN)
-       : lv_obj_clear_flag(s_nextBadgeH, LV_OBJ_FLAG_HIDDEN);
+    // The badge's own text and fill belong HERE, with the fixture, and not in
+    // the logo block below: they change only when the game does. Only which of
+    // the badge and the logo is showing has to be re-decided per tick.
     lv_label_set_text(s_nextLblA, nx->away.abbr);
     lv_label_set_text(s_nextLblH, nx->home.abbr);
     // Through the normaliser, like everywhere else: setting bg_color directly
@@ -502,6 +549,23 @@ void uiIdleTick() {
     lv_obj_set_style_bg_color(s_nextEdge,
         nx->isFav ? lv_color_hex(teamInkFor(nx->home.color, kStateInk[GS_LIVE].fill))
                   : C_EDGE, 0);
+  }
+  // Outside the id cache on purpose: a logo arrives LATER than the fixture it
+  // belongs to, so gating this on "the game changed" left the badge showing
+  // until the next fixture came round. Cached on the DESCRIPTOR instead — once
+  // the logo has landed it is the same pointer every second, and both
+  // lv_img_set_src and lv_obj_clear_flag invalidate on the write.
+  {
+    const lv_img_dsc_t* la = logoGetScaled(nx->league, nx->away.abbr, 34);
+    const lv_img_dsc_t* lh = logoGetScaled(nx->league, nx->home.abbr, 34);
+    if (la && la != s_cLogoA) lv_img_set_src(s_nextLogoA, la);
+    if (lh && lh != s_cLogoH) lv_img_set_src(s_nextLogoH, lh);
+    s_cLogoA = la;
+    s_cLogoH = lh;
+    setHiddenCached(s_nextLogoA,  &s_vLogoA,  la == nullptr);
+    setHiddenCached(s_nextLogoH,  &s_vLogoH,  lh == nullptr);
+    setHiddenCached(s_nextBadgeA, &s_vBadgeA, la != nullptr);
+    setHiddenCached(s_nextBadgeH, &s_vBadgeH, lh != nullptr);
   }
 
   // Countdown is the hero — it is the reason this screen exists.
