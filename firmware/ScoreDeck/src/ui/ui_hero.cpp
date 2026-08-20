@@ -341,7 +341,15 @@ void uiHeroInit(lv_obj_t* parent) {
   // rendered #31AE9C, a colour that is neither the accent nor any declared
   // token. PLAN item 1.9.
   s_foot    = lab(s_root, HERO_PAD + 14, 218, HI().ink3, F_NUM);
-  s_footR   = lab(s_root, HERO_W - 164, 218, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
+  // OUT OF THE GLOW, not under it. Right-aligned to end at HERO_W-144, which
+  // clears the bloom's left edge by ~10 px at both card widths (the sprite is
+  // centred on the score box, so its left edge tracks HERO_W the same way this
+  // does). Under the glow this line measured 2.85:1 median AA-masked — it is
+  // si.ink3, the dimmest tier, sitting in the brightest thing on the panel.
+  // The alternative was cutting the glow, which put a straight edge under the
+  // score; see the note at the top of bloom.cpp. Moving 120 px of tertiary
+  // metadata is the cheaper trade by a wide margin.
+  s_footR   = lab(s_root, HERO_W - 264, 218, HI().ink3, F_NUM, 120, LV_TEXT_ALIGN_RIGHT);
   // F_BODY, not F_MICRO. This line is upstream prose — "Matthews (24) PP, from
   // Marner", and on any European or Nordic roster "Ødegaard", "Hedström",
   // "Kanté". font_micro13 is ASCII 0x20-0x7E only, so every one of those

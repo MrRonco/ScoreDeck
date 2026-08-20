@@ -59,8 +59,28 @@ static lv_img_dsc_t s_dsc;
 // up to 6.6 L* per row against the glow's own 0.18 L* per row falloff at that
 // radius, and it read as an edge at 2x. Over 16 it averages 1.2 L* per row,
 // under the dither noise, and dissolves.
-#define BLOOM_FOOT_CLEAR  52   // rows at the card's foot the glow may not enter
-#define BLOOM_FOOT_TAPER  16   // rows the alpha ramps to zero over
+// THE FOOT STENCIL IS GONE, and the reason is worth keeping.
+//
+// It cut the glow's bottom to protect the broadcaster line beneath it, and on
+// real hardware it read as a straight horizontal line under the score — which
+// is the artefact this whole file exists to avoid. The measurement that
+// approved it was per-pixel and per-row, and it missed the failure because the
+// failure is not in a pixel: the glow's amplitude at the card's foot is about
+// 1.35 L*, roughly ONE 565 step, so fifteen of the sixteen taper rows rounded
+// to nothing and the entire fade collapsed into a single step. That step then
+// landed on the same row across every column, and a 200 px straight edge is
+// something the eye finds instantly even when no single pixel transition is
+// large. Dithering it at full amplitude was tried and barely moved it: you
+// cannot hide a HORIZONTAL cut through a RADIAL gradient, because the cut
+// crosses the gradient's own arcs at every column.
+//
+// Steepening the falloff was tried too — at (1-r)^4 the broadcaster reached
+// only 4.02:1 while the glow's peak dropped 28%, which is paying for the fix
+// with the effect itself.
+//
+// The text moved instead. See ui_hero.cpp's s_footR: it is right-aligned to
+// clear the glow's left edge, so nothing has to be cut and the halo is a
+// clean radial again. Contrast is solved by geometry, which costs nothing.
 
 // EDGE. The card is 508 wide with a 1 px light border; the sprite starts at
 // card x 357, so only 151 of its 220 columns are on the card at all and the
@@ -332,17 +352,13 @@ void bloomComposite(lv_obj_t* o, uint32_t colour, uint32_t fill) {
   const int yOff  = par ? (int)(oa.y1 - pa.y1) : lv_obj_get_y(o);
   const int cardW = par ? lv_obj_get_width(par)  : 0;
   const int cardH = par ? lv_obj_get_height(par) : 0;
-  const int footCut = cardH - BLOOM_FOOT_CLEAR;
   const int edgeX   = cardW - 1;                 // the card's right border column
 
   for (int y = 0; y < BLOOM_S; y++) {
     const int cardY = yOff + y;
-    // ROW STENCIL — the foot of the card, plus anything off the card entirely.
-    float wy = 1.0f;
-    if (cardH) {
-      if (cardY < 0 || cardY >= cardH) wy = 0.0f;
-      else wy = bloomStep((float)(footCut - cardY) / (float)BLOOM_FOOT_TAPER);
-    }
+    // Off the card entirely is still a hard zero — those rows are not drawn at
+    // all, so there is no gradient to break.
+    const float wy = (cardH && (cardY < 0 || cardY >= cardH)) ? 0.0f : 1.0f;
     const bool onSpecular = cardH && (cardY < 4 || cardY > cardH - 4);
     for (int x = 0; x < BLOOM_S; x++) {
       uint8_t* p = sl->buf + (y * BLOOM_S + x) * 3;
