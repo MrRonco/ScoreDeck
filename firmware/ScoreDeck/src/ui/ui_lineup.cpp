@@ -254,8 +254,21 @@ void uiLineupRender() {
     lv_obj_clear_flag(s_sideBtn[i], LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(s_sideLbl[i], L.sides[i].abbr);
     const bool sel = (i == s_side);
-    lv_obj_set_style_bg_color(s_sideBtn[i], sel ? lv_color_hex(L.sides[i].color) : C_EDGE, 0);
-    lv_obj_set_style_text_color(s_sideLbl[i], sel ? lv_color_white() : C_INK3, 0);
+    // The last raw wire colour on the panel, and a hardcoded white on top of
+    // it. Measured over the 35 kits in scenarios.cpp, after RGB565: 25 of 35
+    // rendered the SELECTED tab below 3:1 against the bar it sits on — TOR's
+    // #00205B at 1.01:1, NYY 1.03, DAL 1.07 — and for navy kits the selected
+    // state came out DARKER than the unselected C_EDGE, so choosing a side made
+    // it recede. The label failed AA on a seventh of the league.
+    //
+    // teamInkFor, not teamInkOn: it carries the 5.5:1 floor AND the L* 68
+    // ceiling, so a bright kit cannot sail up into the signal band. badgeInk()
+    // then solves the label against whatever fill that produced. This is the
+    // routing table PLAN phase 2 built and this one site never joined.
+    const uint32_t fill = sel ? teamInkFor(L.sides[i].color, kStateInk[GS_LIVE].fill)
+                              : 0x2A3646;                       // C_EDGE
+    lv_obj_set_style_bg_color(s_sideBtn[i], lv_color_hex(fill), 0);
+    lv_obj_set_style_text_color(s_sideLbl[i], sel ? badgeInk(fill) : C_INK3, 0);
   }
 
   const LineSide* S = (s_side < L.sideCount) ? &L.sides[s_side] : nullptr;

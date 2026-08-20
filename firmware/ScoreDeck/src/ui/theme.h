@@ -188,6 +188,12 @@ uint32_t teamInkOn(uint32_t color, uint32_t surface, float minRatio = 3.5f);
 // The team channel's one ratio and one ceiling. See teamInkFor().
 #define TEAM_RATIO 5.5f
 #define TEAM_CEIL  68.0f
+// The ceiling for a badge FILL, which is a different job from a team INK: a
+// fill carries no text contrast of its own (badgeInk() solves the label on top
+// of it), so it keeps more of its colour. 74 still sits 2.4 L* below the
+// dimmest signal rung, which is what stops a bright kit becoming the brightest
+// chromatic object on the panel.
+#define TEAM_CEIL_FILL 74.0f
 
 /** The ONLY way team colour should reach the screen. Lifts to TEAM_RATIO
  *  against the surface it will actually be drawn on, then clamps lightness to

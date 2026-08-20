@@ -170,7 +170,32 @@ uint32_t teamInk(uint32_t color) {
 uint32_t teamFill(uint32_t color) {
   // A badge only has to separate from the plate; its own label carries the
   // legibility. Pittsburgh's #000000 would otherwise be a hole in the tile.
-  return lift(color, 0x04070E, 1.6f);
+  //
+  // CEILINGED, reversing PLAN.md:471 — which said explicitly not to put a
+  // ceiling inside the fill path, on the grounds that badgeInk() re-solves the
+  // label on top and a darker fill would be silently compensated. That is true
+  // and it is not the failure that showed up. Unbounded, teamFill lifts SEA's
+  // #99D9D9 to a rendered L* 83.44 — ABOVE A_LIVE's own rendered peak of 81.77
+  // — so a team badge became the brightest chromatic object on the panel, and
+  // BOS's #FFB81C landed at L* 79.87 with chroma 80.4, inside the SIGNAL cell
+  // the whole grammar exists to keep team colour out of. 318 solid px of it on
+  // the standings screen.
+  //
+  // The ceiling is 74, not the team channel's 68: a badge FILL is not a team
+  // INK and does not carry text contrast, so it keeps more of its own colour.
+  // It still sits 2.4 L* below the dimmest signal rung. Measured after the
+  // clamp, badgeInk() on the BOS fill still returns 10.22:1.
+  const uint32_t c = lift(color, 0x04070E, 1.6f);
+  if (lStar(c) <= TEAM_CEIL_FILL) return c;
+  // Same walk teamInkFor() uses: multiplicative, so hue is preserved and chroma
+  // falls with lightness. The FLOOR still wins — a fill that cannot separate
+  // from the plate is worse than one that is slightly too bright.
+  for (int t = 99; t >= 1; t--) {
+    const uint32_t d = scaleRgb(c, t / 100.0f);
+    if (contrast(d, 0x04070E) < 1.6f) break;
+    if (lStar(d) <= TEAM_CEIL_FILL) return d;
+  }
+  return c;
 }
 
 lv_color_t badgeInk(uint32_t fill) {
