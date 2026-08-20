@@ -42,6 +42,7 @@
 #include "theme.h"
 #include "../config.h"
 #include "../core/state.h"
+#include "../net/logos.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -49,8 +50,19 @@
 #define RES_Y  340
 #define RES_H  100          // the coverage budget — see the header
 
+// The mark, at the same 24 px the card's row pitch will carry. The commit that
+// made this a row of cards said "a finished game should look like a game, not
+// like a spreadsheet row" and then built the only games on the panel with no
+// team mark on them at all — three cards whose entire chroma came from the
+// glass fill. Logo when one is cached, badge otherwise, which is the rule the
+// tiles and the idle screen already share.
+#define RES_BADGE 24
+
 static lv_obj_t* s_root;
 static lv_obj_t* s_card[RES_MAX];
+static lv_obj_t* s_badge[RES_MAX][2];
+static lv_obj_t* s_badgeLbl[RES_MAX][2];
+static lv_obj_t* s_logo[RES_MAX][2];
 static lv_obj_t* s_abbr[RES_MAX][2];
 static lv_obj_t* s_score[RES_MAX][2];
 static lv_obj_t* s_meta[RES_MAX];
@@ -82,6 +94,15 @@ static uint8_t   s_cPlate[RES_MAX];
 static uint8_t   s_cInk  [RES_MAX][2];
 static uint8_t   s_cMetaInk[RES_MAX];
 static uint8_t   s_cBcastInk[RES_MAX];
+static uint32_t  s_cBadge[RES_MAX][2];          // source colour, not RGB565
+static const lv_img_dsc_t* s_cLogo[RES_MAX][2];
+static bool      s_vBadge[RES_MAX][2];
+static bool      s_vLogo[RES_MAX][2];
+
+// Which game each card is showing, so a tap can find it again. Rewritten every
+// render, like ui_idle.cpp's rows: g_board is replaced wholesale on each poll
+// and an index captured at build time would be stale.
+static int8_t    s_slotGame[RES_MAX];
 
 /** 0 means "nothing written yet"; otherwise state and role, packed. */
 static inline uint8_t inkCode(GameState st, uint8_t role) {
@@ -109,6 +130,25 @@ static lv_obj_t* lab(lv_obj_t* p, const lv_font_t* f, lv_color_t c,
   return l;
 }
 
+/**
+ * Open the game this card is showing.
+ *
+ * These were the only games on the product you could not open. Worse than
+ * inert: glassPanel() attaches the 2 px C_LIVE pressed outline to everything
+ * it builds, so all three cards already FLASHED under a finger and then did
+ * nothing — the exact "inert things that look interactive" complaint, on the
+ * one surface where the affordance was telling the truth about what the user
+ * wanted. The detail sheet already handles a FINAL (linescore, scoring plays,
+ * team stats) and a PRE (header plus lineups), so there is nothing to build
+ * behind this beyond the index.
+ */
+static void onCard(lv_event_t* e) {
+  const int i = (int)(intptr_t)lv_event_get_user_data(e);
+  if (i < 0 || i >= RES_MAX) return;
+  const int8_t gi = s_slotGame[i];
+  if (gi >= 0 && gi < (int8_t)g_gameCount) uiGameOpen(g_board[gi]);
+}
+
 void uiLedgerInit(lv_obj_t* parent) {
   s_root = lv_obj_create(parent);
   lv_obj_remove_style_all(s_root);
@@ -121,16 +161,35 @@ void uiLedgerInit(lv_obj_t* parent) {
     // a finished game should look like a game, not like a spreadsheet row.
     s_card[i] = glassPanel(s_root, 0, 0, 248, RES_H, R_LG);
     lv_obj_clear_flag(s_card[i], LV_OBJ_FLAG_SCROLLABLE);
+    // The card IS the target — no invisible hit rectangle, because unlike
+    // ui_idle.cpp's bare-plate rows this is already an object of the right
+    // size, and it already carries the press treatment.
+    lv_obj_add_flag(s_card[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_card[i], onCard, LV_EVENT_SHORT_CLICKED,
+                        (void*)(intptr_t)i);
 
     for (int k = 0; k < 2; k++) {
+      // Badge first, logo second: they share the same rect and the later
+      // child draws on top. Same fallback dance as ui_idle.cpp's NEXT UP.
+      s_badge[i][k] = teamBadge(s_card[i], "", 0x5D6D7E, RES_BADGE);
+      s_badgeLbl[i][k] = lv_obj_get_child(s_badge[i][k], 0);
+      s_logo[i][k] = lv_img_create(s_card[i]);
+      lv_obj_add_flag(s_logo[i][k], LV_OBJ_FLAG_HIDDEN);
       s_abbr[i][k]  = lab(s_card[i], F_TITLE, C_INK);
       s_score[i][k] = lab(s_card[i], F_DISPLAY, C_INK, LV_TEXT_ALIGN_RIGHT);
     }
-    s_meta[i]  = lab(s_card[i], F_MICRO, C_INK3);
-    lv_obj_set_style_text_letter_space(s_meta[i], 1, 0);
-    s_bcast[i] = lab(s_card[i], F_MICRO, C_INK3, LV_TEXT_ALIGN_RIGHT);
+    // F_NUM, and the micro face is gone from this file entirely — grep it and
+    // you get nothing. "Final/OT" and "7:00 PM" are the SAME strings the tile
+    // prints at ui_board.cpp:539 in F_NUM, and theme.h's own split is that the
+    // 13 px face carries chrome labels — SCORING, TODAY, LATEST — while
+    // anything off the wire is data. The tracked letter-space went with it:
+    // tracking is the "this labels something" mark, and a tracked status read
+    // as a heading for the card above it.
+    s_meta[i]  = lab(s_card[i], F_NUM, C_INK3);
+    s_bcast[i] = lab(s_card[i], F_NUM, C_INK3, LV_TEXT_ALIGN_RIGHT);
     lv_obj_add_flag(s_card[i], LV_OBJ_FLAG_HIDDEN);
     s_cardVis[i] = 0;
+    s_slotGame[i] = -1;
   }
   // lab() writes "" into every label, so the text caches start matching what
   // is on screen rather than at some value the first render would skip.
@@ -142,6 +201,12 @@ void uiLedgerInit(lv_obj_t* parent) {
   memset(s_cInk, 0, sizeof s_cInk);
   memset(s_cMetaInk, 0, sizeof s_cMetaInk);
   memset(s_cBcastInk, 0, sizeof s_cBcastInk);
+  memset(s_cLogo, 0, sizeof s_cLogo);
+  for (int i = 0; i < RES_MAX; i++) for (int k = 0; k < 2; k++) {
+    s_cBadge[i][k] = 0xFFFFFFFFu;   // no team colour is this, so the first write lands
+    s_vBadge[i][k] = true;          // teamBadge() builds visible...
+    s_vLogo[i][k]  = false;         // ...and the image above it starts hidden
+  }
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
   s_rootVis = false;
 }
@@ -196,22 +261,54 @@ void uiLedgerLayoutK(bool railOpen, int k) {
     x += w + GUT;
 
     const int pad = 14, scoreW = 62;
+    // The mark takes a column, and the abbreviation moves right by exactly its
+    // width plus one 8 px gutter — the same order the tile reads in, so the
+    // two bands scan as one screen. On the narrowest rail-open card (192) that
+    // still leaves 64 px of abbreviation, which holds four F_TITLE caps.
+    const int abbrX = pad + RES_BADGE + 8;
     for (int k2 = 0; k2 < 2; k2++) {
       const int y = 8 + k2 * 30;
-      lv_obj_set_pos(s_abbr[i][k2], pad, y + 5);
-      lv_obj_set_width(s_abbr[i][k2], w - 2 * pad - scoreW - 6);
+      lv_obj_set_pos(s_badge[i][k2], pad, y + 3);
+      lv_obj_set_pos(s_logo[i][k2],  pad, y + 3);
+      lv_obj_set_pos(s_abbr[i][k2], abbrX, y + 5);
+      lv_obj_set_width(s_abbr[i][k2], w - abbrX - pad - scoreW - 6);
       lv_obj_set_pos(s_score[i][k2], w - pad - scoreW, y);
       lv_obj_set_width(s_score[i][k2], scoreW);
     }
-    lv_obj_set_pos(s_meta[i], pad, RES_H - 24);
+    lv_obj_set_pos(s_meta[i], pad, RES_H - 26);
     lv_obj_set_width(s_meta[i], w - 2 * pad - 74);
-    lv_obj_set_pos(s_bcast[i], w - pad - 74, RES_H - 24);
+    lv_obj_set_pos(s_bcast[i], w - pad - 74, RES_H - 26);
     lv_obj_set_width(s_bcast[i], 74);
   }
 }
 
 void uiLedgerHide() {
   if (s_root && s_rootVis) { s_rootVis = false; lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
+}
+
+/**
+ * The team mark for one side of one card: the cached logo if there is one,
+ * the colour badge if there is not.
+ *
+ * Change-cached on the DESCRIPTOR and on the source colour, not on the game
+ * id — a logo lands later than the fixture it belongs to, so an id gate would
+ * leave the badge up until the next poll swapped the card.
+ */
+static void setMark(int i, int k, const char* league, const Side& s) {
+  const lv_img_dsc_t* img = logoGetScaled(league, s.abbr, RES_BADGE);
+  if (img && img != s_cLogo[i][k]) lv_img_set_src(s_logo[i][k], img);
+  s_cLogo[i][k] = img;
+  setHiddenCached(s_logo[i][k],  &s_vLogo[i][k],  img == nullptr);
+  setHiddenCached(s_badge[i][k], &s_vBadge[i][k], img != nullptr);
+  if (img) return;                        // the badge under it is not drawn
+  if (s_cBadge[i][k] == s.color) return;
+  s_cBadge[i][k] = s.color;
+  // Through the normaliser: setting bg_color directly leaves the label ink
+  // unmatched and a Pittsburgh badge a hole in the card.
+  teamBadgeSet(s_badge[i][k], s.color);
+  char fit[6];
+  badgeLabelFit(fit, sizeof fit, s.abbr, RES_BADGE);
+  lv_label_set_text(s_badgeLbl[i][k], fit);
 }
 
 static void showCard(int i, bool on) {
@@ -272,7 +369,10 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
   for (uint8_t i = 0; i < nFin && slot < RES_MAX; i++, slot++) {
     const Game& g = g_board[fin[i]];
     const StateInk& si = kStateInk[GS_FINAL];
+    s_slotGame[slot] = fin[i];
     setPlateCached(s_card[slot], &s_cPlate[slot], inkCode(GS_FINAL, 0), si.plate);
+    setMark(slot, 0, g.league, g.away);
+    setMark(slot, 1, g.league, g.home);
     setTextCached(s_abbr[slot][0], s_cAbbr[slot][0], sizeof s_cAbbr[slot][0], g.away.abbr);
     setTextCached(s_abbr[slot][1], s_cAbbr[slot][1], sizeof s_cAbbr[slot][1], g.home.abbr);
     snprintf(buf, sizeof buf, "%u", (unsigned)g.away.score);
@@ -304,7 +404,10 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
   for (uint8_t i = 0; i < nPre && slot < RES_MAX; i++, slot++) {
     const Game& g = g_board[pre[i]];
     const StateInk& si = kStateInk[GS_PRE];
+    s_slotGame[slot] = pre[i];
     setPlateCached(s_card[slot], &s_cPlate[slot], inkCode(GS_PRE, 0), si.plate);
+    setMark(slot, 0, g.league, g.away);
+    setMark(slot, 1, g.league, g.home);
     setTextCached(s_abbr[slot][0], s_cAbbr[slot][0], sizeof s_cAbbr[slot][0], g.away.abbr);
     setTextCached(s_abbr[slot][1], s_cAbbr[slot][1], sizeof s_cAbbr[slot][1], g.home.abbr);
     // No score placeholders: the start time already says it has not begun.
@@ -327,7 +430,7 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
     showCard(slot, true);
   }
 
-  for (uint8_t i = slot; i < RES_MAX; i++) showCard(i, false);
+  for (uint8_t i = slot; i < RES_MAX; i++) { showCard(i, false); s_slotGame[i] = -1; }
 
   // The row re-centres on how many cards it actually filled. Gated on a
   // change: a layout pass per poll would rewrite every card's geometry for

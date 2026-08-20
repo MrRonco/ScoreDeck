@@ -43,6 +43,12 @@ static lv_obj_t* s_nextNone;
 // Three, not four. The ledger rows start at y=384 on a 30 px pitch, so a
 // fourth would put its baseline at 489 on a 480 px panel.
 #define IDLE_ROWS 3
+// The ledger band's frame. 16 and 784 are the panel's own horizontal frame —
+// the same edges the NEXT UP card and every board tile use — and 40 is the
+// gutter the two columns already had.
+#define LED_L 16
+#define LED_W 364
+#define LED_R (LED_L + LED_W + 40)      // 420; LED_R + LED_W = 784
 static lv_obj_t* s_todayTime[IDLE_ROWS];
 static lv_obj_t* s_todayGame[IDLE_ROWS];
 static lv_obj_t* s_todayLg[IDLE_ROWS];
@@ -275,11 +281,16 @@ void uiIdleInit(lv_obj_t* parent) {
   // That module holds file-static state for exactly one instance, and coupling
   // two screens through it — parenting a single tree that has to move between
   // them — is a worse bug than thirty lines of repeated layout.
+  // Baseline delta between the row's body face and the score's title face.
+  // Measured from the fonts, not dialled: baseline-from-top is
+  // line_height - base_line for each.
+  const int scoreDy = ((int)lv_font_get_line_height(F_BODY)  - (int)F_BODY->base_line)
+                    - ((int)lv_font_get_line_height(F_TITLE) - (int)F_TITLE->base_line);
   auto ruleAt = [&](int x) {
     lv_obj_t* r = lv_obj_create(s_root);
     lv_obj_remove_style_all(r);
     lv_obj_set_pos(r, x, 368);
-    lv_obj_set_size(r, 348, 1);
+    lv_obj_set_size(r, LED_W, 1);
     lv_obj_set_style_bg_color(r, C_LINE, 0);
     lv_obj_set_style_bg_opa(r, OPA_HAIR, 0);
     return r;
@@ -294,10 +305,21 @@ void uiIdleInit(lv_obj_t* parent) {
   // Kept so uiIdleRefresh() can hide a column whole. A heading ruled over
   // nothing is the same "failed to load" signal a bordered empty card gives,
   // and on a July Tuesday BOTH columns are empty.
-  s_ledHdr[0] = hdrAt(24, "TODAY");
-  s_ledRule[0] = ruleAt(24);
-  s_ledHdr[1] = hdrAt(412, "LATEST");
-  s_ledRule[1] = ruleAt(412);
+  // LED_L / LED_R / LED_W, not 24 / 412 / 348. The deferred ledger:L10 move:
+  // the band's left edge was 24 while every card on this screen and every tile
+  // on the board frames at 16, and its right terminus fell at 760 against the
+  // NEXT UP card above it ending at 784. Both edges now belong to the same
+  // frame; the 40 px gutter between the columns is unchanged, so the columns
+  // absorb the 16 px each and nothing inside them re-flows.
+  //
+  // The clock/date/summary column at x = 44 does NOT move with them (§4 item
+  // 17): 44 is an optical INK-hang re-derived per minute from the leading
+  // glyph's own bearing at uiIdleTick(), and driving it from here would fight
+  // that and snap the clock back on the next tick.
+  s_ledHdr[0] = hdrAt(LED_L, "TODAY");
+  s_ledRule[0] = ruleAt(LED_L);
+  s_ledHdr[1] = hdrAt(LED_R, "LATEST");
+  s_ledRule[1] = ruleAt(LED_R);
 
   // Transparent hit targets over each ledger row. The rows are bare labels on
   // the plate, and a label is not clickable and is only as wide as its text —
@@ -308,7 +330,7 @@ void uiIdleInit(lv_obj_t* parent) {
     lv_obj_t* h = lv_obj_create(s_root);
     lv_obj_remove_style_all(h);
     lv_obj_set_pos(h, x, y - 4);
-    lv_obj_set_size(h, 348, 28);
+    lv_obj_set_size(h, LED_W, 28);
     lv_obj_set_style_bg_opa(h, LV_OPA_TRANSP, 0);
     lv_obj_set_style_radius(h, 6, 0);
     // Visible only while held. The rows must not look like buttons at rest —
@@ -323,13 +345,26 @@ void uiIdleInit(lv_obj_t* parent) {
 
   for (int i = 0; i < IDLE_ROWS; i++) {
     const int y = 384 + i * 30;
-    hit(24,  y, i, onTodayRow);
-    hit(412, y, i, onFinalRow);
-    s_todayTime[i]  = lbl(s_root, 24,  y, C_INK3, F_NUM);
-    s_todayGame[i]  = lbl(s_root, 98,  y, C_INK2, F_BODY);
-    s_todayLg[i]    = lbl(s_root, 238, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
-    s_finalGame[i]  = lbl(s_root, 412, y, C_INK2, F_BODY);
-    s_finalScore[i] = lbl(s_root, 626, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
+    hit(LED_L, y, i, onTodayRow);
+    hit(LED_R, y, i, onFinalRow);
+    s_todayTime[i]  = lbl(s_root, LED_L,       y, C_INK3, F_NUM);
+    s_todayGame[i]  = lbl(s_root, LED_L +  74, y, C_INK2, F_BODY);
+    s_todayLg[i]    = lbl(s_root, LED_L + 230, y, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 134);
+    s_finalGame[i]  = lbl(s_root, LED_R,       y, C_INK2, F_BODY);
+    // The RESULT, at the face and the ink a result deserves.
+    //
+    // It rendered in the same 11 px cap and the same C_INK3 as the league tag
+    // in the column beside it: measured #8496AD against the fixture label's
+    // #ADBECE, i.e. the one number on the row was DIMMER and no larger than
+    // the label naming it. F_TITLE puts 14 px of cap under it and C_INK is the
+    // datum ink this screen already gives the clock. Nothing else on the row
+    // changes and no ratio anywhere falls.
+    //
+    // Baseline-matched to the fixture label rather than eyeballed: two faces
+    // hung from the same y sit on two different baselines, and 5 px of that is
+    // plainly visible at 610 mm.
+    s_finalScore[i] = lbl(s_root, LED_R + 230, y + scoreDy, C_INK, F_TITLE,
+                          LV_TEXT_ALIGN_RIGHT, 134);
   }
 
   // ── the fault card ───────────────────────────────────────────────────────
