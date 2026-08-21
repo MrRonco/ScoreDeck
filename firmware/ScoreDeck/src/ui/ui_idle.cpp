@@ -69,6 +69,7 @@ static char s_cAmpm[4];
 // second and this block ran unconditionally with it: see uiIdleTick().
 static bool s_vCard, s_vNone, s_vAway, s_vHome, s_vCountdown, s_vEdge;
 static bool s_vLogoA, s_vLogoH, s_vBadgeA, s_vBadgeH;
+static uint32_t s_cChipA = 0xFFFFFFFFu, s_cChipH = 0xFFFFFFFFu;
 static const lv_img_dsc_t* s_cLogoA;
 static const lv_img_dsc_t* s_cLogoH;
 
@@ -417,6 +418,7 @@ void uiIdleInit(lv_obj_t* parent) {
   s_vCountdown = true; s_vEdge = true;
   s_vLogoA = false; s_vLogoH = false; s_vBadgeA = true; s_vBadgeH = true;
   s_cLogoA = s_cLogoH = nullptr;
+  s_cChipA = s_cChipH = 0xFFFFFFFFu;
 }
 
 /** The soonest scheduled game, favourites winning ties. */
@@ -563,15 +565,13 @@ void uiIdleTick() {
     strncpy(s_cNextId, nx->id, sizeof s_cNextId - 1);
     lv_label_set_text(s_nextAway, nx->away.abbr);
     lv_label_set_text(s_nextHome, nx->home.abbr);
-    // The badge's own text and fill belong HERE, with the fixture, and not in
-    // the logo block below: they change only when the game does. Only which of
-    // the badge and the logo is showing has to be re-decided per tick.
-    lv_label_set_text(s_nextLblA, nx->away.abbr);
-    lv_label_set_text(s_nextLblH, nx->home.abbr);
-    // Through the normaliser, like everywhere else: setting bg_color directly
-    // leaves the label ink unmatched, and a Pittsburgh badge a hole in the card.
-    teamBadgeSet(s_nextBadgeA, nx->away.color);
-    teamBadgeSet(s_nextBadgeH, nx->home.color);
+    // The badge's fill and label used to be written HERE, on the grounds that
+    // they change only when the game does. That stopped being true when the
+    // badge started doubling as a logo's chip: two owners for one property is
+    // the shape of the bug that makes an abbreviation show through a mark.
+    // Invalidate instead, and let the one block that knows about both the
+    // logo and the chip do the writing.
+    s_cChipA = s_cChipH = 0xFFFFFFFFu;
     lv_obj_set_style_bg_color(s_nextEdge,
         nx->isFav ? lv_color_hex(teamInkFor(nx->home.color, kStateInk[GS_LIVE].fill))
                   : C_EDGE, 0);
@@ -590,8 +590,35 @@ void uiIdleTick() {
     s_cLogoH = lh;
     setHiddenCached(s_nextLogoA,  &s_vLogoA,  la == nullptr);
     setHiddenCached(s_nextLogoH,  &s_vLogoH,  lh == nullptr);
-    setHiddenCached(s_nextBadgeA, &s_vBadgeA, la != nullptr);
-    setHiddenCached(s_nextBadgeH, &s_vBadgeH, lh != nullptr);
+
+    // The badge does double duty, exactly as it does on a board tile: without
+    // a logo it IS the fallback badge, with one it becomes the CHIP the mark
+    // sits on. A dark mark — the Yankees' navy is the worst of them — was
+    // drawn straight onto the card and all but vanished, while the same mark
+    // on the board two screens away sat on its solved ground and read fine.
+    // NEXT UP is always a scheduled fixture, so it solves against GS_PRE.
+    const lv_img_dsc_t* im[2]  = { la, lh };
+    lv_obj_t* bdg[2]           = { s_nextBadgeA, s_nextBadgeH };
+    lv_obj_t* lblo[2]          = { s_nextLblA, s_nextLblH };
+    const Side* sd[2]          = { &nx->away, &nx->home };
+    uint32_t* ck[2]            = { &s_cChipA, &s_cChipH };
+    bool* bv[2]                = { &s_vBadgeA, &s_vBadgeH };
+    for (int k = 0; k < 2; k++) {
+      const LogoChip chip = im[k] ? logoChip(nx->league, sd[k]->abbr, GS_PRE)
+                                  : LogoChip{ 0, 0 };
+      const uint32_t key = im[k] ? (chip.opa ? chip.color | 0x1000000u : 1u) : 0u;
+      if (*ck[k] != key) {
+        *ck[k] = key;
+        if (im[k] && chip.opa) {
+          lv_obj_set_style_bg_color(bdg[k], lv_color_hex(chip.color), 0);
+          lv_label_set_text(lblo[k], "");
+        } else if (!im[k]) {
+          teamBadgeSet(bdg[k], sd[k]->color);      // restores fill AND ink
+          lv_label_set_text(lblo[k], sd[k]->abbr);
+        }
+      }
+      setHiddenCached(bdg[k], bv[k], im[k] && !chip.opa);
+    }
   }
 
   // Countdown is the hero — it is the reason this screen exists.

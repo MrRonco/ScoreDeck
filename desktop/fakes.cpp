@@ -100,7 +100,7 @@ static lv_img_dsc_t s_fakeDsc[FAKE_N];
 #define REAL_N 64
 static uint8_t*     s_realData[REAL_N];
 static lv_img_dsc_t s_realDsc[REAL_N];
-static LogoChip     s_realChip[REAL_N];
+static LogoChip     s_realChip[REAL_N][4];   // one per surface ground, like the firmware
 static char         s_realKey[REAL_N][16];
 static uint8_t      s_realState[REAL_N];      // 0 unknown, 1 loaded, 2 absent
 
@@ -131,7 +131,8 @@ static int realSlot(const char* league, const char* abbr) {
       s_realDsc[i].header.h = 48;
       s_realDsc[i].data_size = 48 * 48 * 3;
       s_realDsc[i].data = buf + 4;              // past LVGL's own header
-      s_realChip[i] = chipSolve(buf + 4, 48, 48, kStateInk[GS_LIVE].fill);
+      for (uint8_t g = 0; g < 4; g++)
+        s_realChip[i][g] = chipSolve(buf + 4, 48, 48, kStateInk[g].fill);
       s_realState[i] = 1;
       return i;
     }
@@ -227,11 +228,12 @@ const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t
   return &v.dsc;
 }
 
-LogoChip logoChip(const char* league, const char* abbr) {
+LogoChip logoChip(const char* league, const char* abbr, uint8_t surf) {
   LogoChip none = { 0, 0 };
   if (!abbr || !*abbr) return none;
   const int r = realSlot(league, abbr);
-  return (r >= 0 && s_realState[r] == 1) ? s_realChip[r] : none;
+  if (surf > SI_HERO) return none;
+  return (r >= 0 && s_realState[r] == 1) ? s_realChip[r][surf] : none;
 }
 bool logoKnown(const char*, const char*)                  { return true; }
 bool logoRequest(const char*, const char*)                { return false; }

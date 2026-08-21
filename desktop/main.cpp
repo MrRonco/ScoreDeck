@@ -15,6 +15,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <unistd.h>
+#include <dirent.h>
 #include <lvgl.h>
 #include "Arduino.h"
 #include "scenarios.h"
@@ -349,8 +350,68 @@ int main(int argc, char** argv) {
       if (nx) printf("        %s @ %s\n", nx->away.abbr, nx->home.abbr);
       printf("reachable: old walk %d game(s), new walk %d game(s)\n",
              tiles, tiles + ledger + (hero >= 0 ? 1 : 0) + (nx ? 1 : 0));
+    } else if (!strcmp(measure, "chips")) {
+      // Run the REAL chipSolve() over every built mark against each surface's
+      // ground. The solve is stored once per logo and reused everywhere, so
+      // the question this answers is whether ONE stored verdict is honest for
+      // all four surfaces or whether the grounds are far enough apart to
+      // disagree about the same mark.
+      static const struct { const char* name; uint32_t fill; } kGround[4] = {
+        { "pre/next-up", 0x16202E }, { "live/tile", 0x1B2636 },
+        { "final/ledger", 0x101825 }, { "hero", 0x222E40 },
+      };
+      const char* leagues[2] = { "mlb", "nhl" };
+      int chips[4] = { 0, 0, 0, 0 }, marks = 0, disagree = 0;
+      char worst[8][24]; int nWorst = 0;
+      for (int li = 0; li < 2; li++) {
+        char dir[256];
+        snprintf(dir, sizeof dir, "%s/assets/logos/%s",
+                 getenv("SDROOT") ? getenv("SDROOT") : "..", leagues[li]);
+        DIR* d = opendir(dir);
+        if (!d) continue;
+        struct dirent* e;
+        while ((e = readdir(d))) {
+          if (!strstr(e->d_name, "@48.bin")) continue;
+          char path[512];
+          snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
+          FILE* f = fopen(path, "rb");
+          if (!f) continue;
+          static uint8_t blob[4 + 48 * 48 * 3];
+          const size_t got = fread(blob, 1, sizeof blob, f);
+          fclose(f);
+          if (got != sizeof blob) continue;
+          marks++;
+          bool v[4];
+          for (int gi = 0; gi < 4; gi++) {
+            v[gi] = chipSolve(blob + 4, 48, 48, kGround[gi].fill).opa != 0;
+            if (v[gi]) chips[gi]++;
+          }
+          if (getenv("SDCHIPS")) {
+            char nm[16];
+            snprintf(nm, sizeof nm, "%.*s", (int)(strchr(e->d_name,'@') - e->d_name), e->d_name);
+            printf("    %-4s %-4s  P%c L%c F%c H%c\n", leagues[li], nm,
+                   v[0]?'*':'.', v[1]?'*':'.', v[2]?'*':'.', v[3]?'*':'.');
+          }
+          if (!(v[0] == v[1] && v[1] == v[2] && v[2] == v[3])) {
+            disagree++;
+            if (nWorst < 8) {
+              snprintf(worst[nWorst], sizeof worst[0], "%s:%.*s", leagues[li],
+                       (int)(strchr(e->d_name, '@') - e->d_name), e->d_name);
+              nWorst++;
+            }
+          }
+        }
+        closedir(d);
+      }
+      printf("%d marks\n", marks);
+      for (int gi = 0; gi < 4; gi++)
+        printf("  %-14s %2d chipped, %2d bare  (%.0f%% need help)\n",
+               kGround[gi].name, chips[gi], marks - chips[gi],
+               marks ? 100.0 * chips[gi] / marks : 0.0);
+      printf("verdict differs across grounds for %d of %d marks\n", disagree, marks);
+      for (int i = 0; i < nWorst; i++) printf("    %s\n", worst[i]);
     } else {
-      fprintf(stderr, "--measure: expected alert|idle|poll|logos\n");
+      fprintf(stderr, "--measure: expected alert|idle|poll|logos|chips\n");
       SDL_Quit(); return 2;
     }
     SDL_Quit();

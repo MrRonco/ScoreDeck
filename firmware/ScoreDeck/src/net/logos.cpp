@@ -44,10 +44,14 @@ struct Slot {
   lv_img_dsc_t dsc;
   uint32_t    lastUse;
   bool        miss;           // 404 — do not ask again this boot
-  // Solved once, here, because this runs on the core-0 fetch task where a
-  // 2,300-op scan is free against the HTTP round trip that precedes it. Doing
-  // it at draw time would repeat it on every repaint of every tile.
-  LogoChip    chip;
+  // Solved here, because this runs on the core-0 fetch task where a 2,300-op
+  // scan is free against the HTTP round trip that precedes it. Doing it at
+  // draw time would repeat it on every repaint of every tile.
+  //
+  // FOUR of them, one per surface ground, indexed like kStateInk. The mark
+  // does not change but the plate under it does, and 6 of the 62 shipped
+  // marks sit on opposite sides of the threshold on different surfaces.
+  LogoChip    chip[4];
   // Pre-scaled variants. FOUR, not three. The inventory is: hero 52, tile
   // badge 26/30/38 (one live per density), idle NEXT UP 34, and results card
   // 24 — so a team on the hero, a tile, the idle card and a results card
@@ -156,9 +160,9 @@ const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t
   return &v.dsc;
 }
 
-LogoChip logoChip(const char* league, const char* abbr) {
+LogoChip logoChip(const char* league, const char* abbr, uint8_t surf) {
   LogoChip none = { 0, 0 };
-  if (!abbr || !*abbr) return none;
+  if (!abbr || !*abbr || surf > SI_HERO) return none;
   char key[16];
   snprintf(key, sizeof key, "%s:%s", league, abbr);
   Slot* s = find(key);
@@ -167,7 +171,7 @@ LogoChip logoChip(const char* league, const char* abbr) {
   // double-counting would make the cache-effectiveness figure on the
   // diagnostics page read half what it is.
   if (!s || s->miss || !s->data) return none;
-  return s->chip;
+  return s->chip[surf];
 }
 
 bool logoKnown(const char* league, const char* abbr) {
@@ -242,13 +246,16 @@ static void logoTask(void*) {
     s->dsc.data = s->data + 4;
     // Solve the ground BEFORE g_logoArrived is published, or the board can
     // draw the mark for one frame with a stale chip from the evicted team.
-    s->chip = chipSolve(s->data + 4, LOGO_SIZE, LOGO_SIZE, kStateInk[GS_LIVE].fill);
+    for (uint8_t g = 0; g < 4; g++)
+      s->chip[g] = chipSolve(s->data + 4, LOGO_SIZE, LOGO_SIZE, kStateInk[g].fill);
   } else {
-    s->chip.opa = 0;
+    for (uint8_t g = 0; g < 4; g++) s->chip[g].opa = 0;
   }
   if (ok) g_logoArrived = true;
-  Serial.printf("[logo] %s %s (http %d) chip=%06X opa=%u\n", s_want,
-                ok ? "ok" : "miss", status, (unsigned)s->chip.color, (unsigned)s->chip.opa);
+  Serial.printf("[logo] %s %s (http %d) chips=%c%c%c%c\n", s_want,
+                ok ? "ok" : "miss", status,
+                s->chip[GS_PRE].opa   ? 'P' : '-', s->chip[GS_LIVE].opa  ? 'L' : '-',
+                s->chip[GS_FINAL].opa ? 'F' : '-', s->chip[SI_HERO].opa  ? 'H' : '-');
   s_inFlight = false;
   vTaskDelete(nullptr);
 }

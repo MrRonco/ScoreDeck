@@ -42,6 +42,7 @@ static lv_obj_t* s_status;
 static lv_obj_t* s_edge;       // leading-row marker
 static lv_obj_t* s_badge[2];
 static lv_obj_t* s_logo[2];
+static uint32_t  c_chip[2] = { 0xFFFFFFFFu, 0xFFFFFFFFu };
 static lv_obj_t* s_name[2];
 static lv_obj_t* s_sub[2];
 static lv_obj_t* s_score[2];
@@ -524,10 +525,14 @@ void uiHeroShow(int8_t gameIdx) {
       else                     bloomComposite(s_bloom[k], glow, si.fill);
     }
 
+    // ONE owner for the badge's fill and label: the chip block below. This
+    // used to write the team colour here as well, which with a chip in play is
+    // two owners for one property — the classic shape of the bug that made the
+    // abbreviation show through the logo. Record the colour, invalidate the
+    // chip, and let the one block that knows about both do the writing.
     if (c_color[k] != side[k]->color) {
       c_color[k] = side[k]->color;
-      teamBadgeSet(s_badge[k], side[k]->color);
-      lv_label_set_text(lv_obj_get_child(s_badge[k], 0), side[k]->abbr);
+      c_chip[k]  = 0xFFFFFFFFu;
     }
 
     // Keyed on the TEAM, not the descriptor pointer: logo slots are a static
@@ -541,7 +546,27 @@ void uiHeroShow(int8_t gameIdx) {
       if (img) lv_img_set_src(s_logo[k], img);
     }
     setVis(s_logo[k],  &c_logoVis[k],  img == nullptr);
-    setVis(s_badge[k], &c_badgeVis[k], img != nullptr);
+
+    // The badge does double duty, as it does on a board tile: without a logo
+    // it IS the fallback badge, with one it becomes the CHIP the mark sits on.
+    // The hero cell is the LIGHTEST surface on the panel and carries the
+    // largest marks at 52 px, so a mark that vanishes here is the most visible
+    // failure of the four. Solved against SI_HERO, which is that cell's own
+    // ground and not any game state.
+    const LogoChip chip = img ? logoChip(g.league, side[k]->abbr, SI_HERO)
+                              : LogoChip{ 0, 0 };
+    const uint32_t key = img ? (chip.opa ? chip.color | 0x1000000u : 1u) : 0u;
+    if (c_chip[k] != key) {
+      c_chip[k] = key;
+      if (img && chip.opa) {
+        lv_obj_set_style_bg_color(s_badge[k], lv_color_hex(chip.color), 0);
+        lv_label_set_text(lv_obj_get_child(s_badge[k], 0), "");
+      } else if (!img) {
+        teamBadgeSet(s_badge[k], side[k]->color);      // restores fill AND ink
+        lv_label_set_text(lv_obj_get_child(s_badge[k], 0), side[k]->abbr);
+      }
+    }
+    setVis(s_badge[k], &c_badgeVis[k], img && !chip.opa);
   }
 
   const bool edgeOn = (g.state == GS_LIVE) && (g.away.score != g.home.score);

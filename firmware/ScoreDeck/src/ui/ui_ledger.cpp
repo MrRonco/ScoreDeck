@@ -103,6 +103,7 @@ static bool      s_vLogo[RES_MAX][2];
 // render, like ui_idle.cpp's rows: g_board is replaced wholesale on each poll
 // and an index captured at build time would be stale.
 static int8_t    s_slotGame[RES_MAX];
+static uint32_t  s_cChip[RES_MAX][2];   // resolved chip key per side; 0 = untouched
 
 /** 0 means "nothing written yet"; otherwise state and role, packed. */
 static inline uint8_t inkCode(GameState st, uint8_t role) {
@@ -298,13 +299,33 @@ void uiLedgerHide() {
  * id — a logo lands later than the fixture it belongs to, so an id gate would
  * leave the badge up until the next poll swapped the card.
  */
-static void setMark(int i, int k, const char* league, const Side& s) {
+static void setMark(int i, int k, const char* league, const Side& s, uint8_t surf) {
   const lv_img_dsc_t* img = logoGetScaled(league, s.abbr, RES_BADGE);
   if (img && img != s_cLogo[i][k]) lv_img_set_src(s_logo[i][k], img);
   s_cLogo[i][k] = img;
   setHiddenCached(s_logo[i][k],  &s_vLogo[i][k],  img == nullptr);
-  setHiddenCached(s_badge[i][k], &s_vBadge[i][k], img != nullptr);
-  if (img) return;                        // the badge under it is not drawn
+
+  // The badge does double duty, as it does on a board tile: without a logo it
+  // IS the fallback colour chip, with one it becomes the CHIP the mark sits
+  // on. These cards run at RES_BADGE (24 px) on the panel's darkest plate, so
+  // a navy or black mark drawn straight onto them disappears completely —
+  // while the same mark on a board tile sits on its solved ground and reads.
+  // The card knows its own state, so the solve is the one for THIS plate.
+  const LogoChip chip = img ? logoChip(league, s.abbr, surf) : LogoChip{ 0, 0 };
+  const uint32_t key  = img ? (chip.opa ? chip.color | 0x1000000u : 1u) : 0u;
+  setHiddenCached(s_badge[i][k], &s_vBadge[i][k], img && !chip.opa);
+  if (img) {
+    if (s_cChip[i][k] == key) return;
+    s_cChip[i][k] = key;
+    if (chip.opa) {
+      lv_obj_set_style_bg_color(s_badge[i][k], lv_color_hex(chip.color), 0);
+      lv_label_set_text(s_badgeLbl[i][k], "");
+      // The team fill is gone, so the next logo-less render must reassert it.
+      s_cBadge[i][k] = 0xFFFFFFFFu;
+    }
+    return;
+  }
+  s_cChip[i][k] = key;
   if (s_cBadge[i][k] == s.color) return;
   s_cBadge[i][k] = s.color;
   // Through the normaliser: setting bg_color directly leaves the label ink
@@ -387,8 +408,8 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
     const StateInk& si = kStateInk[GS_FINAL];
     s_slotGame[slot] = fin[i];
     setPlateCached(s_card[slot], &s_cPlate[slot], inkCode(GS_FINAL, 0), si.plate);
-    setMark(slot, 0, g.league, g.away);
-    setMark(slot, 1, g.league, g.home);
+    setMark(slot, 0, g.league, g.away, GS_FINAL);
+    setMark(slot, 1, g.league, g.home, GS_FINAL);
     setTextCached(s_abbr[slot][0], s_cAbbr[slot][0], sizeof s_cAbbr[slot][0], g.away.abbr);
     setTextCached(s_abbr[slot][1], s_cAbbr[slot][1], sizeof s_cAbbr[slot][1], g.home.abbr);
     snprintf(buf, sizeof buf, "%u", (unsigned)g.away.score);
@@ -425,8 +446,8 @@ void uiLedgerRender(const uint8_t* order, uint8_t n,
     const StateInk& si = kStateInk[GS_PRE];
     s_slotGame[slot] = pre[i];
     setPlateCached(s_card[slot], &s_cPlate[slot], inkCode(GS_PRE, 0), si.plate);
-    setMark(slot, 0, g.league, g.away);
-    setMark(slot, 1, g.league, g.home);
+    setMark(slot, 0, g.league, g.away, GS_PRE);
+    setMark(slot, 1, g.league, g.home, GS_PRE);
     setTextCached(s_abbr[slot][0], s_cAbbr[slot][0], sizeof s_cAbbr[slot][0], g.away.abbr);
     setTextCached(s_abbr[slot][1], s_cAbbr[slot][1], sizeof s_cAbbr[slot][1], g.home.abbr);
     // No score placeholders: the start time already says it has not begun.

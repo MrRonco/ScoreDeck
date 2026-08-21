@@ -1484,7 +1484,8 @@ void uiBoardRefresh() {
       // A third of marks solve to no chip and keep the badge hidden, exactly
       // as before. See chipSolve() in theme.h for why this is a solve and not
       // a brightness test.
-      const LogoChip chip = img ? logoChip(g.league, side[k]->abbr) : LogoChip{ 0, 0 };
+      const LogoChip chip = img ? logoChip(g.league, side[k]->abbr, g.state)
+                                : LogoChip{ 0, 0 };
       const uint32_t chipKey = img ? (chip.opa ? chip.color | 0x1000000u : 1u) : 0u;
       if (t.cChip[k] != chipKey) {
         t.cChip[k] = chipKey;
