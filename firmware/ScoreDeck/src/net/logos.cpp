@@ -47,13 +47,16 @@ struct Slot {
   // 2,300-op scan is free against the HTTP round trip that precedes it. Doing
   // it at draw time would repeat it on every repaint of every tile.
   LogoChip    chip;
-  // Pre-scaled variants (badge 26/30/38, idle 34, hero 52 — at most three
-  // distinct sizes are ever live at once). Freed when the slot is evicted;
+  // Pre-scaled variants. FOUR, not three. The inventory is: hero 52, tile
+  // badge 26/30/38 (one live per density), idle NEXT UP 34, and results card
+  // 24 — so a team on the hero, a tile, the idle card and a results card
+  // wants four at once. The results card is the newest consumer and it is
+  // what pushed this over. Freed when the slot is evicted;
   // never freed mid-tenancy, so a hidden consumer's src pointer stays valid
   // for exactly as long as the slot itself does — the same lifetime the
   // 48 px dsc already has.
   struct Scaled { uint16_t size; uint8_t* data; lv_img_dsc_t dsc; };
-  Scaled      sc[3];
+  Scaled      sc[4];
   uint8_t     scN;
 };
 
@@ -103,11 +106,21 @@ const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t
   if (size == LOGO_SIZE) return &s->dsc;
   for (uint8_t i = 0; i < s->scN; i++)
     if (s->sc[i].size == size) return &s->sc[i].dsc;
-  if (s->scN >= 3) {
-    // A fourth concurrent size would mean a design change; refuse loudly in
-    // the log rather than silently evicting a variant something may hold.
-    Serial.printf("[logo] %s: >3 scaled sizes requested (%u)\n", key, size);
-    return &s->dsc;
+  if (s->scN >= 4) {
+    // REFUSE, and return NOTHING — never the 48 px original.
+    //
+    // This used to hand back &s->dsc, the native descriptor, to a caller that
+    // had asked for `size`. The caller has no way to detect that: it sets the
+    // image source and LVGL draws it at whatever the descriptor says. On the
+    // panel that rendered 48 px club marks inside 24 px results-card slots,
+    // overlapping the abbreviation and the word "Final" on every card — the
+    // caller was asking for a quarter of the area it got.
+    //
+    // Every consumer already treats nullptr as "no logo" and falls back to the
+    // colour badge, which is correct and looks deliberate. A missing mark is a
+    // smaller error than a mark four times its slot.
+    Serial.printf("[logo] %s: >4 scaled sizes requested (%u) — no logo\n", key, size);
+    return nullptr;
   }
   uint8_t* buf = (uint8_t*)heap_caps_malloc((size_t)size * size * 3, MALLOC_CAP_SPIRAM);
   if (!buf) return &s->dsc;

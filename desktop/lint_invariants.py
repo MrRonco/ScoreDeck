@@ -233,7 +233,31 @@ for n, line in enumerate(settings.split('\n'), 1):
         bad('accent-meaning', f'ui_settings.cpp:{n}',
             'the accent means "happening now"; a settings choice is not that')
 
-# ── 6. deleted tokens stay deleted ──────────────────────────────────────────
+# ── 6. the logo cache cannot be over-subscribed ─────────────────────────────
+#
+# logoGetScaled() keeps a fixed number of pre-scaled variants PER TEAM, and a
+# request beyond that used to return the 48 px original to a caller that had
+# asked for 24 — which drew club marks four times their slot, over the text.
+# It refuses safely now, but a refusal is still a missing logo, so the number
+# of distinct SIZES the UI asks for has to stay inside the cache's bound.
+#
+# Counted by size expression, not by call site: idle asks for 34 twice, which
+# is one variant, and the tile badge is one expression whose value changes with
+# density but only ever has one value live.
+logos = open(os.path.join(ROOT, '..', 'firmware', 'ScoreDeck', 'src', 'net', 'logos.cpp')).read()
+m = re.search(r'Scaled\s+sc\[(\d+)\]', logos)
+cap = int(m.group(1)) if m else 0
+sizes = set()
+for name, lines in ui_sources():
+    for line in lines:
+        for call in re.findall(r'logoGetScaled\s*\([^;]*?,\s*([A-Za-z0-9_.]+)\s*\)', strip_comment(line)):
+            sizes.add(call)
+if cap and len(sizes) > cap:
+    bad('logo-variants', f'{len(sizes)} distinct sizes',
+        f'the UI asks for {sorted(sizes)} — {len(sizes)} variants against a '
+        f'{cap}-slot cache, so a team on all of them loses its mark on the last')
+
+# ── 7. deleted tokens stay deleted ──────────────────────────────────────────
 for name, lines in ui_sources():
     for n, line in enumerate(lines, 1):
         if 'C_LIVE_SD' in strip_comment(line):
