@@ -7,7 +7,7 @@
 // Served straight from flash with sendContent_P, so it costs no heap. That
 // matters more than it looks: the web server runs inside the same loop() that
 // drives the display, so response time IS panel stall time, and building this
-// page into a String first would put 45.7 KB through the allocator on
+// page into a String first would put 87.0 KB through the allocator on
 // every request.
 #pragma once
 #include <pgmspace.h>
@@ -23,121 +23,324 @@ static const char PORTAL_HTML[] PROGMEM = R"SDHTML(<!doctype html>
 <style>
 :root{
   /* Lifted from firmware/ScoreDeck/src/ui/theme.h so the two surfaces are the
-     same material. The panel has no accent colour because 3,000 team colours
-     arrive as content; here the only team colour is a 3px swatch in the
-     picker, so status colour is allowed — but only for state, never decor.
-     This page is a browser console, not the panel, so it additionally carries
-     one small teal accent (--accent) for its own chrome: primary actions,
-     focus rings, the "on" state of switches/segments. Never used for content. */
-  --plate:#0A0F18; --frost:#1A2432; --frost2:#141C28;
-  --ink:#F3F7FB; --ink2:#93A5B8; --ink3:#6E7E8F;
+     same material — and this time actually lifted. The header used to claim
+     parity while six of ten shared role tokens had drifted: --ink2 and --ink3
+     were hand-picked DARKER than the values theme.h solves for, which put 35
+     live elements below 4.5:1 on the one page whose whole job is explanation.
+     They are now theme.h's C_INK2/C_INK3 exactly, and --frost/--accent/--warn
+     are C_SURF_2/A_LIVE/S_ALERT.
+
+     --plate is the one deliberate divergence. The panel's C_PLATE #04070E is
+     near-black because it is an emissive panel in a dark room and every
+     surface above it has to read AS a surface. This is a document in a lit
+     room, usually beside other browser chrome, and #04070E reads as a hole
+     rather than a ground. #0A0F18 is the same hue, 3 L* up.
+
+     The panel has no accent colour because 3,000 team colours arrive as
+     content; here the only team colour is a 3px swatch in the picker, so
+     status colour is allowed — but only for state, never decor. This page is
+     a browser console, not the panel, so it additionally carries one small
+     teal accent (--accent) for its own chrome: primary actions, focus rings,
+     the "on" state of switches/segments. Never used for content.
+
+     Status colours are declared as CHANNELS, not hexes, so every tint and
+     border derives from one value. Retuning --bad used to mean editing
+     thirteen hand-written rgba() copies of it, which is how the error colour
+     came to be the dimmest and most saturated of the four. */
+  /* The surface ladder, bottom to top. --frost-hi was shipping as a bare
+     #202C3C on the button hover rule and was, unnamed, the highest elevation
+     on the page. */
+  --plate-rgb:10 15 24; --frost2-rgb:20 28 40; --frost-rgb:27 38 54;
+  --plate:rgb(var(--plate-rgb)); --frost2:rgb(var(--frost2-rgb));
+  --frost:rgb(var(--frost-rgb)); --frost-hi:#202C3C;
+  /* The card fill, and the whole of the glass budget. Every card surface on
+     the page computed backdrop-filter:none over a flat rgb(20,28,40) — L* 10.05
+     on all four cards of #/network, dL* 0.00 between any two of them.
+     Translucency, not blur: there is nothing behind a card but a smooth radial
+     gradient, and blurring a smooth gradient is arithmetically a no-op.
+
+     .82 is not a taste number, it is the value the ink ladder was re-solved
+     against. The same four cards now render L* 9.55 / 9.55 / 9.92 / 9.97 —
+     dL* 0.42 — and --ink3 #8696A8 holds 5.67:1 against the lightest of them.
+     Do NOT chase a wider spread with a lower alpha: measured at alpha 0, a
+     card with no fill at all, the spread is still only 2.38 L*, because the
+     ambient's own range down that column is 3.5 L*. The ceiling belongs to the
+     gradient, not to the card, and every point of alpha spent hunting it is
+     spent straight off the third ink rung. */
+  --card-bg:rgb(var(--frost2-rgb) / .82);
+  --ink:#F3F7FB; --ink2:#ACBCCE; --ink3:#8696A8;
   --edge:#2A3646; --edge-hi:#46566A;
-  --ok:#7FD4A0; --warn:#FFC061; --bad:#FF6472;
-  --accent:#5EEAD4; --accent-ink:#052422; --accent-dim:rgba(94,234,212,.14);
-  --r-xs:6px; --r:10px; --r-lg:16px; --r-xl:22px; --tap:44px;
-  --shadow-card:0 1px 0 rgba(255,255,255,.05) inset,0 10px 30px rgba(0,0,0,.32);
-  --shadow-pop:0 24px 60px -20px rgba(0,0,0,.65);
+
+  /* The device mock is a PICTURE OF THE PANEL, so it is the one place that
+     legitimately uses the firmware's own plate rather than this page's. */
+  --panel-plate:#04070E;
+  --bezel-1:#212C3A; --bezel-2:#141B25; --bezel-3:#0A0F16;
+
+  /* One line colour at several opacities, rather than several near-identical
+     whites — theme.h's C_LINE/OPA_HAIR rule, which this page had not adopted. */
+  --line-rgb:180 205 230;
+  --hair:rgb(var(--line-rgb) / .07);
+  --hair-2:rgb(var(--line-rgb) / .03);
+  --spec:rgb(var(--line-rgb) / .10);
+
+  --ok-rgb:127 212 160;
+  --warn-rgb:242 180 65;
+  /* #FF8E93, not #FF6472. The old error red measured 6.69:1 where the other
+     three status colours sat at 10.8-13.0 — the loudest colour on the page was
+     "healthy" and the quietest was "broken". This clears 8.72:1 and drops
+     chroma 64.4 -> 46.1 so it stops vibrating on the dark ground. It is also
+     deliberately NOT isoluminant with --ok: the .device-led is a bare 5 px dot
+     whose entire meaning is red-versus-green, and equal lightness there is the
+     textbook deuteranope failure. ~7 L* of separation is kept on purpose. */
+  --bad-rgb:255 142 147;
+  --accent-rgb:59 224 192;
+  --ok:rgb(var(--ok-rgb)); --warn:rgb(var(--warn-rgb)); --bad:rgb(var(--bad-rgb));
+  --accent:rgb(var(--accent-rgb));
+  --accent-ink:#052422; --accent-dim:rgb(var(--accent-rgb) / .14);
+  --accent-lift:#7BF3D8;                      /* the primary button's top stop */
+
+  /* 2/6/10/16/22 + a pill. The first two rungs are the panel's R_XS/R_SM; the
+     top two deliberately differ — a 44 px tap target needs a softer corner
+     than a 26 px chip, and this page has no 800x480 budget to answer to. */
+  --r-xs:2px; --r-sm:6px; --r:10px; --r-lg:16px; --r-xl:22px; --r-pill:999px;
+  --tap:44px;
+  --shadow-card:0 1px 0 var(--spec) inset,0 10px 30px rgb(0 0 0 / .32);
+  /* A stat is a READOUT, not a card: it is recessed into the page rather than
+     lifted off it, and it says so with an inverted edge-light and a radius one
+     rung down. It shipped with box-shadow:none and the same 16 px corner as
+     .card, so the two elevations were indistinguishable objects. */
+  --shadow-recess:0 -1px 0 var(--spec) inset,0 2px 7px rgb(0 0 0 / .30) inset;
+  --shadow-pop:0 24px 60px -20px rgb(0 0 0 / .65);
+
+  /* SIX type sizes, not ten. The page rendered 10 distinct sizes with SIX of
+     them inside a 4 px window — 12 / 12.5 / 13 / 13.5 / 14 / 15 — differences
+     nobody can see doing the work of a hierarchy nobody can read. The window
+     collapses onto 13; 12.5 and 13.5 stop existing. --t-lg is 16 px because
+     the input rule already HAD to be 16 px (iOS zooms the page below it), and
+     a field that is a pixel larger than the sentence beside it is the tell
+     that a scale was assembled rather than chosen: body joins the field. */
+  --t-2xs:11px; --t-xs:12px; --t-sm:13px; --t-md:14px; --t-lg:16px; --t-xl:24px;
+  /* Two trackings, declared in PX. .08/.09/.1/.14em rendered as four different
+     lengths — 0.88 / 0.99 / 1.3 / 1.4 px — because an em tracking resolves
+     against whatever size it lands on, so one intent became four values. */
+  --ls-caps:1px;      /* every uppercase micro-label */
+  --ls-mark:.3px;     /* the wordmark, and only the wordmark */
+
+  /* Spacing on a 4 px grid. Nineteen distinct values shipped, thirteen of them
+     off-grid, and 14 px and 10 px alone accounted for sixteen declarations —
+     neither of which meant anything the value beside it did not. */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px;
+  /* The page's bottom rest. 64 px, unchanged: it is the end of a document, not
+     a gap between two things, so it is spelled as three rungs rather than
+     minted as a seventh. */
+  --page-tail:calc(var(--s6)*2 + var(--s4));
   --ease:cubic-bezier(.2,.8,.2,1); --dur:.16s;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
+/* .row .k small and label small both set display:block, and an author
+   display beats the UA sheet's [hidden] — so #otaWarn rendered "Do not
+   power off" on an idle System tab, before any file was chosen. */
+[hidden]{display:none!important}
 html{scroll-behavior:smooth}
-body{margin:0;color:var(--ink);font:15px/1.55 var(--sans);
-  background:
-    radial-gradient(1100px 520px at 50% -12%,rgba(94,234,212,.07),transparent 60%),
-    var(--plate);
+body{margin:0;color:var(--ink);font:var(--t-lg)/1.55 var(--sans);background:var(--plate);
   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+/* The ambient, on a VIEWPORT-fixed layer rather than the body's own box.
+   Anchored to the body it was anchored to DOCUMENT height: the -12% centre
+   scales with the page, so the taller the page the further off-screen the
+   light went while its 312 px reach stayed fixed. It covered 57.9% of the
+   shortest view and 1.4% of Diagnostics, all of it behind the 107 px header —
+   i.e. there was nothing for glass to sit on exactly where there was most
+   content. Fixed, it is scroll- and length-independent.
+
+   Three lobes, and only ONE of them is teal, held at the .07 it already had.
+   This page's own rule two blocks up says teal is chrome and never content; a
+   full-viewport teal wash would have made the ambient the largest teal object
+   on the page and broken the rule the page is written to. The other two are
+   indigo and a cool neutral. */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(120% 90% at 12% -10%,rgb(var(--accent-rgb) / .07),rgb(var(--accent-rgb) / 0) 70%),
+    radial-gradient(110% 95% at 92% 6%,rgb(124 140 240 / .10),rgb(124 140 240 / 0) 72%),
+    radial-gradient(130% 100% at 50% 112%,rgb(126 156 196 / .09),rgb(126 156 196 / 0) 75%),
+    linear-gradient(180deg,rgb(124 140 240 / .022),rgb(126 156 196 / .038))}
 a{color:inherit}
 ::selection{background:var(--accent-dim);color:var(--ink)}
 
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .skip{position:absolute;left:12px;top:-52px;z-index:60;background:var(--accent);color:var(--accent-ink);
-  padding:10px 16px;border-radius:var(--r);font:600 13px/1 var(--sans);text-decoration:none;
+  padding:var(--s3) var(--s4);border-radius:var(--r);font:600 var(--t-sm)/1 var(--sans);text-decoration:none;
   transition:top var(--dur) var(--ease)}
 .skip:focus{top:12px}
 
 :is(a,button,.btn,input,select,[tabindex]):focus-visible{outline:2px solid var(--accent);
-  outline-offset:2px;border-radius:4px}
+  outline-offset:2px;border-radius:var(--r-xs)}
 
-.wrap{max-width:1180px;margin:0 auto;padding:0 20px 64px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 var(--s5) var(--page-tail)}
 header .wrap{padding-bottom:0}   /* the 64px tail is for page content, not the bar */
 
-header{position:sticky;top:0;z-index:5;background:rgba(10,15,24,.92);
-  backdrop-filter:blur(12px);border-bottom:1px solid var(--edge)}
-.top{display:flex;align-items:center;gap:14px;padding:14px 0;flex-wrap:wrap}
-.brand{display:inline-flex;align-items:center;gap:9px;min-width:0}
+/* One of exactly TWO places on this page where content genuinely moves behind
+   a surface, and therefore one of exactly two places blur is not decoration.
+   The plate drops .92 -> .72 so the blur has something to do; at .92 the layer
+   was 92 % opaque paint and 8 % optics. */
+header{position:sticky;top:0;z-index:5;background:rgb(var(--plate-rgb) / .72);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);
+  backdrop-filter:blur(14px) saturate(140%);border-bottom:1px solid var(--edge)}
+.top{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;flex-wrap:wrap}
+.brand{display:inline-flex;align-items:center;gap:var(--s2);min-width:0}
 .brand-mark{color:var(--accent);flex:0 0 auto}
-.mark{font-weight:600;letter-spacing:.02em}
-.host{font:12px/1 var(--mono);color:var(--ink3)}
-.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;
-  font:500 11px/1.6 var(--mono);text-transform:uppercase;margin-left:auto}
+/* The page had 17 <h2> and no <h1> at all — a flat sibling list with no
+   root, so every outline tool showed 17 top-level things and no page.
+   The name is already on screen in the header; it just was not a heading. */
+h1.mark{font:600 var(--t-lg)/1.55 var(--sans);letter-spacing:var(--ls-mark);margin:0}
+.host{font:var(--t-xs)/1 var(--mono);color:var(--ink3)}
+.pill{display:inline-flex;align-items:center;gap:var(--s1);padding:3px var(--s2);border-radius:var(--r-pill);
+  font:500 var(--t-2xs)/1.6 var(--mono);text-transform:uppercase;margin-left:auto}
 .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto}
-.pill.ok{color:var(--ok);background:rgba(127,212,160,.1)}
+.pill.ok{color:var(--ok);background:rgb(var(--ok-rgb) / .1)}
 .pill.ok::before{animation:pulse 1.8s ease-in-out infinite}
-.pill.warn{color:var(--warn);background:rgba(255,192,97,.1)}
-.pill.bad{color:var(--bad);background:rgba(255,100,114,.1)}
+.pill.warn{color:var(--warn);background:rgb(var(--warn-rgb) / .1)}
+.pill.bad{color:var(--bad);background:rgb(var(--bad-rgb) / .1)}
+/* Starting up is a state, not a fault. */
+.pill.neutral{color:var(--ink2);background:rgb(var(--line-rgb) / .08)}
+.pill.neutral::before{animation:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.32}}
 
-nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
+nav{display:flex;gap:var(--s1);overflow-x:auto;padding-bottom:var(--s2);scrollbar-width:none}
 nav::-webkit-scrollbar{display:none}
-nav a{flex:0 0 auto;min-height:var(--tap);display:flex;align-items:center;padding:0 14px;
-  border-radius:var(--r);text-decoration:none;color:var(--ink3);font-size:14px;
+nav a{flex:0 0 auto;min-height:var(--tap);display:flex;align-items:center;padding:0 var(--s3);
+  border-radius:var(--r);text-decoration:none;color:var(--ink3);font-size:var(--t-md);
   transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
 nav a:hover{color:var(--ink)}
 nav a.on{background:var(--frost);color:var(--ink);box-shadow:inset 0 0 0 1px var(--edge-hi)}
+/* Unsaved work follows you out of the tab. */
+nav a.has-dirty::after{content:"";width:6px;height:6px;border-radius:50%;
+  background:var(--warn);margin-left:var(--s2);flex:0 0 auto}
+/* On a phone the six tabs measured scrollWidth 484 against clientWidth 335 at
+   375 px — Diagnostics and System were 149 px off the right edge, behind
+   `scrollbar-width:none`, with no fade, no arrow and nothing to say they were
+   there. The two tabs you go looking for when something is wrong were the two
+   you could not find. Wrap instead of scroll: two rows of three fit inside
+   335 px and every tab keeps its 44 px target. */
+@media(max-width:560px){
+  nav{flex-wrap:wrap;overflow-x:visible}
+  nav a{flex:0 0 auto;padding:0 var(--s3)}
+}
 
-h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);
-  font-weight:500;margin:26px 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* The one rhythm on this page that was already right, and the only spacing
+   value that had to MOVE to stay right: every h2 sat exactly 26 px below its
+   previous sibling on all 14 measurable headings — uniform, and 2 px off the
+   grid everything else now lands on. 24 px keeps the uniformity and joins the
+   scale. Nothing else about this rhythm changes. */
+h2{font-size:var(--t-sm);letter-spacing:var(--ls-caps);text-transform:uppercase;color:var(--ink3);
+  font-weight:500;margin:var(--s6) 0 var(--s2);display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
 h2 svg{color:var(--ink3);flex:0 0 auto}
-.card{background:var(--frost2);border:1px solid var(--edge);border-radius:var(--r-lg);
-  box-shadow:var(--shadow-card);padding:2px 20px}
-.row{display:flex;align-items:center;gap:16px;min-height:var(--tap);padding:12px 0;
-  border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap}
+.card{background:var(--card-bg);border:1px solid var(--edge);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-card);padding:2px var(--s5)}
+.row{display:flex;align-items:center;gap:var(--s4);min-height:var(--tap);padding:var(--s3) 0;
+  border-top:1px solid var(--hair);flex-wrap:wrap}
 .row:first-child{border-top:0}
 .row .k{flex:1 1 220px;min-width:0}
-.row .k small{display:block;color:var(--ink3);font-size:12.5px;margin-top:2px}
-.row .v{flex:0 0 auto;display:flex;gap:8px;align-items:center}
+/* Every <small> on the page, including the orphan inside #lgList that belongs
+   to no .row and no <label> and was therefore riding the UA's `smaller`
+   keyword: 12.5 px while body was 15, and 13.333 px the instant body became a
+   token. A relative size is not a scale, it is a coincidence. */
+small{font-size:var(--t-sm)}
+.row .k small{display:block;color:var(--ink3);font-size:var(--t-sm);margin-top:var(--s1)}
+.row .v{flex:0 0 auto;display:flex;gap:var(--s2);align-items:center}
 label.row{cursor:pointer}
+/* A row whose control depends on a switch that is off. The console had exactly
+   ONE [disabled] element in it — the whole page modelled dependent state with
+   nothing at all, so From and To stayed live, focusable and editable while
+   Quiet hours was off, and typing into them changed nothing. Same .45 the
+   disabled button already uses; the labels are exempt from the contrast floor
+   because the control is genuinely unavailable, not merely quiet. */
+.row.is-off{opacity:.45}
+.row.is-off input{pointer-events:none}
 
-button,.btn{min-height:var(--tap);padding:0 16px;border-radius:var(--r);
+button,.btn{min-height:var(--tap);padding:0 var(--s4);border-radius:var(--r);
   border:1px solid var(--edge);background:var(--frost);color:var(--ink);
-  font:500 14px/1 var(--sans);cursor:pointer;transition:background var(--dur),border-color var(--dur),transform var(--dur)}
-button:hover{background:#202C3C;border-color:var(--edge-hi)}
+  font:500 var(--t-md)/1 var(--sans);cursor:pointer;transition:background var(--dur),border-color var(--dur),transform var(--dur)}
+button:hover{background:var(--frost-hi);border-color:var(--edge-hi)}
 button:active{transform:translateY(1px)}
-button.danger{border-color:rgba(255,100,114,.42);color:var(--bad)}
+button.danger{border-color:rgb(var(--bad-rgb) / .42);color:var(--bad)}
 button.ghost{background:transparent}
 button.icon-btn{min-width:var(--tap);padding:0;display:inline-flex;align-items:center;justify-content:center}
-button.primary{background:linear-gradient(180deg,#7BF3D8,var(--accent));border-color:transparent;
+button.primary{background:linear-gradient(180deg,var(--accent-lift),var(--accent));border-color:transparent;
   color:var(--accent-ink);font-weight:600}
 button.primary:hover{filter:brightness(1.06)}
 button.primary:active{filter:brightness(.98)}
 button[disabled]{opacity:.45;cursor:default;filter:none}
 
-input:not([type=checkbox]),select{width:100%;min-height:var(--tap);padding:0 12px;background:var(--plate);
+input:not([type=checkbox]),select{width:100%;min-height:var(--tap);padding:0 var(--s3);background:var(--plate);
   border:1px solid var(--edge);border-radius:var(--r);color:var(--ink);
-  font:16px/1 var(--sans)}  /* 16px: iOS zooms the page below it */
-input[data-mono]{font-family:var(--mono);font-size:14px}
-input[type=file]{min-height:0;padding:11px 12px;font-size:13px;line-height:1.4;cursor:pointer}
-label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
-.grid{display:grid;gap:14px}
+  font:var(--t-lg)/1 var(--sans)}  /* --t-lg is 16px: iOS zooms the page below it */
+/* Mono, but NOT smaller. `font-size:14px` here quietly overrode the 16px rule
+   one line up for #proxy, #token and #favsRaw, and the file rule took #bin to
+   13px — measured 14/14/14/13. Those are exactly the fields you type standing
+   at the panel with a phone, and every one of them made iOS zoom the page on
+   focus. Mono is a family, not a size. */
+input[data-mono]{font-family:var(--mono)}
+/* No max-width and no width:100%. At 16px the 230px cap clipped the native
+   label to "No fil...hosen" — the control that tells you WHICH firmware you
+   are about to flash, truncated. It sizes to its own content instead. */
+input[type=file]{min-height:0;padding:var(--s3);line-height:1.4;cursor:pointer;
+  width:auto;max-width:100%}
+/* The only unstyled control on the page, and it showed: the UA's own button
+   chrome measured 2,412 neutral-grey pixels inside #bin's 359x49 box, 1,868 of
+   them exactly rgb(107,107,107) — a mid grey at 3.21:1 sitting on a dark card,
+   the one place the console looked like a file dialog rather than a console.
+   Same material as every other button on the page, one size down because it is
+   a control inside a field, not a field. */
+input[type=file]::file-selector-button{-webkit-appearance:none;appearance:none;
+  margin:0 var(--s3) 0 0;padding:0 var(--s3);min-height:32px;
+  border:1px solid var(--edge);border-radius:var(--r-sm);
+  background:var(--frost);color:var(--ink2);font:500 var(--t-sm)/1 var(--sans);
+  cursor:pointer;transition:background var(--dur),border-color var(--dur)}
+input[type=file]::file-selector-button:hover{background:var(--frost-hi);border-color:var(--edge-hi)}
+/* The one .v on the page that must be allowed to shrink: a native file
+   control's intrinsic width belongs to the OS, and at 375 px an unshrinkable
+   .v pushed it 55 px past the card's right edge. */
+.row .v:has(input[type=file]){flex:0 1 auto;min-width:0}
+/* Widths that used to be inline `style=` on the elements themselves —
+   3 of them — where any later JS could not tell config from override. */
+.w-time{width:150px}
+label small{display:block;color:var(--ink3);font-size:var(--t-sm);margin:var(--s1) 0 0}
+/* An inline field error. Solid --bad, never a tint: this is the sentence
+   standing between the owner and a panel that has to be walked to. */
+.err,.row .k small.err,label small.err{display:block;color:var(--bad);
+  font-size:var(--t-sm);margin:var(--s1) 0 0}
+input[aria-invalid=true]{border-color:rgb(var(--bad-rgb) / .7)}
+.grid{display:grid;gap:var(--s3)}
 @media(min-width:720px){.grid.two{grid-template-columns:1fr 1fr}}
 @media(min-width:420px){.grid.four{grid-template-columns:1fr 1fr}}
 @media(min-width:1100px){.grid.four{grid-template-columns:repeat(4,1fr)}}
-.stat{background:var(--frost2);border:1px solid var(--edge);border-radius:var(--r-lg);padding:14px 16px}
-.stat b{display:block;font-size:24px;font-variant-numeric:tabular-nums;margin-bottom:2px}
-.stat span{font:11px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)}
+.stat{background:var(--card-bg);border:1px solid var(--edge);border-radius:var(--r);
+  box-shadow:var(--shadow-recess);padding:var(--s3) var(--s4)}
+.stat b{display:block;font-size:var(--t-xl);font-variant-numeric:tabular-nums;margin-bottom:2px}
+.stat span{font:var(--t-2xs)/1 var(--mono);letter-spacing:var(--ls-caps);text-transform:uppercase;color:var(--ink3)}
 
 .search-field{position:relative}
 .search-field svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink3);pointer-events:none}
-.search-field input{padding-left:38px}
+.search-field input{padding-left:calc(var(--s3)*3)}   /* 12 left + a 16 px glyph + 8 */
 
-.seg{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r);overflow:hidden}
+/* No `overflow:hidden`. It was there to clip the children's square corners to
+   the group's radius, and it also clipped the 2 px focus ring: focusing
+   #dens.children[0] and counting teal pixels in the element shot found the
+   ring surviving as exactly ONE 2 px column (x 90-91), because that is the
+   only edge of an outline-offset:2px ring that falls INSIDE the group. Left,
+   top and bottom: zero teal pixels. The keyboard user could not see where
+   they were. The children round their own outer corners instead — same
+   picture, nothing clipped. */
+.seg{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r)}
 .seg button{border:0;border-radius:0;background:transparent;color:var(--ink3);min-height:44px}
+.seg button:first-child{border-radius:calc(var(--r) - 1px) 0 0 calc(var(--r) - 1px)}
+.seg button:last-child{border-radius:0 calc(var(--r) - 1px) calc(var(--r) - 1px) 0}
 .seg button[aria-pressed=true]{background:var(--accent-dim);color:var(--accent);
-  box-shadow:inset 0 0 0 1px rgba(94,234,212,.35)}
-.sw{appearance:none;-webkit-appearance:none;width:52px;height:30px;min-height:0;padding:0;border-radius:999px;background:var(--edge);
+  box-shadow:inset 0 0 0 1px rgb(var(--accent-rgb) / .35)}
+.sw{appearance:none;-webkit-appearance:none;width:52px;height:30px;min-height:0;padding:0;border-radius:var(--r-pill);background:var(--edge);
   border:1px solid var(--edge-hi);position:relative;cursor:pointer;transition:background .15s;flex:0 0 auto}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
   background:var(--ink2);transition:transform .15s,background .15s}
@@ -145,72 +348,132 @@ label small{display:block;color:var(--ink3);font-size:12.5px;margin:6px 0 0}
 .sw:checked::after{transform:translateX(22px);background:var(--accent-ink)}
 
 .wrapx{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table{width:100%;border-collapse:collapse;font:14px/1.5 var(--mono);font-variant-numeric:tabular-nums}
-th{text-align:left;font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
-  color:var(--ink3);padding:0 12px 8px 0}
-td{padding:8px 12px 8px 0;color:var(--ink2);border-top:1px solid rgba(255,255,255,.05)}
-tbody tr:hover td{background:rgba(255,255,255,.02)}
-tr.is-focus td{background:rgba(94,234,212,.05)}
-tr.is-focus td:first-child{border-left:3px solid var(--accent);padding-left:9px}
-.sw3{display:inline-block;width:3px;height:14px;border-radius:2px;vertical-align:-2px;margin-right:8px;flex:0 0 auto}
+table{width:100%;border-collapse:collapse;font:var(--t-md)/1.5 var(--mono);font-variant-numeric:tabular-nums}
+th{text-align:left;font:500 var(--t-2xs)/1 var(--mono);letter-spacing:var(--ls-caps);text-transform:uppercase;
+  color:var(--ink3);padding:0 var(--s3) var(--s2) 0}
+td{padding:var(--s2) var(--s3) var(--s2) 0;color:var(--ink2);border-top:1px solid var(--hair)}
+tbody tr:hover td{background:var(--hair-2)}
+tr.is-focus td{background:rgb(var(--accent-rgb) / .05)}
+tr.is-focus td:first-child{border-left:3px solid var(--accent);padding-left:calc(var(--s3) - 3px)}
+.sw3{display:inline-block;width:3px;height:14px;border-radius:var(--r-xs);vertical-align:-2px;margin-right:var(--s2);flex:0 0 auto}
 
-.banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-radius:var(--r-lg);
-  padding:14px 18px;margin:16px 0;border:1px solid;font-size:14px;
+.banner{display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap;border-radius:var(--r-lg);
+  padding:var(--s3) var(--s4);margin:var(--s4) 0;border:1px solid;font-size:var(--t-md);
   animation:slidein var(--dur) var(--ease)}
 .banner svg{flex:0 0 auto}
-.banner.warn{border-color:rgba(255,192,97,.4);background:rgba(255,192,97,.08);color:var(--warn)}
-.banner.bad{border-color:rgba(255,100,114,.4);background:rgba(255,100,114,.08);color:var(--bad)}
+.banner.warn{border-color:rgb(var(--warn-rgb) / .4);background:rgb(var(--warn-rgb) / .08);color:var(--warn)}
+.banner.bad{border-color:rgb(var(--bad-rgb) / .4);background:rgb(var(--bad-rgb) / .08);color:var(--bad)}
+.banner.ok{border-color:rgb(var(--ok-rgb) / .4);background:rgb(var(--ok-rgb) / .08);color:var(--ok)}
 .banner span{color:var(--ink)}
 .banner button{margin-left:auto}
+.banner .icon-btn{margin-left:0;min-width:32px;min-height:32px;font-size:var(--t-lg);
+  color:inherit;border-color:transparent;opacity:.7}
+.banner .icon-btn:hover{opacity:1;background:transparent}
+
+/* Transient messages sit in their own host. #warn keeps the STANDING ones —
+   the no-password warning has a call to action and no timer, and pinning that
+   to the viewport would park it over the page forever.
+
+   THIS host leaves the flow, because a message that expires has to arrive
+   where the eye already is. Measured before: saving Wi-Fi from the bottom of
+   #/network on a 390x760 phone put "Saved." at getBoundingClientRect().top
+   -713 — 713 px ABOVE the viewport, on the most common action in the product.
+   It is the second and last surface on this page with content genuinely moving
+   behind it, so it is the second and last place blur is not decoration. */
+#toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:var(--s5);z-index:50;
+  width:min(560px,calc(100vw - var(--s6)*2));display:grid;gap:var(--s2);margin:0}
+#toasts:empty{display:none}
+/* The glass base, not a tint: at .08 the status wash was invisible anyway, and
+   a floating message needs a surface you cannot read the page through. Status
+   stays where it always was — the border, the icon and the text. */
+#toasts .banner{margin:0;background-color:rgb(var(--frost-rgb) / .74);
+  -webkit-backdrop-filter:blur(16px) saturate(140%);
+  backdrop-filter:blur(16px) saturate(140%);
+  box-shadow:var(--shadow-pop),0 1px 0 var(--spec) inset}
+
+/* No blur without a fallback, and no glass for anyone who asked the OS not to
+   have any. Both surfaces go back to paint; the cards go back to opaque, which
+   is exactly what they rendered as before this phase. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  header{background:rgb(var(--plate-rgb) / .97)}
+  #toasts .banner{background-color:var(--frost)}
+  .card,.stat{background-color:var(--frost2)}
+}
+@media(prefers-reduced-transparency:reduce){
+  header{background:var(--plate);-webkit-backdrop-filter:none;backdrop-filter:none}
+  #toasts .banner{background-color:var(--frost);
+    -webkit-backdrop-filter:none;backdrop-filter:none}
+  .card,.stat{background-color:var(--frost2)}
+}
+
+/* Frozen data. A rule and a hatch, never a dim: opacity .5 measured 2.67:1 on
+   this table, below AA, so the marker would have made the thing it marks
+   harder to read. Every ink value is untouched. */
+[data-stale]{position:relative}
+[data-stale] .card,[data-stale] table{
+  border-left:3px solid var(--warn);
+  background-image:repeating-linear-gradient(135deg,
+    rgb(var(--warn-rgb) / .05) 0 6px,transparent 6px 12px)}
+[data-stale]::before{content:"Frozen — last update " attr(data-stale);
+  display:block;font:600 var(--t-2xs)/1 var(--mono);letter-spacing:var(--ls-caps);
+  text-transform:uppercase;color:var(--warn);margin:0 0 var(--s2)}
+
+/* Boot. The page says "not known yet" instead of rendering an empty truth. */
+.booting .skel{color:transparent!important;background:var(--frost);
+  border-radius:var(--r-xs);animation:shimmer 1.4s linear infinite;
+  background-image:linear-gradient(100deg,transparent 15%,rgb(var(--line-rgb) / .10) 50%,transparent 85%);
+  background-size:250% 100%}
+.booting .skel *{visibility:hidden}
 @keyframes slidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
-.hint{color:var(--ink3);font-size:13px;margin:10px 0 0}
-.bar{height:6px;border-radius:3px;background:var(--edge);overflow:hidden;margin:10px 0}
+.hint{color:var(--ink3);font-size:var(--t-sm);margin:var(--s2) 0 0}
+.bar{height:6px;border-radius:var(--r-xs);background:var(--edge);overflow:hidden;margin:var(--s2) 0}
+.bar.bad i{background:var(--bad)}
 .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .12s linear}
 .list{max-height:340px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--edge-hi) transparent}
 .list::-webkit-scrollbar,.wrapx::-webkit-scrollbar{width:8px;height:8px}
-.list::-webkit-scrollbar-thumb,.wrapx::-webkit-scrollbar-thumb{background:var(--edge-hi);border-radius:8px}
+.list::-webkit-scrollbar-thumb,.wrapx::-webkit-scrollbar-thumb{background:var(--edge-hi);border-radius:var(--r-sm)}
 .list::-webkit-scrollbar-track,.wrapx::-webkit-scrollbar-track{background:transparent}
-.item{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.05)}
+.item{display:flex;align-items:center;gap:var(--s3);padding:var(--s2) 0;border-top:1px solid var(--hair)}
 .item:first-child{border-top:0}
 .item .nm{flex:1;min-width:0}
 .item .nm b{display:block;font-weight:500}
-.item .nm span{color:var(--ink3);font:12px/1.4 var(--mono)}
+.item .nm span{color:var(--ink3);font:var(--t-xs)/1.4 var(--mono)}
 
-.empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;
-  color:var(--ink3);padding:30px 12px;font-size:13.5px}
+.empty{display:flex;flex-direction:column;align-items:center;gap:var(--s2);text-align:center;
+  color:var(--ink3);padding:var(--s6) var(--s3);font-size:var(--t-sm)}
 .empty svg{opacity:.45}
 td.empty-cell{padding:0;border-top:0}
 
 /* ---------- live panel preview: the headline diagnostics feature ---------- */
-.mirror-hero-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
-  flex-wrap:wrap;margin:14px 0 18px}
-.mirror-hero-title{margin:0;font:600 15px/1.3 var(--sans);letter-spacing:0;text-transform:none;
-  color:var(--ink);display:flex;align-items:center;gap:8px}
+.mirror-hero-head{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s4);
+  flex-wrap:wrap;margin:var(--s3) 0 var(--s4)}
+.mirror-hero-title{margin:0;font:600 var(--t-lg)/1.3 var(--sans);letter-spacing:normal;text-transform:none;
+  color:var(--ink);display:flex;align-items:center;gap:var(--s2)}
 .mirror-hero-title svg{color:var(--accent)}
 .device-frame{max-width:640px;margin:0 auto}
-.device-bezel{position:relative;padding:16px 16px 30px;border-radius:var(--r-xl);
-  background:linear-gradient(160deg,#212c3a,#141b25 55%,#0a0f16);
+.device-bezel{position:relative;padding:var(--s4) var(--s4) var(--s6);border-radius:var(--r-xl);
+  background:linear-gradient(160deg,var(--bezel-1),var(--bezel-2) 55%,var(--bezel-3));
   border:1px solid var(--edge-hi);
-  box-shadow:0 1px 0 rgba(255,255,255,.05) inset,var(--shadow-pop);
+  box-shadow:0 1px 0 var(--spec) inset,var(--shadow-pop);
   transition:border-color var(--dur)}
-.device-frame[data-state="error"] .device-bezel{border-color:rgba(255,100,114,.5)}
-.device-screen{position:relative;aspect-ratio:5/3;border-radius:10px;overflow:hidden;
-  background:#04070E;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),inset 0 24px 46px rgba(0,0,0,.55)}
+.device-frame[data-state="error"] .device-bezel{border-color:rgb(var(--bad-rgb) / .5)}
+.device-screen{position:relative;aspect-ratio:5/3;border-radius:var(--r);overflow:hidden;
+  background:var(--panel-plate);box-shadow:inset 0 0 0 1px var(--spec),inset 0 24px 46px rgb(0 0 0 / .55)}
 .device-screen img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
 .device-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:10px;color:var(--ink3);text-align:center;padding:20px;
-  background:radial-gradient(60% 60% at 50% 38%,rgba(255,255,255,.035),transparent)}
+  justify-content:center;gap:var(--s2);color:var(--ink3);text-align:center;padding:var(--s5);
+  background:radial-gradient(60% 60% at 50% 38%,rgb(var(--line-rgb) / .05),transparent)}
 .device-placeholder svg{opacity:.5}
-.device-placeholder span{font-size:13px;max-width:230px;line-height:1.55}
+.device-placeholder span{font-size:var(--t-sm);max-width:230px;line-height:1.55}
 .device-frame[data-state="error"] .device-placeholder{color:var(--bad)}
 .device-frame[data-state="error"] .device-placeholder svg{opacity:.75}
 .device-frame[data-state="loading"] .device-screen::after{content:"";position:absolute;inset:0;
-  background:linear-gradient(100deg,transparent 15%,rgba(255,255,255,.08) 50%,transparent 85%);
+  background:linear-gradient(100deg,transparent 15%,rgb(var(--line-rgb) / .10) 50%,transparent 85%);
   background-size:250% 100%;animation:shimmer 1.4s linear infinite}
 @keyframes shimmer{0%{background-position:150% 0}100%{background-position:-50% 0}}
 .device-chin{position:absolute;left:0;right:0;bottom:8px;display:flex;align-items:center;
-  justify-content:center;gap:7px;color:var(--ink3);font:600 10px/1 var(--mono);
-  letter-spacing:.14em;text-transform:uppercase}
+  justify-content:center;gap:var(--s2);color:var(--ink3);font:600 var(--t-2xs)/1 var(--mono);
+  letter-spacing:var(--ls-caps);text-transform:uppercase}
 .device-led{width:5px;height:5px;border-radius:50%;background:var(--ink3);transition:background var(--dur)}
 .device-frame[data-state="ready"] .device-led{background:var(--ok)}
 .device-frame[data-state="loading"] .device-led{background:var(--warn)}
@@ -218,8 +481,19 @@ td.empty-cell{padding:0;border-top:0}
 
 .view{display:none}.view.on{display:block;animation:fadein .18s var(--ease)}
 @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+/* This block used to be `*` alone, and `*` is element-only: it cannot match a
+   pseudo-element. So the gating was exactly INVERTED. Measured under real
+   emulation with matchMedia('(prefers-reduced-motion: reduce)').matches true:
+   `.view.on` -> `none / 0s` (the 180 ms FINITE fade, correctly killed) while
+   `#net::before` stayed `pulse / 1.8s / infinite` and `#mirWrap::after` stayed
+   `shimmer / 1.4s / infinite`. It killed the one transition that was fine and
+   spared both animations that run forever — a vestibular-sensitive user who
+   set Reduce Motion still got a dot pulsing 33 times a minute in the sticky
+   header. The panel's motion budget is a rule for an 800x480 display with no
+   OS to ask; a browser page has to ask. */
 @media(prefers-reduced-motion:reduce){
-  *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  *,*::before,*::after{animation:none!important;transition:none!important;
+    scroll-behavior:auto!important}
 }
 </style>
 </head>
@@ -229,28 +503,29 @@ td.empty-cell{padding:0;border-top:0}
 <header>
   <div class="wrap">
     <div class="top">
-      <span class="brand">
+      <div class="brand">
         <svg class="brand-mark" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
-          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          stroke-width="1.636" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="5" width="18" height="12" rx="1.5"></rect>
           <path d="M8 20h8M12 17v3"></path>
         </svg>
-        <span class="mark">ScoreDeck</span>
-      </span>
+        <h1 class="mark">ScoreDeck</h1>
+      </div>
       <span class="host" id="host"></span>
-      <span class="pill" id="net">…</span>
+      <span class="pill" id="net" role="status">…</span>
     </div>
     <nav id="nav" aria-label="Sections"></nav>
   </div>
 </header>
 
-<main class="wrap" id="main">
-  <div id="warn" role="region" aria-live="polite" aria-label="Notifications"></div>
+<main class="wrap" id="main" tabindex="-1">
+  <div id="warn" role="region" aria-live="polite" aria-label="Standing notices"></div>
+  <div id="toasts" role="status" aria-live="polite" aria-label="Recent activity"></div>
 
   <!-- BOARD -->
   <section class="view" id="v-board">
-    <div class="grid four" id="stats"></div>
-    <h2>On the board now <span class="host" id="boardAge"></span></h2>
+    <div class="grid four" id="stats" data-skel="4"></div>
+    <h2>On the board now <span class="host" id="boardAge" aria-live="polite"></span></h2>
     <div class="card"><div class="wrapx"><table id="board">
       <caption class="sr-only">Current games across your selected leagues</caption>
       <thead><tr><th scope="col">LG</th><th scope="col">Matchup</th><th scope="col">Score</th>
@@ -261,7 +536,7 @@ td.empty-cell{padding:0;border-top:0}
 
   <!-- TEAMS -->
   <section class="view" id="v-teams">
-    <h2>Sports on the board <span id="lgN" class="host"></span></h2>
+    <h2>Sports on the board <span id="lgN" aria-live="polite" class="host"></span></h2>
     <div class="card">
       <p class="hint" style="margin-top:0">Your favourite teams always show.
         Pick the leagues that fill the rest of the board — up to 12. Empty
@@ -272,26 +547,31 @@ td.empty-cell{padding:0;border-top:0}
         <div class="v"><button id="saveLg" class="primary">Save sports</button></div></div>
     </div>
 
-    <h2>Your teams <span id="favN" class="host"></span></h2>
+    <h2>Your teams <span id="favN" aria-live="polite" class="host"></span></h2>
     <div class="card"><div id="favs" class="list"></div></div>
     <p class="hint">Order breaks ties on the board — the first team wins.</p>
 
     <h2>Add a team</h2>
     <div class="card">
       <div class="row"><div class="k search-field">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25"
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>
         </svg>
-        <input id="q" placeholder="Search 25 leagues…" autocomplete="off"></div></div>
-      <div class="row"><div class="k"><small id="catInfo">Catalog not loaded.</small></div>
+        <label class="sr-only" for="q">Search teams</label>
+        <input id="q" placeholder="Search 25 leagues…" autocomplete="off"
+          autocapitalize="none" spellcheck="false"></div></div>
+      <div class="row"><div class="k"><small id="catInfo" aria-live="polite">Catalog not loaded.</small></div>
         <div class="v"><button id="loadCat" class="primary">Load catalog</button></div></div>
       <div id="results" class="list"></div>
     </div>
 
     <h2>Enter ids by hand</h2>
     <div class="card"><div class="row">
-      <div class="k"><input id="favsRaw" data-mono placeholder="nhl:21,eng.1:359">
+      <div class="k"><label class="sr-only" for="favsRaw">Team ids, comma separated</label>
+        <input id="favsRaw" data-mono placeholder="nhl:21,eng.1:359"
+          autocapitalize="none" spellcheck="false" autocomplete="off"
+          maxlength="240">
         <small>Always available, even with no catalog and no proxy.</small></div>
       <div class="v"><button id="saveRaw" class="primary">Save</button></div>
     </div></div>
@@ -313,11 +593,12 @@ td.empty-cell{padding:0;border-top:0}
     <div class="card">
       <label class="row" for="qen"><div class="k">Enabled</div>
         <div class="v"><input type="checkbox" class="sw" id="qen"></div></label>
-      <div class="row"><div class="k"><label for="qfr">From</label></div>
-        <div class="v"><input type="time" id="qfr" style="width:150px"></div></div>
-      <div class="row"><div class="k"><label for="qto">To</label></div>
-        <div class="v"><input type="time" id="qto" style="width:150px"></div></div>
-      <div class="row"><div class="k"><small id="tznow"></small></div></div>
+      <div class="row" data-needs="qen"><div class="k"><label for="qfr">From</label></div>
+        <div class="v"><input type="time" id="qfr" class="w-time"></div></div>
+      <div class="row" data-needs="qen"><div class="k"><label for="qto">To</label></div>
+        <div class="v"><input type="time" id="qto" class="w-time"></div></div>
+      <div class="row"><div class="k"><small id="qsum" aria-live="polite"></small>
+        <small id="tznow"></small></div></div>
     </div>
     <p class="hint">Alerts lag the broadcast by 30–80 seconds either way — the proxy polls, it is not pushed.</p>
     <div class="row"><div class="v"><button id="saveAlerts" class="primary">Save</button></div></div>
@@ -327,8 +608,10 @@ td.empty-cell{padding:0;border-top:0}
   <section class="view" id="v-network">
     <h2>Wi-Fi</h2>
     <div class="card">
-      <div class="row"><div class="k"><label for="ssid">Network</label><input id="ssid" autocomplete="off"></div></div>
-      <div class="row"><div class="k"><label for="wpass">Password</label><input id="wpass" type="password" autocomplete="new-password">
+      <div class="row"><div class="k"><label for="ssid">Network</label><input id="ssid" autocomplete="off" autocapitalize="none" spellcheck="false"
+          required maxlength="32"></div></div>
+      <div class="row"><div class="k"><label for="wpass">Password</label><input id="wpass" type="password" autocomplete="new-password" autocapitalize="none"
+        spellcheck="false" maxlength="64">
         <small>Blank keeps the stored one. A single “-” clears it.</small></div></div>
       <div class="row"><div class="k"><small>Saving reboots the panel.</small></div>
         <div class="v"><button id="saveWifi" class="danger">Save &amp; reboot</button></div></div>
@@ -336,11 +619,14 @@ td.empty-cell{padding:0;border-top:0}
 
     <h2>Proxy</h2>
     <div class="card">
-      <div class="row"><div class="k"><label for="proxy">URL</label><input id="proxy" data-mono placeholder="http://192.168.1.50:8787"></div></div>
-      <div class="row"><div class="k"><label for="token">Token</label><input id="token" data-mono placeholder="unchanged">
+      <div class="row"><div class="k"><label for="proxy">URL</label><input id="proxy" data-mono placeholder="http://192.168.1.50:8787"
+          autocapitalize="none" spellcheck="false" autocomplete="off"
+          maxlength="96" pattern="https?://[^\s;'&quot;&lt;&gt;]+"></div></div>
+      <div class="row"><div class="k"><label for="token">Token</label><input id="token" data-mono placeholder="unchanged"
+          autocapitalize="none" spellcheck="false" autocomplete="off">
         <small>Blank keeps the stored one. A single “-” clears it.</small></div></div>
       <div class="row"><div class="k">Reachability
-        <small id="reach">Not tested.</small></div>
+        <small id="reach" aria-live="polite">Not tested.</small></div>
         <div class="v"><button id="probe" aria-label="Test proxy reachability">Test</button></div></div>
     </div>
 
@@ -367,26 +653,26 @@ td.empty-cell{padding:0;border-top:0}
 
   <!-- DIAGNOSTICS -->
   <section class="view" id="v-diag">
-    <h2>Diagnostics <span class="host" id="diagAge"></span></h2>
+    <h2>Diagnostics <span class="host" id="diagAge" aria-live="polite"></span></h2>
 
     <div class="card">
       <div class="mirror-hero-head">
         <div>
           <p class="mirror-hero-title">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.0"
               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
               <circle cx="12" cy="14" r="3.6"></circle>
             </svg>
             Live panel preview
           </p>
-          <p class="hint" style="margin:4px 0 0">A screenshot straight off the panel's own framebuffer —
+          <p class="hint" style="margin:var(--s1) 0 0">A screenshot straight off the panel's own framebuffer —
             800&times;480, ~1.15&nbsp;MB — and it blocks the display for about two seconds. Manual only, never polled.</p>
         </div>
         <button id="mirBtn" class="primary">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.25"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-            style="margin-right:8px;vertical-align:-3px">
+            style="margin-right:var(--s2);vertical-align:-3px">
             <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
             <circle cx="12" cy="14" r="3.6"></circle>
           </svg>
@@ -399,7 +685,7 @@ td.empty-cell{padding:0;border-top:0}
           <div class="device-screen" id="mirWrap">
             <img id="mirImg" alt="Live panel screenshot">
             <div class="device-placeholder" id="mirPlaceholder">
-              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5"
+              <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.2"
                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"></path>
                 <circle cx="12" cy="14" r="3.6"></circle>
@@ -410,11 +696,11 @@ td.empty-cell{padding:0;border-top:0}
           <div class="device-chin"><span class="device-led"></span>ScoreDeck</div>
         </div>
       </div>
-      <p class="hint" id="mirHint" hidden></p>
+      <p class="hint" id="mirHint" aria-live="polite" hidden></p>
     </div>
 
     <h2>At a glance</h2>
-    <div class="grid four" id="diagStats"></div>
+    <div class="grid four" id="diagStats" data-skel="4"></div>
     <h2>Detail</h2>
     <div class="card"><div class="wrapx"><table id="diagTable">
       <caption class="sr-only">Diagnostic detail values</caption>
@@ -429,15 +715,19 @@ td.empty-cell{padding:0;border-top:0}
     <h2>Firmware</h2>
     <div class="card">
       <div class="row"><div class="k">Running <small id="fwv"></small></div>
-        <div class="v"><input type="file" id="bin" accept=".bin" style="max-width:230px"></div></div>
-      <div class="row"><div class="k"><small id="otaMsg">Choose a .bin to flash.</small>
-        <div class="bar"><i id="otaBar"></i></div></div>
-        <div class="v"><button id="flash" disabled>Flash &amp; reboot</button></div></div>
+        <div class="v"><label class="sr-only" for="bin">Firmware image (.bin)</label>
+          <input type="file" id="bin" accept=".bin"></div></div>
+      <div class="row"><div class="k"><small id="otaMsg" role="status">Choose a .bin to flash.</small>
+        <small id="otaWarn" hidden>Do not power off. The screen will shake; that is expected.</small>
+        <div class="bar" id="otaBarWrap" role="progressbar" aria-labelledby="otaMsg"
+          aria-valuemin="0" aria-valuemax="100"><i id="otaBar"></i></div></div>
+        <div class="v"><button id="flash" class="danger" disabled>Flash &amp; reboot</button></div></div>
     </div>
 
     <h2>Portal access</h2>
     <div class="card"><div class="row">
-      <div class="k"><label for="ppass">Password</label><input id="ppass" type="password" autocomplete="new-password">
+      <div class="k"><label for="ppass">Password</label><input id="ppass" type="password" autocomplete="new-password" autocapitalize="none"
+          spellcheck="false" maxlength="64">
         <small>Protects this page and firmware updates. Blank keeps, “-” clears.
           You can also clear it on the panel itself.</small></div>
       <div class="v"><button id="savePass" class="primary">Set</button></div>
@@ -467,7 +757,12 @@ function svgIcon(d, size) {
   svg.setAttribute('height', size || 22);
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '1.6');
+  // Constant RENDERED weight, not a constant attribute. stroke-width is in
+  // viewBox units, so a flat 1.6 across a 24-unit box draws 1.20 device px at
+  // size 18 and 1.87 at 28 — a 1.56x spread across the page's eight icons, on
+  // top of the four different literals they were declared with. Solve for the
+  // size instead: 1.5 device px everywhere.
+  svg.setAttribute('stroke-width', String(1.5 * 24 / (size || 22)));
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
@@ -484,7 +779,10 @@ function emptyState(msg, d) {
   box.append(el('span', '', msg));
   return box;
 }
-function bannerIcon() {
+/** The mark matches the message. A success used to be announced with a
+ *  warning triangle, which is the whole tell that success had no treatment. */
+function bannerIcon(kind) {
+  if (kind === 'ok') return svgIcon('M20 6L9 17l-5-5', 18);
   return svgIcon('M12 9v4M12 17h.01M10.3 3.9L2.6 18a1.8 1.8 0 001.5 2.7h15.8a1.8 1.8 0 001.5-2.7L13.7 3.9a1.8 1.8 0 00-3.4 0z', 18);
 }
 const VIEWS = [['board','Board'],['teams','Teams'],['alerts','Alerts'],
@@ -501,20 +799,141 @@ async function api(path, opts) {
 }
 /* The status pill is global chrome — it must not go stale just because you
    are looking at a different tab. */
+/* Mirrors kNetLabel[] in firmware/ScoreDeck/src/core/state.h, indexed by
+   NetStatus. One enum had three vocabularies — the top bar said "NO PROXY",
+   the idle header "no proxy configured", and this pill "no proxy" — so a
+   support conversation could not tell which surface someone was reading.
+   Lower-cased here for this page's register, exactly as the idle header
+   lower-cases it for its own. */
+const NET_LABEL = ['starting', 'no wi-fi', 'no proxy', 'proxy unreachable', 'live', 'stale'];
 function paintNet(s) {
-  $('#net').className = 'pill ' + (s.net === 4 ? 'ok' : s.net === 5 ? 'warn' : 'bad');
-  $('#net').textContent = ['booting','no wi-fi','no proxy','error','live','stale'][s.net] || '?';
+  // BOOTING IS NOT A FAULT. It painted as a red "bad" pill, telling the user
+  // something was broken during the seconds every panel spends starting up.
+  // Neutral, matching the panel's own top bar, which already did this right.
+  const kind = s.net === 4 ? 'ok' : (s.net === 5 || s.net === 0) ? 'warn' : 'bad';
+  $('#net').className = 'pill ' + kind + (s.net === 0 ? ' neutral' : '');
+  $('#net').textContent = NET_LABEL[s.net] || '?';
 }
-function toast(msg, bad) {
-  const b = el('div', 'banner ' + (bad ? 'bad' : 'warn'));
-  b.append(bannerIcon(), el('span', '', msg));
-  $('#warn').prepend(b);
+/* ---------- what the console knows ----------
+   Three kinds of message, and they used to be one. toast() built a
+   `banner warn` for EVERYTHING, so "Teams saved." rendered in amber with a
+   warning triangle — the success path and the failure path were the same
+   colour — and both were mixed into #warn alongside the persistent
+   no-password security banner, which is a different kind of thing again:
+   it has no timer and a call to action.
+
+     ok(msg)              transient, green, 4 s      "it worked"
+     fail(msg, opts)      persistent, red, dismissible, optionally field-linked
+     warn(id, msg, cta)   persistent, amber, DEDUPED by id — a standing condition
+
+   Failures no longer auto-dismiss. A 4-second amber flash carrying the
+   device's raw error body, with nothing marking the field that was rejected,
+   is not a report — it is a shrug you have to catch. */
+function msgOf(e) { return String((e && e.message) || e || 'unknown error'); }
+
+function banner(kind, msg, opts = {}) {
+  const b = el('div', 'banner ' + kind);
+  if (opts.id) b.dataset.id = opts.id;
+  b.append(bannerIcon(kind), el('span', '', msg));
+  if (opts.cta) {
+    const go = el('button', 'primary', opts.cta.label);
+    go.onclick = opts.cta.onClick;
+    b.append(go);
+  }
+  if (opts.dismissible !== false && !opts.timeout) {
+    const x = el('button', 'ghost icon-btn', '×');
+    x.setAttribute('aria-label', 'Dismiss');
+    x.onclick = () => b.remove();
+    b.append(x);
+  }
+  return b;
+}
+
+/** Transient success. The only message on the page that expires by itself. */
+function ok(msg) {
+  const b = banner('ok', msg, { dismissible: false, timeout: true });
+  $('#toasts').prepend(b);
   setTimeout(() => b.remove(), 4000);
 }
 
+/** A failure. Persistent, because the user has to be able to read it. */
+function fail(msg, opts = {}) {
+  const b = banner('bad', msg, opts);
+  ($('#toasts')).prepend(b);
+  if (opts.field) {
+    const f = $(opts.field);
+    if (f) { f.setAttribute('aria-invalid', 'true'); f.focus(); }
+  }
+  return b;
+}
+
+/** A standing condition. Deduped by id, so it cannot stack.
+ *  loadConfig() runs after every save and used to APPEND the no-password
+ *  banner each time: three saves, three identical copies, 520 px of the
+ *  mobile Board tab consumed before any content. */
+function warn(id, msg, cta) {
+  const host = $('#warn');
+  const existing = host.querySelector('[data-id="' + id + '"]');
+  if (existing) return existing;
+  const b = banner('warn', msg, { id, cta, dismissible: false });
+  host.append(b);
+  return b;
+}
+function clearWarn(id) {
+  const b = $('#warn').querySelector('[data-id="' + id + '"]');
+  if (b) b.remove();
+}
+
+/** Kept as the old name so nothing silently loses its message; success now
+ *  actually looks like success. */
+function toast(msg, bad) { bad ? fail(msg) : ok(msg); }
+
+/** Skeleton state: the page says "I do not know this yet" rather than
+ *  rendering an empty truth. Reuses the shimmer already written for the
+ *  device mirror. */
+function skeleton(on) {
+  document.documentElement.classList.toggle('booting', !!on);
+  document.querySelectorAll('[data-skel]').forEach(host => {
+    if (!on) { if (host.dataset.filled === 'skel') { host.textContent = ''; delete host.dataset.filled; } return; }
+    if (host.textContent.trim()) return;               // real content already there
+    const n = Number(host.dataset.skel) || 3;
+    for (let i = 0; i < n; i++) {
+      const c = el('div', 'stat skel');
+      c.append(el('b', '', '—'), el('span', '', '—'));
+      host.append(c);
+    }
+    host.dataset.filled = 'skel';
+  });
+}
+
+/** Mark a view's data as frozen. NEVER by dimming it: measured, opacity .5
+ *  takes the table text from 6.78:1 to 2.67:1, below AA — a stale marker
+ *  that makes the data harder to read is a contrast regression, and the
+ *  standing rule forbids it. A rule and a hatch carry it instead, and every
+ *  ink value stays exactly where it was. */
+function markStale(sel, when) {
+  const v = $(sel); if (!v) return;
+  v.dataset.stale = when || new Date().toLocaleTimeString();
+}
+function clearStale(sel) { const v = $(sel); if (v) delete v.dataset.stale; }
+
 /* ---------- routing ---------- */
+const KNOWN = new Set(VIEWS.map(([v]) => v));
 function route() {
-  const id = (location.hash.replace('#/', '') || 'board');
+  const want = (location.hash.replace('#/', '') || 'board');
+  // A hash that is not one of the six is NOT a route, and the router has to
+  // say so out loud. It used to fall straight through: the skip link's own
+  // '#main' arrived here as the view name 'main', matched nothing, and the
+  // loop below turned .on OFF for all six — measured ['v-board'] -> [] with
+  // #main collapsing 493.28 px -> 154 px. Pressing the accessibility
+  // affordance emptied the application.
+  //
+  // And the guard must be a NO-OP, never a redirect. Defaulting to 'board'
+  // here reads fine from Board and is a silent yank off System or
+  // Diagnostics — the same bug, quieter. If something is already on, stay on
+  // it; only a first load with a junk hash falls back to Board.
+  if (!KNOWN.has(want) && document.querySelector('.view.on')) return;
+  const id = KNOWN.has(want) ? want : 'board';
   VIEWS.forEach(([v]) => {
     const on = v === id;
     $('#v-' + v).classList.toggle('on', on);
@@ -527,8 +946,23 @@ function route() {
 }
 VIEWS.forEach(([v, label]) => {
   const a = el('a', '', label); a.href = '#/' + v; $('#nav').append(a);
+  // Six anonymous <section>s under one <h1>. Naming them is what lets the h1
+  // be the page rather than a seventeenth sibling heading.
+  const s = $('#v-' + v);
+  s.setAttribute('role', 'region');
+  s.setAttribute('aria-label', label);
 });
 addEventListener('hashchange', route);
+/* Move focus explicitly rather than trusting the fragment. Measured: pressing
+   the link from Board landed activeElement on #main, pressing it from
+   /#system landed it on nothing — and a second press, with '#main' already in
+   the bar, fires no hashchange and moves nothing at all. A skip link that
+   sometimes skips is not one. */
+document.querySelector('.skip').addEventListener('click', e => {
+  e.preventDefault();
+  $('#main').focus();
+  $('#main').scrollIntoView();
+});
 
 /* ---------- config ---------- */
 const REGIONS = [['us','United States'],['ca','Canada'],['gb','United Kingdom'],
@@ -598,6 +1032,7 @@ async function loadConfig() {
   $('#focus').checked = !!CFG.focus;
   $('#qen').checked = !!CFG.qen;
   $('#qfr').value = hhmm(CFG.qfr); $('#qto').value = hhmm(CFG.qto);
+  syncQuiet();
   $('#favsRaw').value = CFG.favs || '';
   $('#tznow').textContent = CFG.now
     ? 'The panel currently reads ' + CFG.now + '. If that is wrong, the time zone is.'
@@ -636,26 +1071,96 @@ async function loadConfig() {
     d.append(b);
   });
 
+  // Deduped by id. This ran on every save (postConfig calls loadConfig) and
+  // appended a fresh copy each time — three saves, three identical banners.
   if (!CFG.hasPass) {
-    const b = el('div', 'banner warn');
-    b.append(bannerIcon(), el('span', '', 'No portal password. Anyone on this network can reflash this panel.'));
-    const go = el('button', 'primary', 'Set one'); go.onclick = () => location.hash = '#/system';
-    b.append(go); $('#warn').append(b);
-  }
+    warn('nopass', 'No portal password. Anyone on this network can reflash this panel.',
+         { label: 'Set one', onClick: () => location.hash = '#/system' });
+  } else clearWarn('nopass');
+
+  // The one condition that makes the whole product inert, and the console
+  // never mentioned it: with no proxy set, the board renders "No games right
+  // now." — which is not merely unhelpful, it is false. There are games; the
+  // panel has no way to ask for them. The banner-with-a-CTA pattern was
+  // already written for the password thirty lines up.
+  if (!String(CFG.proxy || '').trim()) {
+    warn('noproxy', 'No proxy set. The panel cannot fetch scores until it has one.',
+         { label: 'Set proxy', onClick: () => { location.hash = '#/network';
+                                                setTimeout(() => $('#proxy').focus(), 60); } });
+  } else clearWarn('noproxy');
+
   renderFavs();
 }
 const hhmm = m => String((m / 60) | 0).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 const mins = s => { const [h, m] = (s || '0:0').split(':').map(Number); return h * 60 + m; };
+
+/* ---------- dependent state ----------
+   Quiet hours shipped as three independent controls that happen to sit in one
+   card. Unchecking Enabled left From and To live, focusable and editable, and
+   what you typed into them went nowhere — measured qfr.disabled false,
+   qto.disabled false, row opacity 1 with #qen unchecked. The whole console
+   had exactly one [disabled] element in it, which is the same defect stated
+   as a census.
+
+   The window also crosses midnight in the shipped config (1380 -> 420) and
+   nothing anywhere said so. Two times and a hyphen do not tell you which
+   night they mean. */
+function syncQuiet() {
+  const on = $('#qen').checked;
+  document.querySelectorAll('[data-needs="qen"]').forEach(r => {
+    r.classList.toggle('is-off', !on);
+    r.querySelectorAll('input').forEach(i => { i.disabled = !on; });
+  });
+  const f = mins($('#qfr').value), t = mins($('#qto').value);
+  $('#qsum').textContent = !on ? 'Quiet hours are off — alerts arrive at any time.'
+    : f === t ? 'From and To are the same, so quiet hours never start.'
+    : 'Quiet from ' + $('#qfr').value + ' to ' + $('#qto').value +
+      (f > t ? ' the next day.' : ' the same day.');
+}
+['#qen', '#qfr', '#qto'].forEach(s => $(s).addEventListener('change', syncQuiet));
+
+/* Seventeen helper <small>s and zero aria-describedby: every one of them was
+   decoration to a screen reader, including "Blank keeps the stored one. A
+   single '-' clears it." — the sentence without which the password field is
+   unusable. Wired once, here, rather than seventeen hand-written id pairs
+   that the next edit would desynchronise. Ids already in use (#catInfo,
+   #reach, #otaMsg, #tznow…) are left alone. */
+function wireHelpText() {
+  let n = 0;
+  document.querySelectorAll('.row small, label.row small').forEach(s => {
+    const row = s.closest('.row'); if (!row) return;
+    let ctrls = [...row.querySelectorAll('input,select')];
+    if (!ctrls.length) ctrls = [...row.querySelectorAll('button')];
+    if (!ctrls.length) return;
+    if (!s.id) s.id = 'help' + (++n);
+    ctrls.forEach(c => {
+      const prev = c.getAttribute('aria-describedby');
+      if (prev && prev.split(' ').includes(s.id)) return;
+      c.setAttribute('aria-describedby', prev ? prev + ' ' + s.id : s.id);
+    });
+  });
+}
 
 /* ---------- board ---------- */
 async function refreshBoard() {
   let s;
   try { s = await api('/api/state'); }
   catch {
+    // The catch used to return BEFORE the table and the stat tiles were
+    // rebuilt, so nine rows of scores and four counters stayed on screen at
+    // full strength with a 12 px grey caption as the only contradiction. A
+    // stopped clock presented as a live one is the most misleading thing this
+    // console can show, and this is the surface people open BECAUSE they think
+    // something is wrong.
     $('#net').className = 'pill bad'; $('#net').textContent = 'offline';
     $('#boardAge').textContent = 'connection lost';
+    markStale('#v-board');
+    warn('boardstale', 'Lost the panel at ' + new Date().toLocaleTimeString() +
+                       ' — these scores are frozen.');
     return;
   }
+  clearStale('#v-board');
+  clearWarn('boardstale');
   paintNet(s);
   $('#boardAge').textContent = 'updated just now';
   const st = $('#stats'); st.textContent = '';
@@ -667,7 +1172,14 @@ async function refreshBoard() {
   const tb = $('#board tbody'); tb.textContent = '';
   if (!s.b || !s.b.length) {
     const tr = el('tr'); const td = el('td', 'empty-cell'); td.colSpan = 5;
-    td.append(emptyState('No games right now.', 'M4 4h16v4H4z M4 10h7v10H4z M13 10h7v4h-7z M13 16h7v4h-7z'));
+    // Branch on WHY it is empty. "No games right now." is a statement about
+    // the world; with no proxy configured the truth is a statement about the
+    // panel, and saying the first when the second is true sends the user
+    // looking for a fault in their sport rather than in their settings.
+    td.append(String(CFG.proxy || '').trim()
+      ? emptyState('No games right now.', 'M4 4h16v4H4z M4 10h7v10H4z M13 10h7v4h-7z M13 16h7v4h-7z')
+      : emptyState('No proxy set — the panel has nothing to fetch from.',
+                   'M12 9v4M12 17h.01M10.3 3.9L2.6 18a1.8 1.8 0 001.5 2.7h15.8a1.8 1.8 0 001.5-2.7L13.7 3.9a1.8 1.8 0 00-3.4 0z'));
     tr.append(td); tb.append(tr);
   } else {
     s.b.forEach(g => {
@@ -686,9 +1198,140 @@ async function refreshBoard() {
   }
 }
 
-/* ---------- teams ---------- */
+/* ---------- validation, against the DEVICE's rules ----------
+   Every bound below was read out of firmware/ScoreDeck/src/svc/web.cpp, not
+   guessed and not borrowed from this page's own catalog regex. That
+   distinction is the whole finding:
+
+     cleanCatalog()'s slug shape is /^[a-z0-9.]{2,8}$/ — lower case, bounded.
+     validFavs() (web.cpp:215) accepts the league part as `isalnum || '.'`,
+     UPPERCASE INCLUDED and with NO length bound, and the team id as digits
+     only.
+
+   So the slug regex rejects "NHL:21", which the device stores happily, and
+   accepts "nhl:abc", which the device 400s with "team id must be digits".
+   A validator that disagrees with the thing it is protecting is worse than
+   none: it blocks work that would have succeeded and waves through work that
+   will not.
+
+   apiWifi() (web.cpp:574) is the one that matters. It checks the SSID is
+   non-empty and NOTHING ELSE — the password goes straight through
+   applySecret() into settingsSave() and then ESP.restart(). A five-character
+   key is accepted, written to NVS and rebooted into; the panel then cannot
+   associate, cannot serve this page, and the only way back is the button on
+   the device. 0 of 15 inputs carried a single validation attribute. */
+const FAVS_MAX_BYTES = 240;   // web.cpp:216 — FAVS_MAX_LEN, and it is BYTES
+const SSID_MAX = 32;          // 802.11. The device stores 33 and never joins.
+const WPA_MIN = 8, WPA_MAX = 63;   // WPA2-PSK passphrase; 64 hex is the raw PSK
+const bytes = v => new TextEncoder().encode(v).length;
+
+/** The device's own walk, in the device's own words. Returns null if it would
+ *  be accepted, or the message web.cpp would have sent back after a round
+ *  trip, with the offending token named — validFavs() cannot name it because
+ *  it has no room in a 400 body, and this does. */
+function favsProblem(v) {
+  if (bytes(v) > FAVS_MAX_BYTES)
+    return 'favourites list too long — ' + bytes(v) + ' bytes, and the panel takes ' + FAVS_MAX_BYTES + '.';
+  if (!v.length) return null;
+  const parts = v.split(',');
+  if (parts.length > FAV_MAX) return 'at most 20 favourites — this is ' + parts.length + '.';
+  for (const e of parts) {
+    // Unreachable from #favsRaw today — favList() already trims and drops
+    // empties before anything is sent — but it is validFavs()'s rule and it
+    // belongs with the other four, not in whichever caller remembers it.
+    if (!e.length) return 'empty entry in the favourites list';
+    const c = e.indexOf(':');
+    if (c <= 0 || c === e.length - 1) return '“' + e + '” — each favourite must look like league:teamId';
+    if (!/^[A-Za-z0-9.]+$/.test(e.slice(0, c))) return '“' + e + '” — bad league in a favourite';
+    if (!/^[0-9]+$/.test(e.slice(c + 1))) return '“' + e + '” — team id must be digits';
+  }
+  return null;
+}
+
+/** [selector, message] or null. Blank and "-" are the console's own keep /
+ *  clear verbs and both reach applySecret() safely, so neither is a length. */
+function wifiProblem() {
+  const ssid = $('#ssid').value.trim(), pass = $('#wpass').value;
+  if (!ssid.length) return ['#ssid', 'network name required'];       // web.cpp:578, verbatim
+  if (bytes(ssid) > SSID_MAX)
+    return ['#ssid', 'A network name is at most ' + SSID_MAX + ' bytes — this one is ' + bytes(ssid) +
+                     '. The panel would store it and never find the network.'];
+  if (!pass.length || pass === '-') return null;
+  if (/^[0-9a-fA-F]{64}$/.test(pass)) return null;                   // a raw PSK, not a passphrase
+  if (pass.length < WPA_MIN || pass.length > WPA_MAX)
+    return ['#wpass', 'A Wi-Fi password is ' + WPA_MIN + ' to ' + WPA_MAX +
+                      ' characters, or exactly 64 hex digits — this one is ' + pass.length +
+                      '. The panel does not check, so it would save this, reboot, fail to join, ' +
+                      'and the only way back would be the button on the panel itself.'];
+  return null;
+}
+
+/** An error that sits WITH the field, not in a banner at the top of a page
+ *  you have already scrolled past. role="alert" on a freshly inserted node so
+ *  it is announced, and aria-errormessage so it is reachable afterwards. */
+function fieldError(sel, msg) {
+  const f = $(sel); if (!f) return;
+  // Idempotent on identical text. #favsRaw validates on every keystroke, and
+  // re-inserting a role="alert" node per character would announce the same
+  // sentence six times while you type one league name.
+  const cur = document.getElementById('err-' + sel.replace('#', ''));
+  if (cur && cur.textContent === msg) return;
+  clearFieldError(sel);
+  const e = el('small', 'err', msg);
+  e.id = 'err-' + sel.replace('#', '');
+  e.dataset.for = sel;
+  e.setAttribute('role', 'alert');
+  f.insertAdjacentElement('afterend', e);
+  f.setAttribute('aria-invalid', 'true');
+  f.setAttribute('aria-errormessage', e.id);
+}
+function clearFieldError(sel) {
+  const f = $(sel); if (!f) return;
+  const e = document.getElementById('err-' + sel.replace('#', ''));
+  if (e) e.remove();
+  f.removeAttribute('aria-invalid');
+  f.removeAttribute('aria-errormessage');
+}
+['#ssid', '#wpass'].forEach(sel => $(sel).addEventListener('input', () => clearFieldError(sel)));
+
+/* ---------- teams ----------
+   Picking teams is the primary job of this console and it was the one path
+   that lost data silently. Add, reorder and remove all edited #favsRaw and
+   fired NO POST at all; the only Save control sat 311 px below the card under
+   a different heading; and any unrelated save elsewhere called loadConfig(),
+   which repopulated #favsRaw from the device and destroyed the edit. A user
+   could add three teams, watch the list update, change the density on
+   Network, press Save, and lose them with no signal at any point. */
 function favList() { return ($('#favsRaw').value || '').split(',').map(s => s.trim()).filter(Boolean); }
 function setFavs(list) { $('#favsRaw').value = list.join(','); renderFavs(); }
+
+/** The favourites as the DEVICE currently has them. Anything else is unsaved. */
+function favsSaved() { return String(CFG.favs || ''); }
+function favsDirty() { return favList().join(',') !== favsSaved(); }
+
+/** Reflect unsaved work: the Save control names how many, and the Teams tab
+ *  carries a dot, so leaving the tab cannot look like committing. */
+function syncFavDirty() {
+  const dirty = favsDirty();
+  const btn = $('#saveRaw');
+  if (btn) {
+    const list = favList(), saved = favsSaved().split(',').filter(Boolean);
+    const delta = Math.abs(list.length - saved.length);
+    btn.textContent = dirty
+      ? (delta ? 'Save teams · ' + delta + ' unsaved' : 'Save teams · edited')
+      : 'Save teams';
+    btn.classList.toggle('primary', dirty);
+    // Refuse to arm the control at all while the list would 400. The device
+    // does answer with its reason today, so this is not about a silent
+    // failure — it is about not spending a round trip and a scroll on
+    // something the page can see from here.
+    const bad = favsProblem(favList().join(','));
+    btn.disabled = !dirty || !!bad;
+    if (bad) fieldError('#favsRaw', bad); else clearFieldError('#favsRaw');
+  }
+  const tab = document.querySelector('#nav a[href="#/teams"]');
+  if (tab) tab.classList.toggle('has-dirty', dirty);
+}
 
 function nameFor(key) {
   if (!CAT) return null;
@@ -698,11 +1341,21 @@ function nameFor(key) {
   return t ? { n: t[2], a: t[1], c: t[3], lg: row[1] } : null;
 }
 
+const FAV_MAX = 20;                      // web.cpp:215 validFavs() — the device's own cap
+
 function renderFavs() {
   const list = favList(), box = $('#favs');
   box.textContent = '';
-  $('#favN').textContent = list.length + ' of 20';
-  if (!list.length) {
+  const n = list.length;
+  $('#favN').textContent = n + ' of ' + FAV_MAX;
+  // At the cap, say so. #favN rendered byte-identically at 20 of 20 and at 3
+  // of 20, while the LEAGUE cap two cards away goes amber and disables its
+  // boxes — the same limit, two behaviours, on one page.
+  $('#favN').style.color = n >= FAV_MAX ? 'var(--warn)' : '';
+  if (n >= FAV_MAX) warn('favcap', 'Twenty teams is the panel\'s limit. Remove one to add another.');
+  else clearWarn('favcap');
+  syncFavDirty();
+  if (!n) {
     box.append(emptyState('None yet. Search below, or type ids by hand.', 'M12 3v18M3 12h18'));
     return;
   }
@@ -800,24 +1453,41 @@ function search() {
 }
 $('#loadCat').onclick = loadCatalog;
 $('#saveRaw').onclick = () => postFavs();
+// The field was write-only to the page: nothing listened to it, so a typed id
+// did not reach the list, the counter or the Save control until some other
+// action happened to call renderFavs().
+$('#favsRaw').addEventListener('input', renderFavs);
 
 async function postFavs() {
+  const sent = favList().join(',');
+  const bad = favsProblem(sent);
+  if (bad) { fieldError('#favsRaw', bad); $('#favsRaw').focus(); return; }
   try {
     await api('/api/favs', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ favs: favList().join(',') }) });
-    toast('Teams saved.');
-  } catch (e) { toast(String(e.message || e), true); }
+      body: JSON.stringify({ favs: sent }) });
+    CFG.favs = sent;              // the device now agrees; nothing is pending
+    syncFavDirty();
+    ok('Teams saved.');
+  } catch (e) { fail('Could not save teams: ' + msgOf(e), { field: '#favsRaw' }); }
 }
 
 /* ---------- saves ---------- */
 async function postConfig(fields, msg) {
   if (busy) return; busy = true;
+  // Hold anything the user has typed and not saved. loadConfig() below
+  // repopulates every field from the device, which is right for the fields
+  // this save just wrote and destructive for the ones it did not touch —
+  // favourites being the case that actually lost work.
+  const pendingFavs = favsDirty() ? $('#favsRaw').value : null;
   try {
     await api('/api/config', { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify(fields) });
-    toast(msg || 'Saved.');
+    ok(msg || 'Saved.');
     await loadConfig();
-  } catch (e) { toast(String(e.message || e), true); }
+    if (pendingFavs !== null) { $('#favsRaw').value = pendingFavs; renderFavs(); }
+  } catch (e) {
+    fail((msg ? msg.replace(/\.$/, '') + ' failed: ' : 'Save failed: ') + msgOf(e));
+  }
   busy = false;
 }
 $('#saveAlerts').onclick = () => postConfig({
@@ -829,6 +1499,12 @@ $('#saveNet').onclick = () => postConfig({
   clk24: CFG.clk24 ? 1 : 0 });
 $('#savePass').onclick = () => postConfig({ ppass: $('#ppass').value }, 'Password updated.');
 $('#saveWifi').onclick = async () => {
+  // BEFORE the confirm, not after. A dialog that asks "reboot the panel?"
+  // about a password the panel cannot use is asking the wrong question, and
+  // the answer costs a trip to the device.
+  const bad = wifiProblem();
+  if (bad) { fieldError(bad[0], bad[1]); $(bad[0]).focus(); return; }
+  clearFieldError('#ssid'); clearFieldError('#wpass');
   if (!confirm('Save Wi-Fi and reboot the panel?')) return;
   try {
     await api('/api/wifi', { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -876,19 +1552,59 @@ $('#bin').onchange = () => {
 };
 $('#flash').onclick = () => {
   const f = $('#bin').files[0]; if (!f) return;
+  // The only destructive control on the page without a confirm — and the one
+  // with the worst failure mode. Reboot, Forget Wi-Fi and Factory reset all
+  // gated; the one that overwrites firmware did not.
+  if (!confirm('Flash ' + f.name + ' and reboot the panel?')) return;
   $('#flash').disabled = true;
   const fd = new FormData(); fd.append('f', f);
   const x = new XMLHttpRequest();
   x.open('POST', '/update');
+  // The percentage and the warning used to share ONE text node, so the
+  // sentence re-flowed underneath itself while it read "do not power off":
+  // measured, the phrase's own left edge walked 128.20 px -> 141.80 px across
+  // 0 -> 100 %, and jumped 5.67 px on the 9 -> 10 digit rollover alone. The
+  // block's width never changed, which is why this reads as fine from the
+  // source — it is the text INSIDE the line that moves. Two nodes: one that
+  // counts, one that does not move.
+  $('#otaWarn').hidden = false;
   x.upload.onprogress = e => {
     if (!e.lengthComputable) return;
     const p = (e.loaded / e.total * 100) | 0;
     $('#otaBar').style.width = p + '%';
-    $('#otaMsg').textContent = p + '% — do not power off. The screen will shake; that is expected.';
+    $('#otaBarWrap').setAttribute('aria-valuenow', String(p));
+    $('#otaMsg').textContent = 'Uploading — ' + p + '%';
   };
-  x.onload = () => { $('#otaMsg').textContent = x.status === 200
-    ? 'Flashed. Rebooting.' : 'Failed: ' + x.responseText; };
-  x.onerror = () => { $('#otaMsg').textContent = 'Upload failed.'; };
+  // A failed flash used to be a dead end: nothing re-enabled the button, and
+  // #otaBar kept its last teal width — so the highest-stakes screen in the
+  // product, on the state where you are already worried the panel is bricked,
+  // answered with a bar that looks like progress and a control that refuses to
+  // try again. Chrome will not re-fire `change` for the same file, so the only
+  // way out was a page reload.
+  const otaFailed = (why) => {
+    $('#otaWarn').hidden = true;
+    $('#otaBar').style.width = '0';
+    $('#otaBar').parentElement.classList.add('bad');
+    $('#flash').disabled = false;
+    $('#otaMsg').textContent = 'Not flashed. The panel is untouched — you can try again.';
+    fail('Firmware update failed: ' + why);
+  };
+  x.onload = () => {
+    $('#otaBar').parentElement.classList.remove('bad');
+    if (x.status !== 200) return otaFailed(x.responseText || ('HTTP ' + x.status));
+    $('#otaWarn').hidden = true;
+    $('#otaMsg').textContent = 'Flashed. Rebooting…';
+    // Say when it is back, rather than leaving "Rebooting." on screen forever.
+    let tries = 0;
+    const probe = setInterval(async () => {
+      if (++tries > 40) { clearInterval(probe);
+        $('#otaMsg').textContent = 'Flashed, but the panel has not come back. Check it.'; return; }
+      try { await api('/api/config'); clearInterval(probe);
+            $('#otaMsg').textContent = 'Flashed. The panel is back.'; ok('Panel is back online.'); }
+      catch { /* still rebooting */ }
+    }, 2000);
+  };
+  x.onerror = () => otaFailed('the upload did not complete');
   x.send(fd);
 };
 
@@ -962,10 +1678,31 @@ function poll() {
 }
 document.addEventListener('visibilitychange', poll);
 
-loadConfig().then(() => { route(); poll(); api('/api/state').then(paintNet).catch(() => {}); }).catch(e => {
-  const b = el('div', 'banner bad');
-  b.append(bannerIcon(), el('span', '', 'Could not load settings: ' + e.message));
-  document.body.prepend(b);
+/* ---------- boot ----------
+   route() FIRST. It used to run inside loadConfig().then, so between load and
+   the first /api/config the page was 0 px of content — measured: #main
+   innerText '', 0 of 6 views on, 85% of the document bare. This is served off
+   an ESP32 over Wi-Fi while the device is also polling, so that window is real,
+   and if the config call FAILED the page simply stayed empty behind a banner.
+   Routing first means the requested view is on screen immediately, in a
+   skeleton state, and every later path only has to fill it in.
+
+   /api/state was also fetched twice on load — once here and once by the board
+   view — so the boot cost three round-trips where two would do. */
+wireHelpText();
+skeleton(true);
+route();
+syncQuiet();
+poll();
+
+Promise.allSettled([loadConfig(), api('/api/state')]).then(([cfg, state]) => {
+  skeleton(false);
+  if (cfg.status === 'rejected') {
+    fail('Could not load settings — ' + msgOf(cfg.reason) +
+         '. The panel may be busy or unreachable.', { persist: true });
+  }
+  if (state.status === 'fulfilled') paintNet(state.value);
+  else markStale('#v-board');
 });
 </script>
 </body>

@@ -107,7 +107,7 @@ static void sliverPaint() {
     if (g_leagueFilter == (int8_t)i) {
       lv_draw_rect_dsc_t tab;
       lv_draw_rect_dsc_init(&tab);
-      tab.bg_color = lv_color_white();
+      tab.bg_color = C_INK;      // INK_1, the one selection ink (PLAN §6)
       tab.radius = 1;
       lv_canvas_draw_rect(s_sliver, 0, y, 3, h < 12 ? h : 12, &tab);
     }
@@ -187,12 +187,22 @@ static void rowApply(uint8_t r) {
   // "2/8", numerator in the accent — the same treatment as the header's
   // "1 / 11", which styled the identical datum a second different way.
   char buf[24];
-  if (total && live) snprintf(buf, sizeof buf, "#3be0c0 %u#/%u", live, total);
+  // Generated from the token. A hex literal inside a recolour format string is
+  // invisible to every grep for lv_color_hex, so renaming or retuning the
+  // accent silently desynced this one count from the rest of the panel.
+  // PLAN item 1.11 — the board's copy was fixed and the rail's was missed.
+  char acc[8];
+  const lv_color_t a = A_LIVE;
+  snprintf(acc, sizeof acc, "%02X%02X%02X",
+           (unsigned)(a.ch.red << 3 | a.ch.red >> 2),
+           (unsigned)(a.ch.green << 2 | a.ch.green >> 4),
+           (unsigned)(a.ch.blue << 3 | a.ch.blue >> 2));
+  if (total && live) snprintf(buf, sizeof buf, "#%s %u#/%u", acc, live, total);
   else if (total)    snprintf(buf, sizeof buf, "%u/%u", live, total);
   else               snprintf(buf, sizeof buf, "-");
   lv_label_set_text(s_rowCount[r], buf);
   lv_obj_set_style_text_color(s_rowCount[r],
-      total ? C_INK3 : lv_color_hex(0x4A5666), 0);
+      total ? C_INK3 : C_EDGE_HI, 0);   // was a loose 0x4A5666 literal
 }
 
 void uiRailInit(lv_obj_t* parent) {
@@ -216,7 +226,9 @@ void uiRailInit(lv_obj_t* parent) {
     s_sliver = lv_canvas_create(parent);
     lv_canvas_set_buffer(s_sliver, s_cbuf, SLIVER_W, RAIL_H, LV_IMG_CF_TRUE_COLOR);
     lv_obj_set_pos(s_sliver, 0, RAIL_TOP);
-    lv_obj_add_flag(s_sliver, LV_OBJ_FLAG_CLICKABLE);
+    // The rail's PRIMARY opener when collapsed, and it pressed like nothing:
+    // 16 px of canvas with a handler and no feedback at all.
+    uiPressable(s_sliver);
     lv_obj_set_ext_click_area(s_sliver, 8);
     lv_obj_add_event_cb(s_sliver, onSliver, LV_EVENT_CLICKED, nullptr);
     sliverPaint();
@@ -233,7 +245,7 @@ void uiRailInit(lv_obj_t* parent) {
   lv_obj_set_pos(s_overlay, 0, 0);
   lv_obj_set_size(s_overlay, SCR_W, SCR_H);
   lv_obj_set_style_bg_opa(s_overlay, LV_OPA_TRANSP, 0);
-  lv_obj_add_flag(s_overlay, LV_OBJ_FLAG_CLICKABLE);
+  uiTapZone(s_overlay);   // a tap CATCHER, so deliberately no outline
   lv_obj_add_event_cb(s_overlay, onOverlay, LV_EVENT_CLICKED, nullptr);
 
   s_root = lv_obj_create(parent);
@@ -268,7 +280,7 @@ void uiRailInit(lv_obj_t* parent) {
     lv_obj_remove_style_all(s_rowTab[r]);
     lv_obj_set_pos(s_rowTab[r], 0, y - 3);
     lv_obj_set_size(s_rowTab[r], 6, 26);   // butts the pill at x=6 — no canyon
-    lv_obj_set_style_bg_color(s_rowTab[r], lv_color_white(), 0);
+    lv_obj_set_style_bg_color(s_rowTab[r], C_INK, 0);   // INK_1, per PLAN §6
     lv_obj_set_style_bg_opa(s_rowTab[r], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_rowTab[r], LV_OBJ_FLAG_HIDDEN);
 
@@ -318,7 +330,7 @@ void uiRailInit(lv_obj_t* parent) {
   // C_INK3 measures 4.0 — the review's AODA-relevant AA miss.
   lv_obj_set_style_text_color(edit, kStateInk[GS_PRE].ink3, 0);
   lv_label_set_text(edit, "EDIT SPORTS  >");
-  lv_obj_add_flag(edit, LV_OBJ_FLAG_CLICKABLE);
+  uiPressable(edit);      // the one way into the sports editor, from here
   lv_obj_set_ext_click_area(edit, 8);
   lv_obj_add_event_cb(edit, onEdit, LV_EVENT_CLICKED, nullptr);
 }

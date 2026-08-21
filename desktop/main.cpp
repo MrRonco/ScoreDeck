@@ -15,6 +15,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <unistd.h>
+#include <dirent.h>
 #include <lvgl.h>
 #include "Arduino.h"
 #include "scenarios.h"
@@ -135,6 +136,10 @@ static void showScreen(const char* name) {
   else if (!strcmp(name, "player"))  { uiLineupOpen("nhl", "900000");
                                        uiPlayerOpen("nhl", "3024"); }
   else if (!strcmp(name, "setup"))     uiShow(SCR_SETUP);
+  // The on-device keyboard is 41.7% of the panel and sits in the first-run
+  // flow, and there was no way to look at it without a device — which is why
+  // it was the one surface still drawn by lv_theme_default.
+  else if (!strcmp(name, "setup-kb"))  { uiShow(SCR_SETUP); uiSetupShowKeyboard(); }
   else if (!strcmp(name, "settings"))  uiSettingsOpen();
   else if (!strcmp(name, "settings-sports")) { uiSettingsOpen(); uiSettingsTab(1); }
   else if (!strcmp(name, "settings-teams")) { uiSettingsOpen(); uiSettingsTab(2); }
@@ -163,6 +168,7 @@ int main(int argc, char** argv) {
   int  mock = -1;
   int  density = -1;
   bool railOpen = false;
+  const char* measure = nullptr;
   for (int i = 1; i < argc; i++) {
     if      (!strcmp(argv[i], "--shot") && i + 1 < argc)     shot = argv[++i];
     else if (!strcmp(argv[i], "--settle") && i + 1 < argc)   settleMs = atoi(argv[++i]);
@@ -176,11 +182,15 @@ int main(int argc, char** argv) {
     // to reach from a scenario alone. 0=roomy 1=standard 2=dense 3=auto.
     else if (!strcmp(argv[i], "--density") && i + 1 < argc)  density = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--rail"))                     railOpen = true;
+    // --measure <what>: report pixels flushed for one interaction, so a
+    // redraw-cost claim can be a number rather than an argument. The counters
+    // are the ones spike.cpp already reads.
+    else if (!strcmp(argv[i], "--measure") && i + 1 < argc)   measure = argv[++i];
     else if (!strcmp(argv[i], "--help")) { help(); return 0; }
   }
   if (s_scenario < 0 || s_scenario >= SCN_COUNT) s_scenario = SCN_TYPICAL;
 
-  if (SDL_Init((shot || lint || spike) ? 0 : SDL_INIT_VIDEO) != 0) {
+  if (SDL_Init((shot || lint || spike || measure) ? 0 : SDL_INIT_VIDEO) != 0) {
     fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
     return 1;
   }
@@ -197,7 +207,7 @@ int main(int argc, char** argv) {
   dd.ver_res = SCR_H;
   lv_disp_drv_register(&dd);
 
-  if (!shot && !lint) {
+  if (!shot && !lint && !measure) {
     s_win = SDL_CreateWindow("ScoreDeck", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                              SCR_W, SCR_H, SDL_WINDOW_ALLOW_HIGHDPI);
     s_ren = SDL_CreateRenderer(s_win, -1, SDL_RENDERER_ACCELERATED);
@@ -266,6 +276,146 @@ int main(int argc, char** argv) {
     printf("\n%d label%s the assigned face cannot render\n", bad, bad == 1 ? "" : "s");
     SDL_Quit();
     return bad ? 1 : 0;
+  }
+
+  if (measure) {
+    // Settle the board first so the numbers below are the INTERACTION's cost,
+    // not the boot paint's.
+    uiIdleTick(); uiReaderTick(); uiAlertTick();
+    for (int i = 0; i < 3; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+
+    uint32_t total = 0, worstPass = 0, passes = 0;
+    auto pump = [&](int ms) {
+      const uint32_t t0 = millis();
+      while (millis() - t0 < (uint32_t)ms) {
+        g_spikePx = 0;
+        uiAlertTick(); uiIdleTick(); uiReaderTick();
+        lv_timer_handler();
+        const uint32_t d = g_spikePx;
+        if (d) { passes++; total += d; if (d > worstPass) worstPass = d; }
+        usleep(2000);
+      }
+    };
+
+    if (!strcmp(measure, "alert")) {
+      scenarioFireAlert();
+      pump(600);                      // 4 rungs x 70 ms, with room to settle
+      printf("alert-present  %u px total, %u flushing passes, worst pass %u px\n",
+             total, passes, worstPass);
+    } else if (!strcmp(measure, "idle")) {
+      showScreen("idle");
+      for (int i = 0; i < 3; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+      pump(3000);                     // three simulated seconds
+      printf("idle-3s        %u px total, %u flushing passes, worst pass %u px\n",
+             total, passes, worstPass);
+    } else if (!strcmp(measure, "poll")) {
+      scenarioReapply(s_scenario);
+      for (int i = 0; i < 2; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+      total = 0; passes = 0; worstPass = 0;
+      scenarioReapply(s_scenario);    // identical data, second time
+      pump(200);
+      printf("poll-nochange  %u px total, %u flushing passes, worst pass %u px\n",
+             total, passes, worstPass);
+    } else if (!strcmp(measure, "logos")) {
+      // What the logo fetcher can SEE. logoTick() asks each on-screen surface
+      // which game it is showing and fetches the first mark it has no blob
+      // for; a surface it does not ask about can never fill in. It used to ask
+      // the tile strip alone, and in the featured layout the tile strip is the
+      // one surface whose teams are not the ones being looked at — the hero is
+      // excluded from a slot by construction and a ledger final never had one.
+      // So this prints the reachable set per surface: if TILES is empty while
+      // HERO and LEDGER are not, the old walk fetched nothing at all.
+      for (int i = 0; i < 3; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+      const int8_t hero = uiHeroGameIdx();
+      int tiles = 0, ledger = 0;
+      printf("HERO    %s", hero >= 0 ? "" : "(none)");
+      if (hero >= 0) printf("%s @ %s", g_board[hero].away.abbr, g_board[hero].home.abbr);
+      printf("\n");
+      printf("TILES   ");
+      for (uint8_t t = 0; t < TILES_PER_PAGE; t++) {
+        const int8_t gi = uiBoardTileGame(t);
+        if (gi < 0 || gi >= g_gameCount) continue;
+        printf("%s%s @ %s", tiles++ ? ", " : "", g_board[gi].away.abbr, g_board[gi].home.abbr);
+      }
+      printf("%s\n", tiles ? "" : "(none)");
+      printf("LEDGER  ");
+      for (int k = 0; k < uiLedgerCount(); k++) {
+        const int8_t gi = uiLedgerGame((uint8_t)k);
+        if (gi < 0 || gi >= g_gameCount) continue;
+        printf("%s%s @ %s", ledger++ ? ", " : "", g_board[gi].away.abbr, g_board[gi].home.abbr);
+      }
+      printf("%s\n", ledger ? "" : "(none)");
+      const Game* nx = uiIdleNextGame();
+      printf("IDLE    %s\n", nx ? "" : "(none, idle not showing)");
+      if (nx) printf("        %s @ %s\n", nx->away.abbr, nx->home.abbr);
+      printf("reachable: old walk %d game(s), new walk %d game(s)\n",
+             tiles, tiles + ledger + (hero >= 0 ? 1 : 0) + (nx ? 1 : 0));
+    } else if (!strcmp(measure, "chips")) {
+      // Run the REAL chipSolve() over every built mark against each surface's
+      // ground. The solve is stored once per logo and reused everywhere, so
+      // the question this answers is whether ONE stored verdict is honest for
+      // all four surfaces or whether the grounds are far enough apart to
+      // disagree about the same mark.
+      static const struct { const char* name; uint32_t fill; } kGround[4] = {
+        { "pre/next-up", 0x16202E }, { "live/tile", 0x1B2636 },
+        { "final/ledger", 0x101825 }, { "hero", 0x222E40 },
+      };
+      const char* leagues[2] = { "mlb", "nhl" };
+      int chips[4] = { 0, 0, 0, 0 }, marks = 0, disagree = 0;
+      char worst[8][24]; int nWorst = 0;
+      for (int li = 0; li < 2; li++) {
+        char dir[256];
+        snprintf(dir, sizeof dir, "%s/assets/logos/%s",
+                 getenv("SDROOT") ? getenv("SDROOT") : "..", leagues[li]);
+        DIR* d = opendir(dir);
+        if (!d) continue;
+        struct dirent* e;
+        while ((e = readdir(d))) {
+          if (!strstr(e->d_name, "@48.bin")) continue;
+          char path[512];
+          snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
+          FILE* f = fopen(path, "rb");
+          if (!f) continue;
+          static uint8_t blob[4 + 48 * 48 * 3];
+          const size_t got = fread(blob, 1, sizeof blob, f);
+          fclose(f);
+          if (got != sizeof blob) continue;
+          marks++;
+          bool v[4];
+          for (int gi = 0; gi < 4; gi++) {
+            v[gi] = chipSolve(blob + 4, 48, 48, kGround[gi].fill).opa != 0;
+            if (v[gi]) chips[gi]++;
+          }
+          if (getenv("SDCHIPS")) {
+            char nm[16];
+            snprintf(nm, sizeof nm, "%.*s", (int)(strchr(e->d_name,'@') - e->d_name), e->d_name);
+            printf("    %-4s %-4s  P%c L%c F%c H%c\n", leagues[li], nm,
+                   v[0]?'*':'.', v[1]?'*':'.', v[2]?'*':'.', v[3]?'*':'.');
+          }
+          if (!(v[0] == v[1] && v[1] == v[2] && v[2] == v[3])) {
+            disagree++;
+            if (nWorst < 8) {
+              snprintf(worst[nWorst], sizeof worst[0], "%s:%.*s", leagues[li],
+                       (int)(strchr(e->d_name, '@') - e->d_name), e->d_name);
+              nWorst++;
+            }
+          }
+        }
+        closedir(d);
+      }
+      printf("%d marks\n", marks);
+      for (int gi = 0; gi < 4; gi++)
+        printf("  %-14s %2d chipped, %2d bare  (%.0f%% need help)\n",
+               kGround[gi].name, chips[gi], marks - chips[gi],
+               marks ? 100.0 * chips[gi] / marks : 0.0);
+      printf("verdict differs across grounds for %d of %d marks\n", disagree, marks);
+      for (int i = 0; i < nWorst; i++) printf("    %s\n", worst[i]);
+    } else {
+      fprintf(stderr, "--measure: expected alert|idle|poll|logos|chips\n");
+      SDL_Quit(); return 2;
+    }
+    SDL_Quit();
+    return 0;
   }
 
   if (shot) {

@@ -6,6 +6,13 @@
 // article body and no HTML parser on the device, deliberately: the panel is
 // something you glance at, and a 240-character summary is the honest limit of
 // what it can usefully show.
+//
+// It used to be headlines-plus-an-expanding-summary. The expansion index was
+// only ever assigned -1 — never a row index — so `open` was false on every
+// pass, and the 128 px branch and the five wrap-capable summary labels were
+// unreachable code. The summary was only ever readable in the reader anyway
+// (onItem sends every headline there). The dead state is gone; what is left
+// is the list the screen actually drew.
 #include "ui.h"
 #include "theme.h"
 #include "../config.h"
@@ -14,16 +21,20 @@
 #include <time.h>
 
 #define NEWS_ROWS 5
+#define NEWS_ROW_H 72
+#define NEWS_ROW_Y 58
+// The slate api.cpp already hands us when a story names no team (api.cpp:709,
+// `it["c"] | 0x5D6D7E`). Named here so the chip and the feed agree.
+#define NEWS_CHIP_NEUTRAL 0x5D6D7E
 
 static lv_obj_t* s_root;
 static lv_obj_t* s_hint;
+static lv_obj_t* s_more;           // "there is more below" — the sixth story
 static lv_obj_t* s_card[NEWS_ROWS];
 static lv_obj_t* s_chip[NEWS_ROWS];
 static lv_obj_t* s_chipLbl[NEWS_ROWS];
 static lv_obj_t* s_head[NEWS_ROWS];
-static lv_obj_t* s_desc[NEWS_ROWS];
 static lv_obj_t* s_when[NEWS_ROWS];
-static int8_t    s_expanded = -1;
 static uint8_t   s_scroll;
 
 lv_obj_t* uiNewsRoot() { return s_root; }
@@ -62,8 +73,8 @@ static void onItem(lv_event_t* e) {
 
 static void onGesture(lv_event_t*) {
   const lv_dir_t d = lv_indev_get_gesture_dir(lv_indev_get_act());
-  if (d == LV_DIR_TOP && s_scroll + NEWS_ROWS < g_news.count) { s_scroll++; s_expanded = -1; uiNewsRender(); }
-  else if (d == LV_DIR_BOTTOM && s_scroll) { s_scroll--; s_expanded = -1; uiNewsRender(); }
+  if (d == LV_DIR_TOP && s_scroll + NEWS_ROWS < g_news.count) { s_scroll++; uiNewsRender(); }
+  else if (d == LV_DIR_BOTTOM && s_scroll) { s_scroll--; uiNewsRender(); }
 }
 
 void uiNewsInit(lv_obj_t* parent) {
@@ -78,45 +89,42 @@ void uiNewsInit(lv_obj_t* parent) {
   lv_obj_set_style_bg_opa(s_root, LV_OPA_TRANSP, 0);
   lv_obj_clear_flag(s_root, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_add_flag(s_root, LV_OBJ_FLAG_CLICKABLE);
+  // Clickable only so the swipe reaches it — there is no tap handler here, so
+  // it is an input surface and not a control. uiTapZone() is that statement.
+  uiTapZone(s_root);
   lv_obj_add_event_cb(s_root, onGesture, LV_EVENT_GESTURE, nullptr);
 
   lv_obj_t* bar = glassPanel(s_root, 0, 0, SCR_W, BAR_H, 0);
-  lv_obj_t* back = lv_btn_create(bar);
-  lv_obj_set_size(back, 48, 34);
-  lv_obj_set_pos(back, 14, 7);
-  lv_obj_set_style_bg_color(back, C_EDGE, 0);
-  lv_obj_set_style_border_width(back, 0, 0);
-  lv_obj_set_style_radius(back, 8, 0);
-  lv_obj_add_event_cb(back, onBack, LV_EVENT_CLICKED, nullptr);
-  lv_obj_t* bl = lv_label_create(back);
-  lv_label_set_text(bl, "<");
-  lv_obj_set_style_text_font(bl, F_BODY, 0);   // F_ABBR has no glyph for "<"
-  lv_obj_set_style_text_color(bl, C_INK, 0);
-  lv_obj_center(bl);
+  // Bare chevron: the title sits at x=74 and a worded chip measures 88 px.
+  backChip(bar, nullptr, onBack);
   lv_obj_t* ttl = lb(bar, 74, 15, C_INK, F_ABBR);
   lv_label_set_text(ttl, "NEWS");
   s_hint = lb(bar, SCR_W - 18 - 300, 17, C_INK3, F_MICRO, LV_TEXT_ALIGN_RIGHT, 300);
 
+  // The list scrolls, and until now nothing on the screen said so — the sixth
+  // story existed only for a gesture nobody had been told about. Same words,
+  // same face and the same y as the reader's one-time hint, because it is the
+  // same promise.
+  s_more = lb(s_root, (SCR_W - 300) / 2, 456, C_INK3, F_MICRO,
+              LV_TEXT_ALIGN_CENTER, 300);
+  lv_obj_set_style_text_letter_space(s_more, 1, 0);
+  lv_obj_add_flag(s_more, LV_OBJ_FLAG_HIDDEN);
+
   for (uint8_t i = 0; i < NEWS_ROWS; i++) {
-    const int y = 58 + i * 80;
-    s_card[i] = glassPanel(s_root, 16, y, 768, 72, 12);
-    lv_obj_add_flag(s_card[i], LV_OBJ_FLAG_CLICKABLE);
+    const int y = NEWS_ROW_Y + i * (NEWS_ROW_H + 8);
+    s_card[i] = glassPanel(s_root, 16, y, 768, NEWS_ROW_H, R_LG);
+    uiPressable(s_card[i]);
     lv_obj_clear_flag(s_card[i], LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(s_card[i], onItem, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
     lv_obj_add_event_cb(s_card[i], onGesture, LV_EVENT_GESTURE, nullptr);
 
-    s_chip[i] = teamBadge(s_card[i], "", 0x5D6D7E, 26);
+    s_chip[i] = teamBadge(s_card[i], "", NEWS_CHIP_NEUTRAL, 26);
     lv_obj_set_pos(s_chip[i], 14, 14);
     s_chipLbl[i] = lv_obj_get_child(s_chip[i], 0);
 
     s_head[i] = lb(s_card[i], 52, 12, C_INK, F_BODY);
     lv_obj_set_width(s_head[i], 600);
     lv_label_set_long_mode(s_head[i], LV_LABEL_LONG_DOT);
-
-    s_desc[i] = lb(s_card[i], 52, 36, C_INK3, F_BODY);   // upstream prose
-    lv_obj_set_width(s_desc[i], 690);
-    lv_label_set_long_mode(s_desc[i], LV_LABEL_LONG_WRAP);
 
     s_when[i] = lb(s_card[i], 664, 13, C_INK3, F_NUM, LV_TEXT_ALIGN_RIGHT, 90);
   }
@@ -132,7 +140,6 @@ void uiNewsRender() {
     lv_label_set_text(s_hint, buf);
   }
 
-  int y = 58;
   for (uint8_t r = 0; r < NEWS_ROWS; r++) {
     const uint8_t idx = s_scroll + r;
     if (idx >= n.count) {
@@ -142,45 +149,39 @@ void uiNewsRender() {
     const NewsItem& it = n.items[idx];
     lv_obj_clear_flag(s_card[r], LV_OBJ_FLAG_HIDDEN);
 
-    const bool open = (s_expanded == idx);
-    // A card only grows for the story you asked to read; the rest stay compact
-    // so the list keeps its shape.
-    const int h = open ? 128 : 72;
-    lv_obj_set_pos(s_card[r], 16, y);
-    lv_obj_set_size(s_card[r], 768, h);
-    y += h + 8;
-
-    if (it.abbr[0]) {
-      lv_obj_clear_flag(s_chip[r], LV_OBJ_FLAG_HIDDEN);
-      teamBadgeSet(s_chip[r], it.color);
-      lv_label_set_text(s_chipLbl[r], it.abbr);
-      lv_obj_set_x(s_head[r], 52);
-      lv_obj_set_x(s_desc[r], 52);
-    } else {
-      lv_obj_add_flag(s_chip[r], LV_OBJ_FLAG_HIDDEN);
-      lv_obj_set_x(s_head[r], 16);
-      lv_obj_set_x(s_desc[r], 16);
-    }
+    // A story with no team badge is still a story. It used to lose its chip,
+    // shift its headline 37 px left (first-ink 70 -> 33) and drop a full ink
+    // tier (14.75:1 -> 8.26:1) — three signals that all read as "lesser",
+    // for the sole crime of not being about a club. The chip stays, in the
+    // feed's own neutral slate; x and ink do not move.
+    teamBadgeSet(s_chip[r], it.abbr[0] ? it.color : NEWS_CHIP_NEUTRAL);
+    lv_label_set_text(s_chipLbl[r], it.abbr);
 
     lv_label_set_text(s_head[r], it.headline);
-    lv_obj_set_style_text_color(s_head[r], it.abbr[0] ? C_INK : C_INK2, 0);
-
-    if (open && it.desc[0]) {
-      lv_obj_clear_flag(s_desc[r], LV_OBJ_FLAG_HIDDEN);
-      lv_label_set_text(s_desc[r], it.desc);
-    } else {
-      lv_obj_add_flag(s_desc[r], LV_OBJ_FLAG_HIDDEN);
-    }
 
     char w[16];
     relTime(it.when, w, sizeof w);
     lv_label_set_text(s_when[r], w);
   }
+
+  // Only two states are true, so only two are offered.
+  if (s_scroll + NEWS_ROWS < n.count) {
+    lv_label_set_text(s_more, "SWIPE UP FOR MORE");
+    lv_obj_clear_flag(s_more, LV_OBJ_FLAG_HIDDEN);
+  } else if (s_scroll) {
+    lv_label_set_text(s_more, "SWIPE DOWN FOR THE LATEST");
+    lv_obj_clear_flag(s_more, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(s_more, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 void uiNewsOpen() {
+  // Opening the list means the list is what you get. The reader's root is
+  // transparent now, so an article left up over a re-opened list would let
+  // five cards read straight through it.
+  uiReaderHide();
   s_scroll = 0;
-  s_expanded = -1;
   g_news.loading = true;
   uiShow(SCR_NEWS);
   uiNewsRender();

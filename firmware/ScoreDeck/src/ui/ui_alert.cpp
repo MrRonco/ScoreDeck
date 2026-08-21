@@ -83,25 +83,41 @@ void uiAlertInit(lv_obj_t* parent) {
   lv_obj_remove_style_all(s_scrim);
   lv_obj_set_size(s_scrim, SCR_W, SCR_H);
   lv_obj_set_pos(s_scrim, 0, 0);
-  lv_obj_set_style_bg_color(s_scrim, lv_color_hex(0x04070C), 0);
-  lv_obj_set_style_bg_opa(s_scrim, 158, 0);          // ~62%
-  lv_obj_clear_flag(s_scrim, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(s_scrim, LV_OBJ_FLAG_CLICKABLE);
+  uiScrim(s_scrim, 158);                             // ~62% of C_SCRIM
   lv_obj_add_flag(s_scrim, LV_OBJ_FLAG_HIDDEN);
   // Clickable both to dismiss and to stop taps falling through to the board.
   lv_obj_add_event_cb(s_scrim, onDismiss, LV_EVENT_CLICKED, nullptr);
 
   s_card = glassPanel(s_scrim, ALERT_X, ALERT_Y, ALERT_W, ALERT_H, 14);
+  // The card says "TAP OR 10s TO DISMISS" and was the one region of the panel
+  // that did not dismiss. glassPanel() returns an lv_obj_create, which LVGL
+  // makes CLICKABLE unconditionally, so the card swallowed the press, lit the
+  // teal outline that means "touch this", and did nothing — you had to hit the
+  // scrim OUTSIDE the card instead. On the product's flagship moment, with the
+  // card filling 40.6% of the screen. There is no EVENT_BUBBLE anywhere in the
+  // tree, so the handler is bound directly.
+  //
+  // uiPressable(), not a bare handler: phase 21 took the unconditional
+  // CLICKABLE away from glassPanel() — 20 glass SURFACES were lighting the
+  // "touch this" outline and doing nothing — so this card, which relied on
+  // exactly that default, now has to ask. It is the one glass panel on the
+  // product that wanted the flag and never said so.
+  uiPressable(s_card);
+  lv_obj_add_event_cb(s_card, onDismiss, LV_EVENT_CLICKED, nullptr);
 
   s_edge = lv_obj_create(s_card);
   lv_obj_remove_style_all(s_edge);
   lv_obj_set_size(s_edge, 6, ALERT_H - 2);
   lv_obj_set_pos(s_edge, 0, 0);
   lv_obj_set_style_bg_opa(s_edge, LV_OPA_COVER, 0);
+  // Decoration. Left clickable, the three raw children below are 10,384 px of
+  // holes in the card that still swallow the tap.
+  lv_obj_clear_flag(s_edge, LV_OBJ_FLAG_CLICKABLE);
 
   s_badge = teamBadge(s_card, "", 0x5D6D7E, 86);
   lv_obj_set_pos(s_badge, 34, 28);
   lv_obj_set_style_radius(s_badge, 14, 0);
+  lv_obj_clear_flag(s_badge, LV_OBJ_FLAG_CLICKABLE);
   s_badgeLbl = lv_obj_get_child(s_badge, 0);
 
   // The verb is the largest type anywhere in the product, deliberately — and
@@ -122,8 +138,9 @@ void uiAlertInit(lv_obj_t* parent) {
   lv_obj_remove_style_all(s_pulse);
   lv_obj_set_size(s_pulse, 200, 6);
   lv_obj_set_pos(s_pulse, 40, ALERT_H - 26);
-  lv_obj_set_style_radius(s_pulse, 3, 0);
+  lv_obj_set_style_radius(s_pulse, R_XS, 0);
   lv_obj_set_style_bg_opa(s_pulse, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(s_pulse, LV_OBJ_FLAG_CLICKABLE);
 
   s_hint = lbl(s_card, ALERT_W - 34 - 200, ALERT_H - 24, C_INK3, F_MICRO,
                LV_TEXT_ALIGN_RIGHT, 200);

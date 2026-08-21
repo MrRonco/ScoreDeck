@@ -263,41 +263,50 @@ static InkBox inkBox(const lv_font_t* f) {
   return { baseline - (int)g.box_h - (int)g.ofs_y, (int)g.box_h };
 }
 
-static void setTextCached(lv_obj_t* o, char* cache, size_t cap, const char* v) {
-  if (strncmp(cache, v, cap - 1) == 0) return;
-  strncpy(cache, v, cap - 1);
-  cache[cap - 1] = '\0';
-  lv_label_set_text(o, cache);
+// setTextCached / setNumCached / setHiddenCached now live in ui.h. They were
+// file-static here for three screens' worth of history, and being unreachable
+// is exactly why ui_ledger.cpp and ui_idle.cpp had to be taught the rule again
+// in Phase 19. Same bodies, same names, one copy.
+
+/** The bottom row's right-hand column, in px: 113 on Standard, 48 on Dense.
+ *  One definition, because buildTile(), the situation vocabulary and the
+ *  broadcast vocabulary all key off it and a drifted copy is how the comment
+ *  at buildTile() came to claim 55 px for a 48 px column. */
+static inline int tileRightW(const DensitySpec& d) {
+  return d.tileW - TILE_PAD_X - (TILE_PAD_X + 14 + STATUS_W + 8);
 }
-static void setNumCached(lv_obj_t* o, int32_t* cache, int32_t v) {
-  if (*cache == v) return;
-  *cache = v;
-  char b[8];
-  snprintf(b, sizeof b, "%ld", (long)v);
-  lv_label_set_text(o, b);
-}
+
 /**
- * Give the status the whole bottom row when nothing is sharing it.
+ * Give the status the room the right-hand column is not actually using.
  *
  * The reserve exists so a long status cannot run into the situation chip; with
  * an empty right-hand column there is nothing to run into, and holding 81 px
  * back only truncates. F1 sends "8/21 - 6:30 AM" for a scheduled session and
  * it printed as "8/21 -...".
+ *
+ * The reserve used to be all-or-nothing: 81 px whenever ANYTHING sat on the
+ * right, however short. So "2nd 00:04.7" (11 glyphs, 99 px) ellipsised at 81
+ * beside "SN" — two glyphs — with 63 px of empty row between them. The right
+ * label is right-aligned inside its own box, so its ink only ever occupies the
+ * rightmost `measured` pixels; everything left of that is free. Measure it and
+ * hand the remainder over, never dropping below the 81 px reserve so a chip
+ * that grows on the next poll still has its slot.
  */
-static void setStatusWidth(TileUI& t, const DensitySpec& d, bool rightInUse) {
-  const int leftX = TILE_PAD_X + 14;   // dot 6 + 8 — the row's second edge
-  const int w = rightInUse ? STATUS_W : (d.tileW - TILE_PAD_X - leftX);
+static void setStatusWidth(TileUI& t, const DensitySpec& d, const char* right) {
+  const int leftX  = TILE_PAD_X + 14;   // dot 6 + 8 — the row's second edge
+  const int full   = d.tileW - TILE_PAD_X - leftX;
+  int w = full;
+  if (right && right[0]) {
+    lv_point_t sz;
+    lv_txt_get_size(&sz, right, F_NUM, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    // The right box ends at the tile's inner edge; its ink starts sz.x before that.
+    w = full - sz.x - 8;                // 8 = SP_2, the row's one gutter
+    if (w < STATUS_W) w = STATUS_W;
+    if (w > full)     w = full;
+  }
   if (t.cStatusW == (int16_t)w) return;
   t.cStatusW = (int16_t)w;
   lv_obj_set_width(t.status, w);
-}
-
-static void setHiddenCached(lv_obj_t* o, bool* cache, bool hide) {
-  if (!o) return;                // never panic on a tile that was not built
-  if (*cache == !hide) return;   // cache stores "visible"
-  *cache = !hide;
-  if (hide) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
-  else      lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
 }
 
 // ── build ──────────────────────────────────────────────────────────────────
@@ -488,11 +497,16 @@ static void buildTile(TileUI& t, int idx) {
   // The state dot. The single accent, doing the one job it exists for: saying
   // "this is happening now" without spending luminance, which is already fully
   // committed to encoding state. Hidden unless the game is live.
+  // 10 px, not 6. PLAN item 1.5 costed this as the compensation for taking the
+  // accent off the rail, the idle countdown and the situation chip: with those
+  // gone the dots are what "live" MEANS on this screen, and an exact-rung
+  // census measured only 18.4% of the board's accent on them against the 70%
+  // the same plan set as its own acceptance criterion.
   t.dot = lv_obj_create(t.root);
   lv_obj_remove_style_all(t.dot);
-  lv_obj_set_size(t.dot, 6, 6);
-  lv_obj_set_pos(t.dot, TILE_PAD_X, d.tileH - TILE_PAD_Y - 10);
-  lv_obj_set_style_radius(t.dot, 3, 0);
+  lv_obj_set_size(t.dot, 10, 10);
+  lv_obj_set_pos(t.dot, TILE_PAD_X, d.tileH - TILE_PAD_Y - 12);
+  lv_obj_set_style_radius(t.dot, 5, 0);
   lv_obj_set_style_bg_color(t.dot, C_LIVE, 0);
   lv_obj_set_style_bg_opa(t.dot, LV_OPA_COVER, 0);
   lv_obj_add_flag(t.dot, LV_OBJ_FLAG_HIDDEN);
@@ -506,10 +520,12 @@ static void buildTile(TileUI& t, int idx) {
   // status and the situation chip straight through each other.
   //
   // F_NUM is monospaced at exactly 9.0 px. The longest status the proxy sends
-  // is nine glyphs ("3rd 04:21"), so the left column is 81 px on every tile
-  // and the right-hand label takes whatever is left after a 12 px gutter:
-  // 117 px on Standard, 55 px on Dense. situationText() switches to a
-  // five-glyph vocabulary when that is all the room there is.
+  // is nine glyphs ("3rd 04:21"), so the left column reserves 81 px on every
+  // tile and the right-hand label takes whatever is left after the 8 px
+  // gutter: 248-16-119 = 113 px on Standard, 183-16-119 = 48 px on Dense.
+  // (The comment here used to say 117/55, which was arithmetic from an older
+  // gutter; the numbers matter because situationText() switches to its
+  // five-glyph vocabulary off this width.)
   const int rowY   = d.tileH - TILE_PAD_Y - 15;
   const int leftX  = TILE_PAD_X + 14;      // past the live dot's gutter (6 + 8)
   // Gutter 8 (SP_2): at Dense's 183 px the right column must still hold the
@@ -536,6 +552,13 @@ static void buildTile(TileUI& t, int idx) {
   // Fixed width plus the default LONG_WRAP clips mid-word: "Prime Video" drew
   // as "Prime Vid" with the rest simply gone. An ellipsis at least says that
   // something was cut. Confirmed in desktop scenario 3.
+  //
+  // LONG_DOT does nothing until the height is bounded too — the same omission
+  // the status label above was fixed for at :528, and it silently reappeared
+  // here. Unbounded, LVGL WRAPS: at Dense's 48 px "Prime Video" drew "Prime"
+  // on the row and the rest below the card's bottom edge, off the tile, with
+  // no ellipsis to say so. A viewer reads "Prime" as the broadcaster's name.
+  lv_obj_set_height(t.bcast, (int)lv_font_get_line_height(F_NUM));
   lv_label_set_long_mode(t.bcast, LV_LABEL_LONG_DOT);
   lv_obj_set_pos(t.bcast, rightX, rowY);
   lv_label_set_text(t.bcast, "");
@@ -1047,19 +1070,36 @@ static void onGesture(lv_event_t*) {
 static void layoutFiller(const DensitySpec& d, uint8_t used, uint8_t per) {
   const uint8_t usedRows = (used + d.cols - 1) / d.cols;
   const uint8_t freeRows = d.rows > usedRows ? d.rows - usedRows : 0;
-  if (freeRows == 0 || used == 0) { lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN); return; }
+  const uint8_t tailCols = used % d.cols;          // trailing empties in the last row
+  if (used == 0 || (freeRows == 0 && tailCols == 0)) {
+    lv_obj_add_flag(s_fill, LV_OBJ_FLAG_HIDDEN); return;
+  }
 
-  const int y = d.gridTop + usedRows * (d.tileH + d.gut) + s_gridYOff;
-  const int hMax = freeRows * d.tileH + (freeRows - 1) * d.gut;
-  const int w = d.cols * d.tileW + (d.cols - 1) * d.gut;
-  const int colW = w / 2;
+  // Whole free rows if there are any; otherwise the trailing cells of a
+  // part-full last row. The filler used to refuse the second case outright,
+  // which is why a five-game Roomy board left cell (1,2) holding zero lit
+  // pixels — 12.5% of the panel — whenever the count was not a multiple of
+  // the column count, i.e. most nights.
+  const bool tail = (freeRows == 0);
+  const uint8_t emptyCols = tail ? (uint8_t)(d.cols - tailCols) : d.cols;
+  const int x0 = tail ? d.marg + tailCols * (d.tileW + d.gut) : d.marg;
+  const int y = tail ? d.gridTop + (usedRows - 1) * (d.tileH + d.gut) + s_gridYOff
+                     : d.gridTop + usedRows * (d.tileH + d.gut) + s_gridYOff;
+  const int hMax = tail ? d.tileH : freeRows * d.tileH + (freeRows - 1) * d.gut;
+  const int w = emptyCols * d.tileW + (emptyCols - 1) * d.gut;
+  // One column when the hole is one cell wide — two 124 px columns of
+  // "TOR  4  MTL  2" is not a layout, it is a collision.
+  const int cols2 = (w >= 2 * d.tileW) ? 2 : 1;
+  const int colW = w / cols2;
   const int rowsFit = (hMax - 46) / 22;
   const int nRows = rowsFit < FILL_ROWS ? (rowsFit < 0 ? 0 : rowsFit) : FILL_ROWS;
 
   for (int c = 0; c < 2; c++) {
-    lv_obj_set_pos(s_fillHdr[c], 16 + c * colW, 12);
+    // The second column folds under the first when there is only room for one.
+    const int cx = (c < cols2) ? 16 + c * colW : 16;
+    lv_obj_set_pos(s_fillHdr[c], cx, 12);
     for (int r = 0; r < FILL_ROWS; r++) {
-      lv_obj_set_pos(s_fillRow[c][r], 16 + c * colW, 34 + r * 22);
+      lv_obj_set_pos(s_fillRow[c][r], cx, 34 + r * 22);
       lv_label_set_text(s_fillRow[c][r], "");
       if (r >= nRows) lv_obj_add_flag(s_fillRow[c][r], LV_OBJ_FLAG_HIDDEN);
       else            lv_obj_clear_flag(s_fillRow[c][r], LV_OBJ_FLAG_HIDDEN);
@@ -1091,10 +1131,16 @@ static void layoutFiller(const DensitySpec& d, uint8_t used, uint8_t per) {
 
   // Height follows the content, not the hole — a half-empty panel is the same
   // "something is missing" signal in a smaller size.
-  const int rows = fin > nxt ? fin : nxt;
+  if (cols2 == 1) {
+    // Stacked, so the two headings cannot sit on the same line.
+    lv_obj_set_y(s_fillHdr[1], 34 + fin * 22 + 6);
+    for (int r = 0; r < FILL_ROWS; r++)
+      lv_obj_set_y(s_fillRow[1][r], 34 + (fin + 1 + r) * 22 + 6);
+  }
+  const int rows = (cols2 == 1) ? (fin + nxt + 1) : (fin > nxt ? fin : nxt);
   int h = 46 + rows * 22;
   if (h > hMax) h = hMax;
-  lv_obj_set_pos(s_fill, d.marg, y);
+  lv_obj_set_pos(s_fill, x0, y);
   lv_obj_set_size(s_fill, w, h);
   lv_obj_clear_flag(s_fill, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_style_opa(s_fillHdr[0], fin ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
@@ -1241,8 +1287,10 @@ void uiBoardRefresh() {
         lv_label_set_text(t.fldVal[k],  on ? F->rows[k].val : "");
       }
       setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
-      setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
-      setStatusWidth(t, d, g.bcast[0] != '\0');
+      char bc[20];
+      broadcastText(g.bcast, bc, sizeof bc, tileRightW(d) < SIT_FULL_W);
+      setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  bc);
+      setStatusWidth(t, d, bc);
       // State ink already applied above; a leaderboard has no leader side.
       setHiddenCached(t.sit,   &t.cSitVis,   true);
       setHiddenCached(t.bcast, &t.cBcastVis, false);
@@ -1272,11 +1320,25 @@ void uiBoardRefresh() {
       if (t.cSetMode != (int8_t)isSet) {
         if (k == 1) t.cSetMode = (int8_t)isSet;      // after both sides ran
         lv_obj_set_style_text_font(t.abbr[k], isSet ? F_BODY : F_TITLE, 0);
+        // The score reserve is model-aware, because 74 px is sized for a
+        // three-digit college basketball score and a set-scored match never
+        // shows one — the number in that box is the MATCH score, 0/1/2. Held
+        // at a flat 74 it took 74 px from the one model whose left column is
+        // prose rather than a three-letter abbreviation: at Dense the name box
+        // came out 183 - 52 - 68 = 63 px against a 74 px "N. Djokovic", so a
+        // tennis player rendered as "N....". (Note the 68 here never matched
+        // the 74 the box is actually built at, so the name could also run six
+        // pixels under the digits.) Gated on the mode changing, never on the
+        // score changing — a width write per goal is the invalidation
+        // pathology this gate exists to prevent.
+        const int sw = isSet ? 40 : 74;
+        lv_obj_set_width(t.score[k], sw);
+        lv_obj_set_x(t.score[k], d.tileW - TILE_PAD_X - sw);
         if (isSet) {
           // Tennis names are prose and must not run into the score column —
           // "N. Budkov Kjaer" touched the digits at 186 px on the real
           // overnight board. Width-gated; club abbreviations stay free.
-          lv_obj_set_width(t.abbr[k], d.tileW - (TILE_PAD_X + d.badge + 10) - 68);
+          lv_obj_set_width(t.abbr[k], d.tileW - (TILE_PAD_X + d.badge + 10) - sw - 8);
           lv_obj_set_height(t.abbr[k], (int)lv_font_get_line_height(F_BODY));
           lv_label_set_long_mode(t.abbr[k], LV_LABEL_LONG_DOT);
         } else {
@@ -1342,9 +1404,26 @@ void uiBoardRefresh() {
       // Sentinels (lv_color_t is RGB565; round-tripping a state ink through
       // the cache would shift it):
       //   0xFFFFFFFF  si.ink2  — ties and PRE
-      //   0xFFFFFFFE  si.ink   — a FINAL's winner (finals surrender colour)
+      //   0xFFFFFFFE  si.ink2  — a FINAL's winner (finals surrender colour)
       //   0xFFFFFFFD  si.ink3  — the recessive side (FINAL loser, LIVE trailer)
       //
+      // FE used to resolve to si.ink, and on a nine-up board with three finals
+      // the three brightest NUMBERS on the panel were all games that had ended.
+      // Measured on --scenario 0: final winners scored 3526 / 2130 / 2321 on
+      // alpha-weighted salience against live leaders at 1837 / 1484 / 981 /
+      // 816, and even the final LOSER at 1642 beat three of the four.
+      //
+      // The lever is this SENTINEL, not the token. Darkening
+      // kStateInk[GS_FINAL].ink instead would be a 45% ratio regression on
+      // every FINAL team name too, and the team name is the one thing on a
+      // finished tile that must stay first. FE resolving to ink2 moves ONE
+      // element down ONE existing rung: 10.31 -> 7.13:1 as rendered, with the
+      // loser still at ink3 5.91 so the winner/loser ladder survives at 1.21x.
+      // No ink anywhere is darkened; nothing else on any tile changes.
+      //
+      // The abbreviation deliberately does NOT follow it down. si.ink2 is
+      // already the status ink, so a team name at ink2 would render in the
+      // identical grey as the game clock two rows below it on the same tile.
       // The LIVE leader lifts its team colour to 5.5:1, not teamInk()'s 3.5 —
       // the review measured the leader at 3.5 against the trailer's neutral
       // 7.3, so the winning score was the DIMMEST number in the tile. The
@@ -1361,7 +1440,7 @@ void uiBoardRefresh() {
         t.cScoreInk[k] = want;
         lv_obj_set_style_text_color(t.score[k],
             want == 0xFFFFFFFFu ? si.ink2 :
-            want == 0xFFFFFFFEu ? si.ink  :
+            want == 0xFFFFFFFEu ? si.ink2 :
             want == 0xFFFFFFFDu ? si.ink3 : lv_color_hex(want), 0);
       }
 
@@ -1405,7 +1484,8 @@ void uiBoardRefresh() {
       // A third of marks solve to no chip and keep the badge hidden, exactly
       // as before. See chipSolve() in theme.h for why this is a solve and not
       // a brightness test.
-      const LogoChip chip = img ? logoChip(g.league, side[k]->abbr) : LogoChip{ 0, 0 };
+      const LogoChip chip = img ? logoChip(g.league, side[k]->abbr, g.state)
+                                : LogoChip{ 0, 0 };
       const uint32_t chipKey = img ? (chip.opa ? chip.color | 0x1000000u : 1u) : 0u;
       if (t.cChip[k] != chipKey) {
         t.cChip[k] = chipKey;
@@ -1442,14 +1522,18 @@ void uiBoardRefresh() {
     }
 
     setTextCached(t.status, t.cStatus, sizeof t.cStatus, g.status);
-    setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  g.bcast);
 
     // Compact when the right-hand column cannot hold the full vocabulary —
     // which on Dense it cannot. Derived from the same geometry buildTile used,
     // so the two can never disagree about how much room there is.
-    const int rightW = d.tileW - TILE_PAD_X - (TILE_PAD_X + 14 + STATUS_W + 8);
+    const int rightW = tileRightW(d);
+    const bool tight = rightW < SIT_FULL_W;
     char sit[20] = "";
-    situationText(g, sit, sizeof sit, rightW < SIT_FULL_W);
+    situationText(g, sit, sizeof sit, tight);
+    // The broadcaster gets the same treatment the situation string already had.
+    char bc[20];
+    broadcastText(g.bcast, bc, sizeof bc, tight);
+    setTextCached(t.bcast,  t.cBcast,  sizeof t.cBcast,  bc);
     setHiddenCached(t.sit,   &t.cSitVis,   !sit[0]);
     // Amber ONLY for structured leverage; every other situation string stays
     // in the state's ink. Change-cached: this runs for every tile every poll.
@@ -1461,7 +1545,9 @@ void uiBoardRefresh() {
       }
     }
     setHiddenCached(t.bcast, &t.cBcastVis,  sit[0] != '\0');
-    setStatusWidth(t, d, sit[0] != '\0' || g.bcast[0] != '\0');
+    // Whichever of the two actually occupies the slot is what the status has
+    // to clear — not merely whether SOMETHING does.
+    setStatusWidth(t, d, sit[0] ? sit : bc);
     if (sit[0]) setTextCached(t.sit, t.cSit, sizeof t.cSit, sit);
     else        t.cSit[0] = '\0';
 
@@ -1511,7 +1597,13 @@ void uiBoardRefresh() {
                      d.gridTop + r * (d.tileH + d.gut) + yOff);
     }
   }
-  for (; slot < per; slot++) {
+  // To TILES_PER_PAGE, not `per`. s_tile is a zero-initialised static, so an
+  // untouched slot reports gameIdx 0 — a VALID index into g_board — and the
+  // sparser layouts never write past their own `per`. Every slot above it kept
+  // claiming to show g_board[0] forever, which is what the logo fetcher walks
+  // to decide what is on screen. Clearing the whole array is what makes
+  // uiBoardTileGame() answer the question it is asked.
+  for (; slot < TILES_PER_PAGE; slot++) {
     s_tile[slot].gameIdx = -1;
     setHiddenCached(s_tile[slot].root, &s_tile[slot].cUsed, true);
   }
@@ -1526,6 +1618,18 @@ void uiBoardRefresh() {
     for (uint8_t i = 0; i < filled; i++) used[nUsed++] = s_tile[i].gameIdx;
     uiLedgerLayout(uiRailOpen());
     uiLedgerRender(s_order, g_gameCount, used, nUsed, passesFilter);
+    // Hero and row share ONE composition rule, keyed off the tile strip.
+    //
+    // PLAN 4.8 gated the hero on "strip and row both empty" and 4.3 gated the
+    // row on its own k, which at k=1 renders a left-anchored hero above a
+    // centred card: two different alignments on one screen. Rendered, that is
+    // worse than either alone.
+    //
+    // With the strip empty the screen has one column of content, so everything
+    // takes the panel's centre line: the hero at x=146 and a k=1 row at x=276
+    // both centre on 400. With the strip present the grid is in force and the
+    // hero stays on its column.
+    uiHeroCentre(filled == 0, uiLedgerCount() == 0);
   } else {
     layoutFiller(d, filled, per);
   }
@@ -1574,9 +1678,12 @@ static void zoneCApply() {
   lv_color_t ink = C_INK2;
 
   switch (g_net) {
-    case NET_NOWIFI:  snprintf(buf, sizeof buf, "NO WI-FI"); ink = C_WARN; break;
-    case NET_NOPROXY: snprintf(buf, sizeof buf, "NO PROXY"); ink = C_WARN; break;
-    case NET_ERR:     snprintf(buf, sizeof buf, "PROXY UNREACHABLE"); ink = C_WARN; break;
+    // kNetLabel, not a local copy — see state.h. Three tables for one enum is
+    // how "NO PROXY" / "no proxy configured" / "no proxy" came to be the same
+    // state on three surfaces.
+    case NET_NOWIFI:  snprintf(buf, sizeof buf, "%s", kNetLabel[NET_NOWIFI]);  ink = S_ALERT; break;
+    case NET_NOPROXY: snprintf(buf, sizeof buf, "%s", kNetLabel[NET_NOPROXY]); ink = S_ALERT; break;
+    case NET_ERR:     snprintf(buf, sizeof buf, "%s", kNetLabel[NET_ERR]);     ink = S_ALERT; break;
     case NET_STALE: {
       const char* t = lastGoodClock();
       if (t[0]) snprintf(buf, sizeof buf, "AS OF %s", t);
@@ -1584,7 +1691,10 @@ static void zoneCApply() {
       ink = C_WARN;
       break;
     }
-    case NET_BOOT:    snprintf(buf, sizeof buf, "STARTING"); break;
+    // NEUTRAL. Booting is not a fault — the web console painted it as a red
+    // "bad" pill, which told a user something was broken during the four
+    // seconds every panel spends starting up.
+    case NET_BOOT:    snprintf(buf, sizeof buf, "%s", kNetLabel[NET_BOOT]); break;
     default:
       if (s_deltaCount && millis() < s_deltaUntil) {
         snprintf(buf, sizeof buf, "+%u NEW", (unsigned)s_deltaCount);
@@ -1685,14 +1795,15 @@ void uiSetStatus() {
   }
   // Tagged for display, plain for measurement — recolor tags must not count
   // toward the pill's content width.
+  // The pill names the FILTER; zone A already states the live count, 116 px to
+  // its left, in the same accent. Saying one number twice consumed 67.8% of the
+  // board's entire A_LIVE budget — the loudest thing on the screen was a header
+  // repeating itself, while the dots that mark the actual live games had 18.4%.
+  // The count also carried a raw "#3be0c0" recolour literal, invisible to any
+  // grep for the token it was copying.
   char pill[44], plain[30];
-  if (fLive) {
-    snprintf(pill, sizeof pill, "%s · #3be0c0 %u LIVE#", name, fLive);
-    snprintf(plain, sizeof plain, "%s · %u LIVE", name, fLive);
-  } else {
-    snprintf(pill, sizeof pill, "%s", name);
-    snprintf(plain, sizeof plain, "%s", name);
-  }
+  snprintf(pill, sizeof pill, "%s", name);
+  snprintf(plain, sizeof plain, "%s", name);
   setTextCached(s_pillLbl, c_pill, sizeof c_pill, pill);
   {
     // The pill is content-sized; read back what LVGL decided so the page

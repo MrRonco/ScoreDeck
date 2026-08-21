@@ -14,7 +14,8 @@
 #include "../ui/imgscale.h"
 
 // Cache hit rate answers "why are my tiles letter badges", which is almost
-// always because the logo build was never run.
+// always because the logo build was never run. Counted in logoResolve(), the
+// one path both getters share — see the note there.
 static uint16_t s_hits, s_misses;
 uint16_t logoCacheHits()   { return s_hits; }
 uint16_t logoCacheMisses() { return s_misses; }
@@ -43,17 +44,24 @@ struct Slot {
   lv_img_dsc_t dsc;
   uint32_t    lastUse;
   bool        miss;           // 404 — do not ask again this boot
-  // Solved once, here, because this runs on the core-0 fetch task where a
-  // 2,300-op scan is free against the HTTP round trip that precedes it. Doing
-  // it at draw time would repeat it on every repaint of every tile.
-  LogoChip    chip;
-  // Pre-scaled variants (badge 26/30/38, idle 34, hero 52 — at most three
-  // distinct sizes are ever live at once). Freed when the slot is evicted;
+  // Solved here, because this runs on the core-0 fetch task where a 2,300-op
+  // scan is free against the HTTP round trip that precedes it. Doing it at
+  // draw time would repeat it on every repaint of every tile.
+  //
+  // FOUR of them, one per surface ground, indexed like kStateInk. The mark
+  // does not change but the plate under it does, and 6 of the 62 shipped
+  // marks sit on opposite sides of the threshold on different surfaces.
+  LogoChip    chip[4];
+  // Pre-scaled variants. FOUR, not three. The inventory is: hero 52, tile
+  // badge 26/30/38 (one live per density), idle NEXT UP 34, and results card
+  // 24 — so a team on the hero, a tile, the idle card and a results card
+  // wants four at once. The results card is the newest consumer and it is
+  // what pushed this over. Freed when the slot is evicted;
   // never freed mid-tenancy, so a hidden consumer's src pointer stays valid
   // for exactly as long as the slot itself does — the same lifetime the
   // 48 px dsc already has.
   struct Scaled { uint16_t size; uint8_t* data; lv_img_dsc_t dsc; };
-  Scaled      sc[3];
+  Scaled      sc[4];
   uint8_t     scN;
 };
 
@@ -78,39 +86,67 @@ static Slot* victim() {
   return best;
 }
 
-const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
+/**
+ * Resolve a team to a slot holding a drawable blob, counting the hit or miss.
+ *
+ * ONE place, because the count has to follow what the SCREEN got. It used to
+ * live in logoGet(), which every consumer stopped calling when they moved to
+ * logoGetScaled() for their own size — six callers, none of them counted — so
+ * the figure was structurally pinned at "0 hit, 0 miss" and the console's Logo
+ * cache row said nothing. That row exists to answer "why are my tiles letter
+ * badges", which is the question a dead counter is worst at.
+ */
+static Slot* logoResolve(const char* league, const char* abbr) {
   // Leaderboard and grid tiles have no team on a side, so they ask with an
   // empty abbreviation. That is not a cache miss to be filled — the proxy has
   // nothing to give, and requesting it produced a 400 on every single refresh.
+  // It is not a miss to be COUNTED either: it would dilute the ratio with rows
+  // that were never going to have a mark.
   if (!abbr || !*abbr) return nullptr;
   char key[16];
   snprintf(key, sizeof key, "%s:%s", league, abbr);
   Slot* s = find(key);
-  if (!s) return nullptr;
-  s->lastUse = ++s_tick;
-  const bool got = !(s->miss || !s->data);
+  const bool got = s && !s->miss && s->data;
   got ? (void)s_hits++ : (void)s_misses++;
-  return got ? &s->dsc : nullptr;
+  if (!got) return nullptr;
+  s->lastUse = ++s_tick;
+  return s;
+}
+
+const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
+  Slot* s = logoResolve(league, abbr);
+  return s ? &s->dsc : nullptr;
 }
 
 const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t size) {
-  if (!abbr || !*abbr || !size) return nullptr;
-  char key[16];
-  snprintf(key, sizeof key, "%s:%s", league, abbr);
-  Slot* s = find(key);
-  if (!s || s->miss || !s->data) return nullptr;
-  s->lastUse = ++s_tick;
+  if (!size) return nullptr;
+  Slot* s = logoResolve(league, abbr);
+  if (!s) return nullptr;
   if (size == LOGO_SIZE) return &s->dsc;
   for (uint8_t i = 0; i < s->scN; i++)
     if (s->sc[i].size == size) return &s->sc[i].dsc;
-  if (s->scN >= 3) {
-    // A fourth concurrent size would mean a design change; refuse loudly in
-    // the log rather than silently evicting a variant something may hold.
-    Serial.printf("[logo] %s: >3 scaled sizes requested (%u)\n", key, size);
-    return &s->dsc;
+  if (s->scN >= 4) {
+    // REFUSE, and return NOTHING — never the 48 px original.
+    //
+    // This used to hand back &s->dsc, the native descriptor, to a caller that
+    // had asked for `size`. The caller has no way to detect that: it sets the
+    // image source and LVGL draws it at whatever the descriptor says. On the
+    // panel that rendered 48 px club marks inside 24 px results-card slots,
+    // overlapping the abbreviation and the word "Final" on every card — the
+    // caller was asking for a quarter of the area it got.
+    //
+    // Every consumer already treats nullptr as "no logo" and falls back to the
+    // colour badge, which is correct and looks deliberate. A missing mark is a
+    // smaller error than a mark four times its slot.
+    Serial.printf("[logo] %s:%s: >4 scaled sizes requested (%u) — no logo\n",
+                  league, abbr, size);
+    return nullptr;
   }
   uint8_t* buf = (uint8_t*)heap_caps_malloc((size_t)size * size * 3, MALLOC_CAP_SPIRAM);
-  if (!buf) return &s->dsc;
+  // Same refusal as above, same reason: a caller that asked for `size` cannot
+  // tell it was handed 48, so PSRAM pressure would render full-size club marks
+  // inside 24 px slots rather than degrading to the colour badge.
+  if (!buf) return nullptr;
   imgScaleRgb565A8(s->data + 4, LOGO_SIZE, LOGO_SIZE, buf, size, size);
   Slot::Scaled& v = s->sc[s->scN++];
   v.size = size;
@@ -124,9 +160,9 @@ const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t
   return &v.dsc;
 }
 
-LogoChip logoChip(const char* league, const char* abbr) {
+LogoChip logoChip(const char* league, const char* abbr, uint8_t surf) {
   LogoChip none = { 0, 0 };
-  if (!abbr || !*abbr) return none;
+  if (!abbr || !*abbr || surf > SI_HERO) return none;
   char key[16];
   snprintf(key, sizeof key, "%s:%s", league, abbr);
   Slot* s = find(key);
@@ -135,7 +171,7 @@ LogoChip logoChip(const char* league, const char* abbr) {
   // double-counting would make the cache-effectiveness figure on the
   // diagnostics page read half what it is.
   if (!s || s->miss || !s->data) return none;
-  return s->chip;
+  return s->chip[surf];
 }
 
 bool logoKnown(const char* league, const char* abbr) {
@@ -210,13 +246,16 @@ static void logoTask(void*) {
     s->dsc.data = s->data + 4;
     // Solve the ground BEFORE g_logoArrived is published, or the board can
     // draw the mark for one frame with a stale chip from the evicted team.
-    s->chip = chipSolve(s->data + 4, LOGO_SIZE, LOGO_SIZE, kStateInk[GS_LIVE].fill);
+    for (uint8_t g = 0; g < 4; g++)
+      s->chip[g] = chipSolve(s->data + 4, LOGO_SIZE, LOGO_SIZE, kStateInk[g].fill);
   } else {
-    s->chip.opa = 0;
+    for (uint8_t g = 0; g < 4; g++) s->chip[g].opa = 0;
   }
   if (ok) g_logoArrived = true;
-  Serial.printf("[logo] %s %s (http %d) chip=%06X opa=%u\n", s_want,
-                ok ? "ok" : "miss", status, (unsigned)s->chip.color, (unsigned)s->chip.opa);
+  Serial.printf("[logo] %s %s (http %d) chips=%c%c%c%c\n", s_want,
+                ok ? "ok" : "miss", status,
+                s->chip[GS_PRE].opa   ? 'P' : '-', s->chip[GS_LIVE].opa  ? 'L' : '-',
+                s->chip[GS_FINAL].opa ? 'F' : '-', s->chip[SI_HERO].opa  ? 'H' : '-');
   s_inFlight = false;
   vTaskDelete(nullptr);
 }
@@ -249,6 +288,15 @@ bool logoRequest(const char* league, const char* abbr) {
   return true;
 }
 
+/** Request the first side of this game we have no blob for, away before home
+ *  so the marks fill in the reading order they are drawn in. True when this
+ *  game had something to ask for, which ends the tick — one logo per call. */
+static bool logoWantPair(const Game& g) {
+  if (!logoKnown(g.league, g.away.abbr)) { logoRequest(g.league, g.away.abbr); return true; }
+  if (!logoKnown(g.league, g.home.abbr)) { logoRequest(g.league, g.home.abbr); return true; }
+  return false;
+}
+
 /**
  * Ask for one missing logo per call, for a team actually on screen. Called from
  * loop() so it never competes with the state poll for the single TLS slot.
@@ -259,13 +307,42 @@ void logoTick() {
   // 48-game night wants 96 logos against a 36-slot cache — every refresh would
   // evict something it was about to need and fetch it again, forever. Bounding
   // the working set to one page is what makes the cache a cache.
+  //
+  // "On screen" is THREE surfaces, not one. This used to walk the tile strip
+  // alone — which in the FEATURE layout is the one surface whose teams the
+  // user is NOT looking at. The hero is excluded from a tile slot by
+  // construction (ui_board.cpp skips `i == heroIdx`), and a ledger final never
+  // had a slot to begin with. So on a quiet night with a single live game the
+  // strip is EMPTY, this loop had nothing to iterate, and a cold cache stayed
+  // cold forever: every mark on the panel a letter badge, with no way back
+  // short of a busier slate promoting the board to a grid. It survived because
+  // a warm cache from an earlier grid render hid it — until a reflash, which
+  // clears PSRAM and lands straight on FEATURE.
+  //
+  // Hero first: it carries the largest marks, so it is what the eye misses.
+  const int8_t hero = uiHeroGameIdx();
+  if (hero >= 0 && hero < g_gameCount && logoWantPair(g_board[hero])) return;
+
   for (uint8_t slot = 0; slot < TILES_PER_PAGE; slot++) {
     const int8_t gi = uiBoardTileGame(slot);
     if (gi < 0 || gi >= g_gameCount) continue;
-    const Game& g = g_board[gi];
-    if (!logoKnown(g.league, g.home.abbr)) { logoRequest(g.league, g.home.abbr); return; }
-    if (!logoKnown(g.league, g.away.abbr)) { logoRequest(g.league, g.away.abbr); return; }
+    if (logoWantPair(g_board[gi])) return;
   }
+
+  const int nCards = uiLedgerCount();
+  for (int k = 0; k < nCards; k++) {
+    const int8_t gi = uiLedgerGame((uint8_t)k);
+    if (gi < 0 || gi >= g_gameCount) continue;
+    if (logoWantPair(g_board[gi])) return;
+  }
+
+  // FOUR surfaces. The idle screen's NEXT UP card draws two marks of its own
+  // and belongs to no board layout, so none of the walks above can reach it.
+  // It is also the surface most likely to be the ONLY thing on screen — a
+  // fresh install, or any morning before the first game — which is exactly
+  // when nothing else is around to have warmed the cache for it.
+  const Game* nx = uiIdleNextGame();
+  if (nx && logoWantPair(*nx)) return;
 }
 
 

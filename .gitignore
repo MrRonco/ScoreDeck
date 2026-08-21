@@ -31,3 +31,13 @@ firmware/ScoreDeck/src/dev_defaults.h
 # The portal source is authored as HTML and generated into svc/portal.h by
 # tools/embed-portal.mjs. BOTH are tracked: the header must be in the repo so
 # building the firmware never requires node.
+
+# Agent worktrees — transient, never committed.
+.claude/worktrees/
+
+# First-pass audit documents. Untracked by the owner's choice; two `git add -A`
+# runs swept them into a pull request before this guard existed.
+/PLAN.md
+/REVIEW-*.md
+/docs/colour-system-review.md
+/web-board.png

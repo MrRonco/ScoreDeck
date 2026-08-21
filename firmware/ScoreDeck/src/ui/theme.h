@@ -87,13 +87,22 @@
 #define A_LIVE_P2 lv_color_hex(0x39DBBD)   // L* 79.2
 #define A_LIVE_P3 lv_color_hex(0x39DFBD)   // L* 80.4
 #define A_LIVE_P4 lv_color_hex(0x3BE0C0)   // L* 81.8  peak (== A_LIVE)
-#define C_LIVE_SD lv_color_hex(0x2A9E8C)   // the same hue, for LABELS not dots
-// The BODY-TEXT member of the live family, solved rather than picked. C_LIVE_SD
-// measures 4.63:1 on the live tile fill — it clears AA by 2.9%, which is the
-// definition of marginal — and 4.15:1 on the hero surface, which fails. This is
-// the first point on the C_LIVE hue ray clearing 5.5:1 on every surface it can
-// sit on: 6.15 (live), 5.52 (hero), 8.13 (plate). Use it for any live-state
-// SENTENCE OR VALUE; keep C_LIVE_SD for tracked caps labels only.
+// C_LIVE_SD (#2A9E8C) IS GONE. It measured 4.63:1 on the live tile — clearing
+// AA by 2.9%, the definition of marginal — and 4.15:1 on the hero, which fails
+// outright; and at L* 58.8 / chroma 36 it read as a TEAM colour rather than a
+// signal. Its five sites were routed by meaning, not by hue: the sports meter's
+// "in use" ticks became INK_3 because they are structure, the league pill's
+// border became EDGE_HI because it is a border, and the one site that genuinely
+// meant "live" took C_LIVE_TX below. PLAN item 1.8.
+//
+// The BODY-TEXT member of the live family, solved rather than picked. This is
+// the first point on the A_LIVE hue ray clearing 5.5:1 on every surface it can
+// sit on: 6.15 (live), 5.52 (hero), 8.13 (plate). Use it for a live-state
+// SENTENCE OR VALUE — a running clock, a "3 LIVE NOW" count — where a dot would
+// be wrong and the flat accent would be too loud. PLAN 1.8 proposed deleting
+// this too, on the grounds that it had zero style writes; it is kept instead
+// and given the two uses it was solved for, because a solved token with a
+// declared job is worth more than one fewer #define.
 #define C_LIVE_TX lv_color_hex(0x30B89D)
 // S_ALERT means SOMETHING DEMANDS ATTENTION RIGHT NOW, and it is rationed so
 // that it can. Two uses, both rare by construction:
@@ -114,6 +123,13 @@
 #define OPA_EDGE   40
 #define OPA_SPEC  120
 
+// The full-screen dismissal ground behind a sheet or an alert. Two files had
+// this as the same bare literal, one at opa 150 and one at 158; it is the
+// plate with the blue pulled out, so it darkens what is behind without
+// tinting it. Not C_PLATE: the scrim is drawn OVER the plate and must read as
+// a step down from it.
+#define C_SCRIM   lv_color_hex(0x04070C)
+
 // ── RADII — one family, five rungs, 4 px apart ─────────────────────────────
 //
 // Twelve ad-hoc radii shipped (0/1/2/3/4/5/6/7/8/10/12/16); two controls on
@@ -124,6 +140,14 @@
 #define R_MD  10   // controls: nav pills, filter pill, zone C, rail rows, toast
 #define R_LG  14   // grid tiles, hero team badge
 #define R_XL  18   // the hero card
+
+// The return affordance's one geometry. 16 px is the frame's own horizontal
+// inset, which is where a back chip belongs and where only one of the six
+// sites had it; 32 px clears the 44 px minimum target with the 12 px of bar
+// padding around it, and BACK_W is a MINIMUM — see backChip().
+#define BACK_X 16
+#define BACK_H 32
+#define BACK_W 48
 
 // ── STATE INK — the state channel (UI.md §2) ───────────────────────────────
 //
@@ -148,6 +172,23 @@ struct StateInk {
   lv_color_t ink;     // leading score, team name
   lv_color_t ink2;    // trailing score, status
   lv_color_t ink3;    // record, broadcast
+  // The bottom shade of glassPanel()'s specular pair — the card's contact
+  // shadow, and the panel's ONLY elevation channel (§4 item 3: the surface
+  // ladder is full, so a modal cannot have a sixth fill).
+  //
+  // It was `lv_color_black()` at opa 90, i.e. a MULTIPLICATIVE black, and a
+  // multiplicative shade scales with the fill it sits under — so it carries
+  // no information of its own. Measured off the rendered board: pre (fill
+  // #102029) and live (fill #182431) both produced a bit-identical #081418,
+  // and final's #080C10 is one of the two values the dithered plate itself
+  // renders. Three of the four states, one strip.
+  //
+  // Solved instead, and solved as a SHADOW: one ground, one darkness. All
+  // four land at L* 4.13 +/- 0.30 (was 3.18-5.58, a 2.40 L* spread) and no
+  // two share a hex, because each keeps its own surface's chromaticity —
+  // final the flattest, hero the bluest. What varies is the CONTRAST between
+  // a card and its own shadow, which is what elevation is.
+  lv_color_t shade;
   // The same colour as `plate`, kept as a 24-bit value. teamInkOn() needs the
   // true sRGB triple to solve a contrast ratio, and lv_color_t is RGB565 on
   // this panel — round-tripping it back through lv_color_to32() would feed the
@@ -179,6 +220,12 @@ uint32_t teamInkOn(uint32_t color, uint32_t surface, float minRatio = 3.5f);
 // The team channel's one ratio and one ceiling. See teamInkFor().
 #define TEAM_RATIO 5.5f
 #define TEAM_CEIL  68.0f
+// The ceiling for a badge FILL, which is a different job from a team INK: a
+// fill carries no text contrast of its own (badgeInk() solves the label on top
+// of it), so it keeps more of its colour. 74 still sits 2.4 L* below the
+// dimmest signal rung, which is what stops a bright kit becoming the brightest
+// chromatic object on the panel.
+#define TEAM_CEIL_FILL 74.0f
 
 /** The ONLY way team colour should reach the screen. Lifts to TEAM_RATIO
  *  against the surface it will actually be drawn on, then clamps lightness to
@@ -240,7 +287,10 @@ void badgeLabelFit(char* dst, size_t cap, const char* src, int size);
 // ── FONT COVERAGE — read before choosing a face ────────────────────────────
 //
 // These are generated with the narrowest glyph range each job needs, which is
-// why the whole set costs less flash than LVGL's built-in Montserrat. The cost
+// why each is small. (The claim that the whole set costs less than LVGL's own
+// Montserrat was wrong by a factor of four: measured from the map, the custom
+// faces are 56,880 B against Montserrat 14's 13,633 B. What is true is that
+// each face carries only the glyphs its job needs.) The cost
 // is that picking the wrong face renders hollow boxes, silently. Three separate
 // bugs have been exactly this.
 //
@@ -275,16 +325,83 @@ extern const lv_font_t* F_MICRO;
 
 void themeInit();
 
-/** Adopt the ONE pressed treatment: a 2 px C_LIVE outline, no fill change.
+/** The primary action: A_LIVE fill, badgeInk()-solved label, R_MD. The only
+ *  button on the panel that carries the accent — see the definition. */
+void uiPrimaryButton(lv_obj_t* b);
+
+/** Draw an lv_keyboard from the token system. Left to lv_theme_default its
+ *  keys render #282B30, which measures 1.04:1 on C_FROST_2. */
+void keyboardTheme(lv_obj_t* kb);
+
+/** THE declaration that an object is a control: hit-testable, and wearing the
+ *  ONE pressed treatment — a 2 px C_LIVE outline, no fill change.
+ *
  *  Press was a fill (#243040) that measured +11 L* on a final tile and +0.85
  *  on the hero surface — feedback that varied 28x and vanished exactly on the
  *  lightest (most promoted) tiles. A border is state-independent, identical
  *  everywhere, and gives the accent its declared second meaning: a teal
- *  outline appears ONLY under a finger. */
+ *  outline appears ONLY under a finger.
+ *
+ *  It sets LV_OBJ_FLAG_CLICKABLE too, because the two were separable and
+ *  therefore separated: the panel shipped 20 glass objects that were
+ *  hit-testable with a press style and no handler, and 8 objects with a
+ *  handler and no press style. One call now says both. Idempotent — a glass
+ *  panel already carries the style, and a second copy would cost a style-list
+ *  entry and a lookup per draw for nothing. */
 void uiPressable(lv_obj_t* o);
 
-/** Frosted panel style — the baked-glass primitive. */
+/** Take an lv_btn into the panel's language: drop lv_theme_default's OWN
+ *  pressed style, then adopt uiPressable()'s.
+ *
+ *  lv_conf.h:101 leaves LV_USE_THEME_DEFAULT on, so every lv_btn_create is
+ *  born with a fourth, undocumented press language — a 20% darken filter
+ *  applied to fill, border and label, i.e. exactly the fill-press this file
+ *  says was replaced. Bolting uiPressable() on top gives a button BOTH.
+ *
+ *  Call it straight after set_size/set_pos and before any colour: in LVGL v8
+ *  those two write LV_STYLE_WIDTH/HEIGHT/X/Y as LOCAL styles, so the reset
+ *  would take the button's geometry with it — this preserves them across it,
+ *  which is the bug uiPrimaryButton() hit first. */
+void uiButton(lv_obj_t* b);
+
+/** The ONE return affordance.
+ *
+ *  It shipped six times at four sizes (54x44, 48x34 three times, 96x32,
+ *  116x36), three radii (8, 9, R_MD) and three x-origins (14, 16, 632), and
+ *  four of the six also carried lv_theme_default's darken on top of nothing
+ *  else. Height, radius, ink, fill, press and x are the helper's; the WORD is
+ *  the caller's, and the chip is content-sized around it exactly as the
+ *  filter pill is — one button, not one width.
+ *
+ *  `word` may be null for the bare chevron. `y` defaults to vertically
+ *  centred, which is right for a bar and wrong for a pane, so a pane passes
+ *  its own. */
+lv_obj_t* backChip(lv_obj_t* parent, const char* word, lv_event_cb_t cb,
+                   lv_coord_t y = -1);
+
+/** A whole-region input surface — a scrim, or the reader's page-turn band —
+ *  made clickable and deliberately left WITHOUT the press outline.
+ *
+ *  This is the one exemption from uiPressable() and it has to be named rather
+ *  than implied, because "clickable with no press treatment" is otherwise the
+ *  exact defect phase 21 removes. The distinction is size and role: the
+ *  outline is a 2 px border on the object it belongs to, and a 2 px border
+ *  around 800x432 is not feedback, it is a frame. These surfaces say what
+ *  they did by CHANGING THE PAGE, which is faster than any highlight. */
+void uiTapZone(lv_obj_t* o);
+
+/** The dismissal ground under a sheet: C_SCRIM at `opa`, then uiTapZone(). */
+void uiScrim(lv_obj_t* o, lv_opa_t opa);
+
+/** Frosted panel style — the baked-glass primitive. A SURFACE, not a control:
+ *  it comes back inert (see glassPanel's definition) and uiPressable() is
+ *  what promotes one. */
 lv_obj_t* glassPanel(lv_obj_t* parent, int x, int y, int w, int h, int radius);
+
+/** Repaint a glass panel's contact shadow for a fill it did not start with.
+ *  Anything that writes bg_color onto a glassPanel() MUST call this with the
+ *  matching StateInk, or the card and its own shadow disagree. */
+void glassSetFill(lv_obj_t* panel, const StateInk& si);
 
 /** Team colour glyph used when no logo blob is present (always, for now).
  *  Fill and label ink are both normalised — see teamFill()/badgeInk(). */

@@ -14,9 +14,16 @@ const lv_img_dsc_t* logoGet(const char* league, const char* abbr);
  *  calibration spike (desktop mock 12) measures; see imgscale.cpp. Scaled
  *  variants are cached per slot and freed with it. */
 const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t size);
-/** The ground this mark should be drawn on, solved once at decode time.
- *  opa 0 means "none needed" — see chipSolve() in theme.h. */
-LogoChip logoChip(const char* league, const char* abbr);
+/** The ground this mark should be drawn on for ONE surface, solved at decode
+ *  time. `surf` indexes kStateInk: GS_PRE / GS_LIVE / GS_FINAL / SI_HERO.
+ *  opa 0 means "none needed" — see chipSolve() in theme.h.
+ *
+ *  Solved per surface rather than once, because the four plates are close but
+ *  not identical: 6 of the 62 shipped marks land on opposite sides of the
+ *  threshold depending on which one they sit on. `--measure chips` in the
+ *  desktop harness prints the census. Four solves at decode is ~9,200 integer
+ *  ops on the core-0 fetch task, after an HTTP round trip — free. */
+LogoChip logoChip(const char* league, const char* abbr, uint8_t surf);
 /** True once we have an answer, hit or 404. Stops us asking forever. */
 bool logoKnown(const char* league, const char* abbr);
 bool logoRequest(const char* league, const char* abbr);

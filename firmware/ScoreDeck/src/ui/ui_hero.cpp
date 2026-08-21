@@ -42,6 +42,7 @@ static lv_obj_t* s_status;
 static lv_obj_t* s_edge;       // leading-row marker
 static lv_obj_t* s_badge[2];
 static lv_obj_t* s_logo[2];
+static uint32_t  c_chip[2] = { 0xFFFFFFFFu, 0xFFFFFFFFu };
 static lv_obj_t* s_name[2];
 static lv_obj_t* s_sub[2];
 static lv_obj_t* s_score[2];
@@ -81,6 +82,7 @@ static int32_t     s_wpCur = -1;      // M5: displayed win-prob width (cache hol
 // visual change. setVis() below has always done this correctly for the nine
 // children; the root was the one object writing its flag raw.
 static bool     s_rootVis;
+static int      s_cx = -1, s_cy = -1;   // cached hero origin
 
 static void odoKill(int k) {
   if (s_odo[k]) { lv_timer_del(s_odo[k]); s_odo[k] = nullptr; }
@@ -194,6 +196,34 @@ static void onTap(lv_event_t*) {
   if (s_gameIdx >= 0 && s_gameIdx < g_gameCount) uiGameOpen(g_board[s_gameIdx]);
 }
 
+/**
+ * Centre the card when it is the only thing on the screen.
+ *
+ * PLAN item 4.8 costed this — "x = (800-508)/2 = 146, y = 48 + (432-268)/2 =
+ * 130. Two cached position writes on one object" — and it did not ship. The
+ * origin was two compile-time macros consumed once, with no game-count branch
+ * anywhere in the file, so on a quiet evening a 508x268 card sat in the
+ * top-left of an 800x480 panel with 118,128 px — 30.8% of the screen — holding
+ * no card pixels at all. That reads as content that failed to arrive.
+ *
+ * Cached, so the common path writes nothing, and applied to the hero and the
+ * results row TOGETHER (see the caller): centring one without the other leaves
+ * them on different left edges, which is worse than either alone.
+ */
+void uiHeroCentre(bool noStrip, bool noRow) {
+  if (!s_root) return;
+  // The two axes answer to different things. Horizontal centring is about the
+  // empty TILE STRIP beside the card; vertical centring is about the empty
+  // RESULTS ROW beneath it. Centring vertically while the row is populated
+  // drops the card straight through it — the hero ends at y=398 and the row
+  // starts at 340.
+  const int x = noStrip ? (SCR_W - HERO_W) / 2 : HERO_X;
+  const int y = (noStrip && noRow) ? (BAR_H + (SCR_H - BAR_H - HERO_H) / 2) : HERO_Y;
+  if (s_cx == x && s_cy == y) return;
+  s_cx = x; s_cy = y;
+  lv_obj_set_pos(s_root, x, y);
+}
+
 // ── build ──────────────────────────────────────────────────────────────────
 void uiHeroInit(lv_obj_t* parent) {
   s_root = glassPanel(parent, HERO_X, HERO_Y, HERO_W, HERO_H, R_XL);
@@ -238,9 +268,19 @@ void uiHeroInit(lv_obj_t* parent) {
     lv_obj_add_flag(s_logo[k], LV_OBJ_FLAG_HIDDEN);
 
     // Created BEFORE the score so it sits behind it in z-order. Centred on
-    // where the digits land, and deliberately allowed to run off the row —
+    // where the digits land, and deliberately allowed to run off the ROW —
     // light does not stop at a boundary, and clipping it to the cell is what
     // would make it read as a shape rather than as illumination.
+    //
+    // Off the row, not off the CARD. That distinction is the phase-15 edit and
+    // it is not a reversal of the line above: this file's own logic already
+    // protects the specular pair with a row test in bloomComposite for exactly
+    // this reason, and the card's 1 px border is the same kind of object. Flat
+    // to the card edge, the glow erased that border on 154 of the 232 rows
+    // where the two border columns are true border pixels, and left the last
+    // interior column at L* 35.59 against a fill of 18.00. It is tapered over
+    // the last 24 visible columns and the 16 rows above the footer — both
+    // ramps, both measured to cost the digits under 0.4 L*.
     // Centred on where the DIGITS actually land, MEASURED rather than derived.
     // Two passes of reasoning from the label box were both wrong: F_HERO's
     // 72 px glyphs do not sit where the line box suggests, and the label is
@@ -292,11 +332,34 @@ void uiHeroInit(lv_obj_t* parent) {
   // Footer band, re-stacked for the refresh: situation (promoted to the
   // accent — it is the one "happening now" fact), then the last scoring play,
   // then the win-probability bar at the very foot.
+  // Two identical accent dots sit on this card 200 px apart and only the top
+  // one was ever registered — so one "live" marker pulsed and the other sat
+  // flat, measured (57,227,198) against (49,215,181) on the same frame.
   s_footDot = dot(s_root, HERO_PAD, 224);
-  s_foot    = lab(s_root, HERO_PAD + 14, 218, C_LIVE, F_NUM, 180);
-  s_footR   = lab(s_root, HERO_W - 164, 218, HI().ink3, F_NUM, 140, LV_TEXT_ALIGN_RIGHT);
-  s_play    = lab(s_root, HERO_PAD, 240, HI().ink2, F_MICRO, HERO_W - 2 * HERO_PAD);
-  lv_obj_set_style_text_letter_space(s_play, 1, 0);
+  pulseRegister(s_footDot);
+  // si.ink3 at full opacity, not C_LIVE at text_opa 180. The situation line is
+  // a fact about the game, like the clock beside it — and drawn blended it
+  // rendered #31AE9C, a colour that is neither the accent nor any declared
+  // token. PLAN item 1.9.
+  s_foot    = lab(s_root, HERO_PAD + 14, 218, HI().ink3, F_NUM);
+  // OUT OF THE GLOW, not under it. Right-aligned to end at HERO_W-144, which
+  // clears the bloom's left edge by ~10 px at both card widths (the sprite is
+  // centred on the score box, so its left edge tracks HERO_W the same way this
+  // does). Under the glow this line measured 2.85:1 median AA-masked — it is
+  // si.ink3, the dimmest tier, sitting in the brightest thing on the panel.
+  // The alternative was cutting the glow, which put a straight edge under the
+  // score; see the note at the top of bloom.cpp. Moving 120 px of tertiary
+  // metadata is the cheaper trade by a wide margin.
+  s_footR   = lab(s_root, HERO_W - 264, 218, HI().ink3, F_NUM, 120, LV_TEXT_ALIGN_RIGHT);
+  // F_BODY, not F_MICRO. This line is upstream prose — "Matthews (24) PP, from
+  // Marner", and on any European or Nordic roster "Ødegaard", "Hedström",
+  // "Kanté". font_micro13 is ASCII 0x20-0x7E only, so every one of those
+  // renders as a hollow box with no warning; theme.h's own rule is that a
+  // string which can come from upstream needs F_BODY. ui_game.cpp:140 already
+  // draws this exact field in F_BODY, so the two screens disagreed about the
+  // same sentence. The letter_space belonged to the 13 px chrome face and is
+  // dropped with it — F_BODY is set at its designed tracking.
+  s_play    = lab(s_root, HERO_PAD, 240, HI().ink2, F_BODY, HERO_W - 2 * HERO_PAD);
 
   // Caches must match the objects' real state at build time, or the first
   // update sees a match and skips the write it was meant to make cheap.
@@ -421,18 +484,32 @@ void uiHeroShow(int8_t gameIdx) {
                          ((k == 1) == g.leaderHome) && (g.away.score != g.home.score);
     // 0xFFFFFFFF = "not leading, use si.ink2" — see the grid for why ink2 is
     // never round-tripped through the cache.
-    // Same emphasis rule as the tiles: the leader lifts to 5.5:1, the
-    // trailer drops to ink3, ties stay ink2. The hero only ever shows live.
-    uint32_t want;
-    if (g.away.score == g.home.score)
-      want = 0xFFFFFFFFu;
-    else
-      want = leading ? teamInkFor(side[k]->color, si.fill) : 0xFFFFFFFEu;
+    //
+    // The tiles drop the trailer to ink3. The hero CANNOT, and this is the one
+    // place the two surfaces are allowed to disagree, because the hero is the
+    // only cell with a glow behind the digits. Measured on --scenario 10 and
+    // --scenario 3, ink3 against its AA-masked local background: 3.15:1 and
+    // 3.16:1 worst, with 470 of 767 and 1,017 of 2,332 glyph pixels under the
+    // 4.5:1 floor. The same pixels in si.ink2 measure 5.00:1 and 5.02:1 worst,
+    // none below floor. theme.h's own table already calls ink2 "trailing
+    // score"; the hero was the file disagreeing with it.
+    //
+    // Nothing is lost by it. The hierarchy on this card is carried by HUE —
+    // the leader is in its team's colour and the trailer is neutral — so the
+    // leader/trailer distinction survives, and a tie has no leader to confuse
+    // it with. The row stencil in bloomComposite is the primary fix for the
+    // footer; it cannot help here, because the glow is centred on the LEADING
+    // row and the trailing digits sit ~84 px from that centre in whichever
+    // direction the lead runs.
+    //
+    // `leading` already requires the scores to differ, so the tie sentinel and
+    // the trailer sentinel now name the same colour and one of the two goes.
+    const uint32_t want = leading ? teamInkFor(side[k]->color, si.fill)
+                                  : 0xFFFFFFFFu;
     if (c_scoreInk[k] != want) {
       c_scoreInk[k] = want;
       lv_obj_set_style_text_color(s_score[k],
-          want == 0xFFFFFFFFu ? si.ink2 :
-          want == 0xFFFFFFFEu ? si.ink3 : lv_color_hex(want), 0);
+          want == 0xFFFFFFFFu ? si.ink2 : lv_color_hex(want), 0);
     }
 
     // The signature. Only the leading side, only while the game is live —
@@ -448,10 +525,14 @@ void uiHeroShow(int8_t gameIdx) {
       else                     bloomComposite(s_bloom[k], glow, si.fill);
     }
 
+    // ONE owner for the badge's fill and label: the chip block below. This
+    // used to write the team colour here as well, which with a chip in play is
+    // two owners for one property — the classic shape of the bug that made the
+    // abbreviation show through the logo. Record the colour, invalidate the
+    // chip, and let the one block that knows about both do the writing.
     if (c_color[k] != side[k]->color) {
       c_color[k] = side[k]->color;
-      teamBadgeSet(s_badge[k], side[k]->color);
-      lv_label_set_text(lv_obj_get_child(s_badge[k], 0), side[k]->abbr);
+      c_chip[k]  = 0xFFFFFFFFu;
     }
 
     // Keyed on the TEAM, not the descriptor pointer: logo slots are a static
@@ -465,7 +546,27 @@ void uiHeroShow(int8_t gameIdx) {
       if (img) lv_img_set_src(s_logo[k], img);
     }
     setVis(s_logo[k],  &c_logoVis[k],  img == nullptr);
-    setVis(s_badge[k], &c_badgeVis[k], img != nullptr);
+
+    // The badge does double duty, as it does on a board tile: without a logo
+    // it IS the fallback badge, with one it becomes the CHIP the mark sits on.
+    // The hero cell is the LIGHTEST surface on the panel and carries the
+    // largest marks at 52 px, so a mark that vanishes here is the most visible
+    // failure of the four. Solved against SI_HERO, which is that cell's own
+    // ground and not any game state.
+    const LogoChip chip = img ? logoChip(g.league, side[k]->abbr, SI_HERO)
+                              : LogoChip{ 0, 0 };
+    const uint32_t key = img ? (chip.opa ? chip.color | 0x1000000u : 1u) : 0u;
+    if (c_chip[k] != key) {
+      c_chip[k] = key;
+      if (img && chip.opa) {
+        lv_obj_set_style_bg_color(s_badge[k], lv_color_hex(chip.color), 0);
+        lv_label_set_text(lv_obj_get_child(s_badge[k], 0), "");
+      } else if (!img) {
+        teamBadgeSet(s_badge[k], side[k]->color);      // restores fill AND ink
+        lv_label_set_text(lv_obj_get_child(s_badge[k], 0), side[k]->abbr);
+      }
+    }
+    setVis(s_badge[k], &c_badgeVis[k], img && !chip.opa);
   }
 
   const bool edgeOn = (g.state == GS_LIVE) && (g.away.score != g.home.score);

@@ -2,9 +2,45 @@
 // Copyright (C) 2026 Franco Raso
 #pragma once
 #include <lvgl.h>
+#include <stdio.h>
+#include <string.h>
 #include "../core/types.h"
 
 enum Screen : uint8_t { SCR_BOARD = 0, SCR_IDLE, SCR_GAME, SCR_STANDINGS, SCR_NEWS, SCR_LINEUP, SCR_SETUP, SCR_SETTINGS };
+
+// ── change caches ──────────────────────────────────────────────────────────
+// The one repaint rule on this panel: never write a property that already
+// holds the value. LVGL invalidates on the WRITE, not on the change —
+// lv_label_set_text re-lays the run and invalidates for a byte-identical
+// string, and add/clear_flag(HIDDEN) invalidates the object's whole area
+// whether or not the flag moved.
+//
+// These three were file-statics in ui_board.cpp, and that is the WHOLE reason
+// the other two rebuilding screens grew the defects Phase 19 fixes: the idle
+// screen cleared the NEXT UP card's hidden flag unconditionally every tick —
+// 71,446 px once a second, 143% of pulse.cpp:16's own per-tick ceiling, on the
+// screen the panel shows for twenty hours a day — and the ledger rewrote all
+// three cards per poll. The discipline existed and was unreachable.
+static inline void setTextCached(lv_obj_t* o, char* cache, size_t cap, const char* v) {
+  if (strncmp(cache, v, cap - 1) == 0) return;
+  strncpy(cache, v, cap - 1);
+  cache[cap - 1] = '\0';
+  lv_label_set_text(o, cache);
+}
+static inline void setNumCached(lv_obj_t* o, int32_t* cache, int32_t v) {
+  if (*cache == v) return;
+  *cache = v;
+  char b[8];
+  snprintf(b, sizeof b, "%ld", (long)v);
+  lv_label_set_text(o, b);
+}
+static inline void setHiddenCached(lv_obj_t* o, bool* cache, bool hide) {
+  if (!o) return;                // never panic on a tile that was not built
+  if (*cache == !hide) return;   // cache stores "visible"
+  *cache = !hide;
+  if (hide) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  else      lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
 
 /** Generate the background plate into PSRAM and park it behind every screen.
  *  Call once, before uiInit(). Costs ~230 ms at boot and nothing after —
@@ -60,6 +96,8 @@ lv_obj_t* uiRailRoot();
 
 // Setup / onboarding
 void uiSetupInit(lv_obj_t* parent);
+/** Force the on-device keyboard open — harness only, so it is reviewable. */
+void uiSetupShowKeyboard();
 bool uiSetupActive();
 /** Root of the setup screen, or nullptr before uiSetupInit(). */
 lv_obj_t* uiSetupRoot();
@@ -101,6 +139,10 @@ bool uiBoardPage(int delta);
 // there is nothing to promote. See ui_hero.cpp for why this exists at all.
 void uiHeroInit(lv_obj_t* parent);
 void uiHeroShow(int8_t gameIdx);
+/** Centre the hero when the tile strip AND the results row are both empty. */
+void uiHeroCentre(bool noStrip, bool noRow);
+/** How many result cards the ledger last filled. */
+int  uiLedgerCount();
 void uiHeroHide();
 lv_obj_t* uiHeroRoot();
 int8_t uiHeroGameIdx();
@@ -115,11 +157,21 @@ void uiLedgerHide();
 /** Reposition the ledger's columns for the rail state — a one-shot layout
  *  write on toggle, not a per-poll cost. */
 void uiLedgerLayout(bool railOpen);
+/** As above, but for an explicit card count — the row centres when k < 3. */
+void uiLedgerLayoutK(bool railOpen, int k);
 lv_obj_t* uiLedgerRoot();
+/** Game index shown in result card `k`, or -1 when the card is empty or the
+ *  whole row is hidden. The visibility gate matters: uiLedgerHide() leaves the
+ *  slot map intact, so without it a grid layout would keep reporting the teams
+ *  the featured layout was showing before it. */
+int8_t uiLedgerGame(uint8_t k);
 
 /** Game index shown in tile `slot`, or -1. Lets the logo fetcher bound its
  *  working set to what is actually on screen. */
 int8_t uiBoardTileGame(uint8_t slot);
+/** The fixture on the idle screen's NEXT UP card, or nullptr when idle is not
+ *  showing. The fourth logo surface. */
+const Game* uiIdleNextGame();
 
 /** A one-line confirmation, centred, 1.2 s. For changes the user made but
  *  cannot see the cause of — density being the first. */

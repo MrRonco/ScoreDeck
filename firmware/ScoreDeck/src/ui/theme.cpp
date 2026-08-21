@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Franco Raso
 #include "theme.h"
 #include <math.h>
+#include <stdio.h>
 #include "../config.h"
 
 // Generated faces — UI.md §9. Archivo Condensed for display, IBM Plex for text.
@@ -26,8 +27,15 @@ LV_FONT_DECLARE(font_num15)
 // The two focal faces. Both are 2 bpp rather than 4 — at 72 px and 96 px the
 // edge is many pixels long, so the extra two bits of coverage buy nothing a
 // desk viewer can see, and they halve the cost of the largest tables we ship.
-LV_FONT_DECLARE(font_hero72)    // digits + '-' ':' 'H' 'M'  — 36 KB
-LV_FONT_DECLARE(font_clock96)   // digits + ':'              — 47 KB
+// Sizes are LINKED FLASH, read from the map file, not the size of the .c on
+// disk — the two differ by roughly 6x and the numbers here used to be the
+// latter. Measured from flasher/image/ScoreDeck.ino.map:
+//   body15 15,997  clock96 7,307  display30 6,334  hero72 5,328  num15 5,139
+//   title20 3,996  score46 3,609  micro13 3,586  abbr17 3,060  score38 2,524
+//   = 56,880 B of custom faces, plus 13,633 B of lv_font_montserrat_14 = 68.9 KB.
+// font_micro11 is declared but not linked — nothing draws it.
+LV_FONT_DECLARE(font_hero72)    // digits + '-' ':' 'H' 'M'  — 5,328 B
+LV_FONT_DECLARE(font_clock96)   // digits + ':'              — 7,307 B
 
 const lv_font_t* F_SCORE = &font_score38;
 const lv_font_t* F_SCORE_BIG = &font_score46;
@@ -170,7 +178,32 @@ uint32_t teamInk(uint32_t color) {
 uint32_t teamFill(uint32_t color) {
   // A badge only has to separate from the plate; its own label carries the
   // legibility. Pittsburgh's #000000 would otherwise be a hole in the tile.
-  return lift(color, 0x04070E, 1.6f);
+  //
+  // CEILINGED, reversing PLAN.md:471 — which said explicitly not to put a
+  // ceiling inside the fill path, on the grounds that badgeInk() re-solves the
+  // label on top and a darker fill would be silently compensated. That is true
+  // and it is not the failure that showed up. Unbounded, teamFill lifts SEA's
+  // #99D9D9 to a rendered L* 83.44 — ABOVE A_LIVE's own rendered peak of 81.77
+  // — so a team badge became the brightest chromatic object on the panel, and
+  // BOS's #FFB81C landed at L* 79.87 with chroma 80.4, inside the SIGNAL cell
+  // the whole grammar exists to keep team colour out of. 318 solid px of it on
+  // the standings screen.
+  //
+  // The ceiling is 74, not the team channel's 68: a badge FILL is not a team
+  // INK and does not carry text contrast, so it keeps more of its own colour.
+  // It still sits 2.4 L* below the dimmest signal rung. Measured after the
+  // clamp, badgeInk() on the BOS fill still returns 10.22:1.
+  const uint32_t c = lift(color, 0x04070E, 1.6f);
+  if (lStar(c) <= TEAM_CEIL_FILL) return c;
+  // Same walk teamInkFor() uses: multiplicative, so hue is preserved and chroma
+  // falls with lightness. The FLOOR still wins — a fill that cannot separate
+  // from the plate is worse than one that is slightly too bright.
+  for (int t = 99; t >= 1; t--) {
+    const uint32_t d = scaleRgb(c, t / 100.0f);
+    if (contrast(d, 0x04070E) < 1.6f) break;
+    if (lStar(d) <= TEAM_CEIL_FILL) return d;
+  }
+  return c;
 }
 
 lv_color_t badgeInk(uint32_t fill) {
@@ -281,19 +314,38 @@ LogoChip chipSolve(const uint8_t* px, int w, int h, uint32_t against) {
 // The one exception: final.ink2 keeps its own solve, because the global INK_2
 // (L* 75.6) sits 2.9 L* ABOVE final's deliberately dim primary (L* 78.5) and
 // would merge the tile's first and second tiers.
+//
+// The `shade` column is solved, not picked, and it is solved in RENDERED
+// RGB565 rather than in the declared 24-bit value — every candidate below is
+// an exact RGB565 lattice point, so what is written is what the panel shows.
+// Target L* 4.13, which is the midpoint of what the old multiplicative black
+// actually produced (3.18 on final, 5.58 on pre AND live) and sits 2.2 L*
+// clear of the dithered plate, so a card's shadow still reads as part of the
+// card rather than as a hole through it. Each keeps its own surface's
+// chromaticity, which is what makes four equal-lightness strips four
+// different hexes:
+//
+//   pre    #001018  L* 3.94  a* -2.65  b*  -6.50
+//   live   #001021  L* 4.34  a*  0.13  b* -12.95
+//   final  #081018  L* 4.41  a* -0.56  b*  -5.77
+//   hero   #080C21  L* 3.83  a*  4.21  b* -13.69
 const StateInk kStateInk[4] = {
   // pre — present but recessive
   { lv_color_hex(0x16202E), lv_color_hex(0x2E3A4C),
-    lv_color_hex(0xD2DEEA), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8), 0x16202E },
+    lv_color_hex(0xD2DEEA), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8),
+    lv_color_hex(0x001018), 0x16202E },
   // live — full strength
   { lv_color_hex(0x1B2636), lv_color_hex(0x3A4759),
-    lv_color_hex(0xF3F7FB), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8), 0x1B2636 },
+    lv_color_hex(0xF3F7FB), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8),
+    lv_color_hex(0x001021), 0x1B2636 },
   // final — quieter, but every tier still reads
   { lv_color_hex(0x101825), lv_color_hex(0x232E3E),
-    lv_color_hex(0xB6C4D2), lv_color_hex(0x95A5B7), lv_color_hex(0x8696A8), 0x101825 },
+    lv_color_hex(0xB6C4D2), lv_color_hex(0x95A5B7), lv_color_hex(0x8696A8),
+    lv_color_hex(0x081018), 0x101825 },
   // hero — the lightest surface on the panel, so the brightest inks
   { lv_color_hex(0x222E40), lv_color_hex(0x44526A),
-    lv_color_hex(0xF3F7FB), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8), 0x222E40 },
+    lv_color_hex(0xF3F7FB), lv_color_hex(0xACBCCE), lv_color_hex(0x8696A8),
+    lv_color_hex(0x080C21), 0x222E40 },
 };
 
 void badgeLabelFit(char* dst, size_t cap, const char* src, int size) {
@@ -338,9 +390,16 @@ void themeInit() {
   lv_style_set_text_font(&s_glass, F_BODY);
 
   // Press is an OUTLINE, never a fill — see uiPressable() in theme.h.
+  //
+  // COVER, not 150. A chromatic token drawn at partial opacity is not the
+  // token: lv_color_mix quantises opa to (opa+4)>>3 and blends toward the
+  // surface, losing chroma as well as lightness, so the "teal" outline
+  // rendered L* 49.9-55.9 at chroma 32-34 — inside the TEAM band, 27 L* below
+  // the value it is declared as, i.e. the one colour reserved for "touch this"
+  // came out looking like a team colour. PLAN item 1.10.
   lv_style_init(&s_glassPressed);
-  lv_style_set_border_color(&s_glassPressed, C_LIVE);
-  lv_style_set_border_opa(&s_glassPressed, 150);
+  lv_style_set_border_color(&s_glassPressed, A_LIVE);
+  lv_style_set_border_opa(&s_glassPressed, LV_OPA_COVER);
   lv_style_set_border_width(&s_glassPressed, 2);
 
   lv_style_init(&s_badge);
@@ -391,14 +450,116 @@ static void glassRelayout(lv_event_t* e) {
 }
 
 void uiPressable(lv_obj_t* o) {
+  lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);
+  // Remove-then-add so this is idempotent: a glass panel is BORN carrying the
+  // press style (see glassPanel), and lv_obj_add_style does not dedupe — a
+  // second copy would cost a style-list entry and a lookup on every draw and
+  // change nothing on screen.
+  lv_obj_remove_style(o, &s_glassPressed, LV_STATE_PRESSED);
   lv_obj_add_style(o, &s_glassPressed, LV_STATE_PRESSED);
+}
+
+void uiButton(lv_obj_t* b) {
+  // Geometry is held across the reset. In LVGL v8 lv_obj_set_size()/set_pos()
+  // write LV_STYLE_WIDTH/HEIGHT/X/Y as LOCAL STYLES, so remove_style_all()
+  // takes the button's size and position with it — it collapsed to its label
+  // in the top-left corner the first time uiPrimaryButton() ran.
+  const lv_coord_t w = lv_obj_get_style_width(b, LV_PART_MAIN);
+  const lv_coord_t h = lv_obj_get_style_height(b, LV_PART_MAIN);
+  const lv_coord_t x = lv_obj_get_style_x(b, LV_PART_MAIN);
+  const lv_coord_t y = lv_obj_get_style_y(b, LV_PART_MAIN);
+  lv_obj_remove_style_all(b);              // drop lv_theme_default's own press
+  lv_obj_set_size(b, w, h);
+  lv_obj_set_pos(b, x, y);
+  // bg_opa comes BACK, because remove_style_all() takes it: an lv_btn's fill
+  // is lv_theme_default's, so resetting the theme's press also resets the
+  // reason every button on the settings bar was visible. Caught by looking —
+  // the five tabs and DONE rendered as bare labels on the first pass.
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+  // Deliberately NOT forcing border_width to 0: remove_style_all() already
+  // leaves it there, and the setup card's two buttons carry a real 1 px
+  // C_EDGE_HI rest border that the 2 px press outline simply overrides.
+  uiPressable(b);
+}
+
+lv_obj_t* backChip(lv_obj_t* parent, const char* word, lv_event_cb_t cb,
+                   lv_coord_t y) {
+  // lv_obj_set_size() writes a local STYLE; obj->coords only catches up at the
+  // next layout pass, so the parent measures 0 high at build time and a
+  // centred chip lands at y = -16, hanging half off the top of the bar. Ask
+  // for the layout rather than the style, because a bar may be SIZE_CONTENT.
+  lv_obj_update_layout(parent);
+  lv_obj_t* b = lv_btn_create(parent);
+  lv_obj_set_size(b, BACK_W, BACK_H);
+  // Centred in a bar unless the caller says otherwise; a 404 px pane has no
+  // meaningful vertical centre for a chip that belongs at its top.
+  lv_obj_set_pos(b, BACK_X,
+                 y >= 0 ? y : (lv_obj_get_height(parent) - BACK_H) / 2);
+  uiButton(b);
+  lv_obj_set_style_radius(b, R_MD, 0);
+  lv_obj_set_style_bg_color(b, C_SURF_1, 0);
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+  // Content-sized, exactly as the filter pill is: hand arithmetic disagreed
+  // with the renderer's tracking treatment there and clipped the last glyph.
+  // min_width keeps the bare chevron a 48 px target rather than a 20 px one.
+  lv_obj_set_width(b, LV_SIZE_CONTENT);
+  lv_obj_set_style_min_width(b, BACK_W, 0);
+  lv_obj_set_style_pad_left(b, 12, 0);
+  lv_obj_set_style_pad_right(b, 14, 0);
+  if (cb) lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
+
+  lv_obj_t* l = lv_label_create(b);
+  // F_MICRO is the chrome-label face and it is monospaced, so "< BOARD" and
+  // "< NETWORK" set to the same rhythm. F_ABBR has no glyph for '<' — four
+  // of the six sites carried an F_BODY override for exactly that reason.
+  lv_obj_set_style_text_font(l, F_MICRO, 0);
+  lv_obj_set_style_text_letter_space(l, 1, 0);
+  lv_obj_set_style_text_color(l, C_INK2, 0);
+  if (word && word[0]) {
+    char t[24];
+    snprintf(t, sizeof t, "< %s", word);
+    lv_label_set_text(l, t);
+  } else {
+    lv_label_set_text(l, "<");
+  }
+  lv_obj_center(l);
+  return b;
+}
+
+void uiTapZone(lv_obj_t* o) {
+  // Clickable, but deliberately NOT uiPressable(): a 2 px teal rectangle
+  // around the whole display is not press feedback, and the accent's second
+  // meaning is "touch this", which a full-screen ground is the opposite of.
+  lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void uiScrim(lv_obj_t* o, lv_opa_t opa) {
+  lv_obj_set_style_bg_color(o, C_SCRIM, 0);
+  lv_obj_set_style_bg_opa(o, opa, 0);
+  uiTapZone(o);
+}
+
+void glassSetFill(lv_obj_t* panel, const StateInk& si) {
+  lv_obj_set_style_bg_color(panel, si.plate, 0);
+  lv_obj_t* lo = lv_obj_get_child(panel, 1);   // the shade; see glassPanel
+  if (lo) lv_obj_set_style_bg_color(lo, si.shade, 0);
 }
 
 lv_obj_t* glassPanel(lv_obj_t* parent, int x, int y, int w, int h, int radius) {
   lv_obj_t* o = lv_obj_create(parent);
   lv_obj_remove_style_all(o);
   lv_obj_add_style(o, &s_glass, 0);
+  // The press style stays on the primitive — a panel that is later promoted to
+  // a control gets the panel's press language for free, which is how the board
+  // tiles and the hero card get theirs. What phase 21 takes away is the FLAG:
+  // lv_obj.c:436 makes every lv_obj_create CLICKABLE unconditionally and
+  // lv_obj_pos.c:955 hit-tests on exactly that, so 20 glass SURFACES — top
+  // bars, table cards, settings panes, the game sheet's four panels — lit the
+  // "touch this" outline under a finger and then did nothing, while also
+  // swallowing the tap on its way to whatever was underneath.
   lv_obj_add_style(o, &s_glassPressed, LV_STATE_PRESSED);
+  lv_obj_clear_flag(o, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_style_radius(o, radius, 0);
   lv_obj_set_pos(o, x, y);
   lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
@@ -414,11 +575,22 @@ lv_obj_t* glassPanel(lv_obj_t* parent, int x, int y, int w, int h, int radius) {
   lv_obj_remove_style_all(hi);
   lv_obj_set_style_bg_color(hi, C_LINE, 0);
   lv_obj_set_style_bg_opa(hi, OPA_SPEC, 0);
+  // Decoration, and decoration made of lv_obj_create is HIT-TESTABLE: on a
+  // promoted panel these two strips are 3 px of the card's own top and bottom
+  // edge that take the press and hand it to nothing. Same defect ui_alert.cpp
+  // records for its three raw children, fixed once here instead.
+  lv_obj_clear_flag(hi, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t* lo = lv_obj_create(o);
   lv_obj_remove_style_all(lo);
-  lv_obj_set_style_bg_color(lo, lv_color_black(), 0);
-  lv_obj_set_style_bg_opa(lo, 90, 0);
+  // A SOLVED solid, not black at opa 90. See StateInk.shade: a multiplicative
+  // black scales with the fill under it, so it carries no state of its own —
+  // pre and live both rendered #081418. glassPanel's own fill is C_FROST,
+  // which IS the live plate, so live's solved shade is the right default and
+  // anything that repaints the fill repaints this through glassSetFill().
+  lv_obj_set_style_bg_color(lo, kStateInk[1].shade, 0);   // 1 == GS_LIVE
+  lv_obj_set_style_bg_opa(lo, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(lo, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_add_event_cb(o, glassRelayout, LV_EVENT_SIZE_CHANGED, nullptr);
   lv_obj_set_size(o, w, h);      // fires the callback; must come AFTER the pair
@@ -433,6 +605,12 @@ lv_obj_t* teamBadge(lv_obj_t* parent, const char* abbr, uint32_t color, int size
   const uint32_t fill = teamFill(color);
   lv_obj_set_style_bg_color(b, lv_color_hex(fill), 0);
   lv_obj_clear_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+  // A badge is a mark, never a control — and it is an lv_obj_create, so it is
+  // born hit-testable. Every badge sits INSIDE something tappable (a tile, a
+  // news row, the player sheet), where it was a 26-68 px hole that swallowed
+  // the press. Cleared here rather than at eighteen call sites; ui_lineup and
+  // ui_alert were already doing it by hand at two of them.
+  lv_obj_clear_flag(b, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t* l = lv_label_create(b);
   lv_label_set_text(l, abbr);
@@ -448,4 +626,71 @@ void teamBadgeSet(lv_obj_t* badge, uint32_t color) {
   lv_obj_set_style_bg_color(badge, lv_color_hex(fill), 0);
   lv_obj_t* l = lv_obj_get_child(badge, 0);
   if (l) lv_obj_set_style_text_color(l, badgeInk(fill), 0);
+}
+
+/**
+ * The primary action, and the ONLY place a button carries the accent.
+ *
+ * The first screen anyone ever sees gave equal visual weight to the action
+ * that sets the product up and the action that skips it: both buttons came
+ * out of one lambda in ui_setup.cpp and rendered bit-identical fills of
+ * (41,52,66). A user who taps the wrong one lands on an empty board with no
+ * idea why.
+ *
+ * A_LIVE's second declared meaning is "touch this", so a primary action is
+ * exactly what it is for. The label is solved rather than picked —
+ * badgeInk() returns whichever of plate ink or white survives on the fill,
+ * which is what keeps the teal readable without hard-coding a colour that
+ * only works for one accent.
+ */
+void uiPrimaryButton(lv_obj_t* b) {
+  uiButton(b);                             // the reset, geometry and the press
+  lv_obj_set_style_bg_color(b, A_LIVE, 0);
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(b, R_MD, 0);
+  lv_obj_t* l = lv_obj_get_child(b, 0);
+  if (l) lv_obj_set_style_text_color(l, badgeInk(0x3BE0C0), 0);
+}
+
+/**
+ * The on-device keyboard, drawn from the token system.
+ *
+ * It is 200 of the panel's 480 rows — 41.7% of the screen — inside the
+ * first-run flow, and it was the one surface not drawn from these tokens:
+ * ui_setup.cpp overrode the background and the font and left everything else
+ * to lv_theme_default, whose dark keys render #282B30. That measures 1.04:1
+ * against C_FROST_2 and 1.25:1 against C_SURF_2 — a keyboard whose keys are
+ * very nearly invisible against the surface they sit on.
+ */
+void keyboardTheme(lv_obj_t* kb) {
+  lv_obj_set_style_bg_color(kb, C_PLATE, 0);
+  lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(kb, 0, 0);
+  lv_obj_set_style_pad_all(kb, 6, 0);
+  lv_obj_set_style_pad_gap(kb, 4, 0);
+  // The FONT is deliberately not overridden. LVGL's keyboard labels backspace,
+  // enter, shift and close with LV_SYMBOL_* strings, and its default event
+  // handler dispatches by strcmp against those same strings — so the symbols
+  // cannot be relabelled without breaking the keys, and they only exist in the
+  // built-in Montserrat face. ui_setup.cpp used to set F_BODY here, which
+  // rendered five keys as hollow boxes; nobody saw it because the keyboard was
+  // positioned off-screen. If LV_FONT_DEFAULT ever moves off Montserrat, this
+  // is what breaks — see the note in lv_conf.h.
+
+  // The keys themselves.
+  lv_obj_set_style_bg_color(kb, lv_color_hex(0x1A2436), LV_PART_ITEMS);
+  lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS);
+  lv_obj_set_style_text_color(kb, C_INK, LV_PART_ITEMS);
+  lv_obj_set_style_radius(kb, R_SM, LV_PART_ITEMS);
+  lv_obj_set_style_border_color(kb, C_EDGE, LV_PART_ITEMS);
+  lv_obj_set_style_border_width(kb, 1, LV_PART_ITEMS);
+  // Press is an outline here too, so the keyboard presses like everything else.
+  lv_obj_set_style_border_color(kb, A_LIVE, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_border_width(kb, 2, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(kb, lv_color_hex(0x1A2436), LV_PART_ITEMS | LV_STATE_PRESSED);
+  // CHECKED is what LVGL paints the mode keys with; left alone it is a blue
+  // that belongs to no token on this device.
+  lv_obj_set_style_bg_color(kb, C_SURF_2, LV_PART_ITEMS | LV_STATE_CHECKED);
+  lv_obj_set_style_border_color(kb, C_EDGE_HI, LV_PART_ITEMS | LV_STATE_CHECKED);
+  lv_obj_set_style_text_color(kb, C_INK, LV_PART_ITEMS | LV_STATE_CHECKED);
 }

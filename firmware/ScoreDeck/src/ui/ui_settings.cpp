@@ -89,6 +89,7 @@ static lv_obj_t* s_testLbl;
 static lv_obj_t* s_tzView;
 static lv_obj_t* s_tzBtn[TZ_PER];
 static lv_obj_t* s_tzBtnLbl[TZ_PER];
+static lv_obj_t* s_tzTick[TZ_PER];
 static lv_obj_t* s_tzPageLbl;
 static uint8_t   s_tzPage;
 
@@ -132,12 +133,19 @@ static lv_obj_t* row(lv_obj_t* pane, int idx, const char* title, lv_event_cb_t c
   lv_obj_set_size(r, 736, ROW_H);
   lv_obj_set_pos(r, 16, 16 + idx * ROW_PITCH);
   lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
-  uiPressable(r);
   lv_obj_set_style_radius(r, R_MD, 0);
   lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+  // uiPressable() moved inside the `if`, and the else is the real fix. The
+  // review called the unconditional uiPressable() dead code on the grounds
+  // that a cb-less row never receives CLICKABLE; it is not — lv_obj.c:436
+  // hands EVERY lv_obj_create the flag, and remove_style_all() does not take
+  // it away. So the 12 caption rows on Board, Network and System were
+  // hit-testable, lit the "touch this" outline, and did nothing.
   if (cb) {
-    lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
+    uiPressable(r);
     lv_obj_add_event_cb(r, cb, LV_EVENT_SHORT_CLICKED, nullptr);
+  } else {
+    lv_obj_clear_flag(r, LV_OBJ_FLAG_CLICKABLE);
   }
   if (idx) {
     lv_obj_t* rule = lv_obj_create(pane);
@@ -157,15 +165,22 @@ static lv_obj_t* switchAt(lv_obj_t* r, bool on) {
   lv_obj_remove_style_all(sw);
   lv_obj_set_size(sw, 52, 28);
   lv_obj_set_pos(sw, 736 - 8 - 52, (ROW_H - 28) / 2);
-  lv_obj_set_style_radius(sw, 14, 0);
+  lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, 0);   // a pill, not a rung
   lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
   lv_obj_clear_flag(sw, LV_OBJ_FLAG_SCROLLABLE);
+  // "drawn, not interactive" was the intent and not the behaviour: the switch
+  // is an lv_obj_create, so it was CLICKABLE, so it sat 1,456 px ON TOP of
+  // the row's touch target and took the press — with no handler of its own,
+  // no press style of its own, and no EVENT_BUBBLE anywhere in the tree.
+  // Tapping the switch on "Score alerts" did nothing at all.
+  lv_obj_clear_flag(sw, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t* knob = lv_obj_create(sw);
   lv_obj_remove_style_all(knob);
   lv_obj_set_size(knob, 22, 22);
-  lv_obj_set_style_radius(knob, 11, 0);
+  lv_obj_set_style_radius(knob, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(knob, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(knob, LV_OBJ_FLAG_CLICKABLE);     // 484 px of the same hole
   (void)on;
   return sw;
 }
@@ -387,13 +402,13 @@ static void buildSports(lv_obj_t* p) {
     lv_obj_set_style_bg_color(s_spFam[f], C_SURF_3, 0);
     lv_obj_set_style_bg_opa(s_spFam[f], LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(s_spFam[f], LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_spFam[f], LV_OBJ_FLAG_CLICKABLE);
+    uiPressable(s_spFam[f]);
     lv_obj_add_event_cb(s_spFam[f], onSpFam, LV_EVENT_CLICKED, (void*)(intptr_t)f);
     s_spFamEdge[f] = lv_obj_create(p);
     lv_obj_remove_style_all(s_spFamEdge[f]);
     lv_obj_set_size(s_spFamEdge[f], 3, 34);
     lv_obj_set_pos(s_spFamEdge[f], 13, y);
-    lv_obj_set_style_bg_color(s_spFamEdge[f], C_LIVE, 0);
+    lv_obj_set_style_bg_color(s_spFamEdge[f], C_INK, 0);   // selection is INK_1 (PLAN §6)
     lv_obj_set_style_bg_opa(s_spFamEdge[f], LV_OPA_COVER, 0);
     lv_obj_add_flag(s_spFamEdge[f], LV_OBJ_FLAG_HIDDEN);
     s_spFamLbl[f] = label(p, 28, y + 10, kFamName[f], kStateInk[GS_LIVE].ink3, F_MICRO);
@@ -411,18 +426,19 @@ static void buildSports(lv_obj_t* p) {
     lv_obj_set_style_bg_opa(s_spPill[i], LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_spPill[i], 1, 0);
     lv_obj_clear_flag(s_spPill[i], LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_spPill[i], LV_OBJ_FLAG_CLICKABLE);
+    uiPressable(s_spPill[i]);
     lv_obj_add_event_cb(s_spPill[i], onSpPill, LV_EVENT_CLICKED, (void*)(intptr_t)i);
     s_spPillEdge[i] = lv_obj_create(s_spPill[i]);
     lv_obj_remove_style_all(s_spPillEdge[i]);
+    lv_obj_clear_flag(s_spPillEdge[i], LV_OBJ_FLAG_CLICKABLE);   // 156 px hole
     lv_obj_set_size(s_spPillEdge[i], 3, 52);
     lv_obj_set_pos(s_spPillEdge[i], 0, 0);
-    lv_obj_set_style_bg_color(s_spPillEdge[i], C_LIVE, 0);
+    lv_obj_set_style_bg_color(s_spPillEdge[i], C_INK, 0);  // selection is INK_1 (PLAN §6)
     lv_obj_set_style_bg_opa(s_spPillEdge[i], LV_OPA_COVER, 0);
     s_spPillName[i] = label(s_spPill[i], 14, 8, "", C_INK, F_BODY);
     s_spPillSub[i] = label(s_spPill[i], 14, 30, "", C_INK3, F_MICRO);
     lv_obj_set_style_text_letter_space(s_spPillSub[i], 1, 0);
-    s_spPillState[i] = label(s_spPill[i], 0, 18, "", C_LIVE, F_MICRO);
+    s_spPillState[i] = label(s_spPill[i], 0, 18, "", C_INK, F_MICRO);
     lv_obj_set_width(s_spPillState[i], 56);
     lv_obj_set_style_text_align(s_spPillState[i], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_x(s_spPillState[i], 276 - 14 - 56);
@@ -435,7 +451,7 @@ static void buildSports(lv_obj_t* p) {
   lv_obj_set_style_radius(s_spPager, R_MD, 0);
   lv_obj_set_style_bg_color(s_spPager, C_FROST_2, 0);
   lv_obj_set_style_bg_opa(s_spPager, LV_OPA_COVER, 0);
-  lv_obj_add_flag(s_spPager, LV_OBJ_FLAG_CLICKABLE);
+  uiPressable(s_spPager);
   lv_obj_add_event_cb(s_spPager, onSpPager, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* pgl = label(s_spPager, 0, 0, "MORE >", C_INK2, F_MICRO);
   lv_obj_center(pgl);
@@ -465,7 +481,7 @@ static void renderSports() {
   for (uint8_t i = 0; i < MAX_LEAGUES; i++) {
     lv_color_t c = C_EDGE;
     if (i < nAuto) c = C_EDGE_HI;                      // spoken for
-    else if (i < total) c = total >= MAX_LEAGUES ? C_WARN : C_LIVE_SD;
+    else if (i < total) c = total >= MAX_LEAGUES ? S_ALERT : C_INK3;   // structure, not liveness
     lv_obj_set_style_bg_color(s_spTick[i], c, 0);
   }
   if (total >= MAX_LEAGUES) {
@@ -529,14 +545,14 @@ static void renderSports() {
     else            snprintf(sub, sizeof sub, "%s", cat[i].slug);
     lv_label_set_text(s_spPillSub[sl], sub);
     lv_obj_set_style_text_color(s_spPillSub[sl],
-        (!au && liveN) ? C_LIVE_SD : C_INK3, 0);
+        (!au && liveN) ? C_LIVE_TX : C_INK3, 0);
 
     lv_label_set_text(s_spPillState[sl], au ? "AUTO" : (on ? "ON" : "-"));
     lv_obj_set_style_text_color(s_spPillState[sl],
-        au ? C_INK3 : (on ? C_LIVE : C_INK3), 0);
-    lv_obj_set_style_bg_color(s_spPill[sl], on ? C_SURF_2 : lv_color_hex(0x0B111B), 0);
-    lv_obj_set_style_border_color(s_spPill[sl], on ? C_LIVE_SD : lv_color_hex(0x1E2836), 0);
-    lv_obj_set_style_border_opa(s_spPill[sl], on ? 150 : LV_OPA_COVER, 0);
+        au ? C_INK3 : (on ? C_INK : C_INK3), 0);
+    lv_obj_set_style_bg_color(s_spPill[sl], on ? C_SURF_2 : C_PLATE, 0);
+    lv_obj_set_style_border_color(s_spPill[sl], on ? C_EDGE_HI : C_EDGE, 0);
+    lv_obj_set_style_border_opa(s_spPill[sl], LV_OPA_COVER, 0);
     on ? lv_obj_clear_flag(s_spPillEdge[sl], LV_OBJ_FLAG_HIDDEN)
        : lv_obj_add_flag(s_spPillEdge[sl], LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_text_color(s_spPillName[sl], on ? C_INK : C_INK2, 0);
@@ -625,7 +641,12 @@ static void onTzPick(lv_event_t* e) {
 }
 
 static void tzRender() {
-  const int8_t cur = tzIndexOf(g_set.tzIana.c_str());
+  // tzForProxy(), not g_set.tzIana directly. The raw field is empty until the
+  // user has picked one, so on a fresh panel `cur` was -1 and NONE of the
+  // fourteen buttons marked the zone actually in force — the summary row at
+  // :1009 already resolved it through tzForProxy() and the picker disagreed
+  // with it.
+  const int8_t cur = tzIndexOf(tzForProxy());
   for (uint8_t k = 0; k < TZ_PER; k++) {
     const uint8_t i = s_tzPage * TZ_PER + k;
     if (i >= kTimeZoneCount) { lv_obj_add_flag(s_tzBtn[k], LV_OBJ_FLAG_HIDDEN); continue; }
@@ -634,6 +655,11 @@ static void tzRender() {
     const bool on = ((int8_t)i == cur);
     lv_obj_set_style_bg_color(s_tzBtn[k], on ? C_EDGE_HI : C_FROST_2, 0);
     lv_obj_set_style_text_color(s_tzBtnLbl[k], on ? C_INK : C_INK2, 0);
+    // Not fill alone. A single filled row among fourteen is easy to miss and
+    // impossible to see if you cannot separate the two greys; the mark says it
+    // in a second channel.
+    on ? lv_obj_clear_flag(s_tzTick[k], LV_OBJ_FLAG_HIDDEN)
+       : lv_obj_add_flag(s_tzTick[k], LV_OBJ_FLAG_HIDDEN);
   }
   char b[24];
   const uint8_t pages = (kTimeZoneCount + TZ_PER - 1) / TZ_PER;
@@ -682,8 +708,8 @@ void uiSettingsInit(lv_obj_t* parent) {
     // Five tabs: 88 wide on a 92 pitch from x=172 (was 104/108 from 196).
     lv_obj_set_size(s_seg[i], 88, 36);
     lv_obj_set_pos(s_seg[i], 172 + i * 92, 6);
+    uiButton(s_seg[i]);
     lv_obj_set_style_radius(s_seg[i], R_MD, 0);
-    lv_obj_set_style_border_width(s_seg[i], 0, 0);
     lv_obj_add_event_cb(s_seg[i], onTab, LV_EVENT_CLICKED, (void*)(intptr_t)i);
     s_segLbl[i] = lv_label_create(s_seg[i]);
     lv_label_set_text(s_segLbl[i], kTab[i]);
@@ -695,7 +721,7 @@ void uiSettingsInit(lv_obj_t* parent) {
   lv_obj_remove_style_all(s_dirtyDot);
   lv_obj_set_size(s_dirtyDot, 8, 8);
   lv_obj_set_pos(s_dirtyDot, 676, 20);
-  lv_obj_set_style_radius(s_dirtyDot, 4, 0);
+  lv_obj_set_style_radius(s_dirtyDot, LV_RADIUS_CIRCLE, 0);   // a dot, not a rung
   lv_obj_set_style_bg_color(s_dirtyDot, C_INK2, 0);
   lv_obj_set_style_bg_opa(s_dirtyDot, LV_OPA_COVER, 0);
   lv_obj_add_flag(s_dirtyDot, LV_OBJ_FLAG_HIDDEN);
@@ -703,9 +729,9 @@ void uiSettingsInit(lv_obj_t* parent) {
   lv_obj_t* done = lv_btn_create(bar);
   lv_obj_set_size(done, 88, 36);
   lv_obj_set_pos(done, SCR_W - 20 - 88, 6);
+  uiButton(done);
   lv_obj_set_style_bg_color(done, C_EDGE, 0);
   lv_obj_set_style_radius(done, R_MD, 0);
-  lv_obj_set_style_border_width(done, 0, 0);
   lv_obj_add_event_cb(done, onDone, LV_EVENT_CLICKED, nullptr);
   lv_obj_t* dl = lv_label_create(done);
   lv_label_set_text(dl, "DONE");
@@ -714,7 +740,7 @@ void uiSettingsInit(lv_obj_t* parent) {
   lv_obj_center(dl);
 
   for (uint8_t i = 0; i < PANE_COUNT; i++) {
-    s_pane[i] = glassPanel(s_root, 16, 60, 768, 404, 14);
+    s_pane[i] = glassPanel(s_root, 16, 60, 768, 404, R_LG);
     lv_obj_add_flag(s_pane[i], LV_OBJ_FLAG_HIDDEN);
   }
 
@@ -727,8 +753,8 @@ void uiSettingsInit(lv_obj_t* parent) {
       s_denSeg[i] = lv_btn_create(r);
       lv_obj_set_size(s_denSeg[i], 82, 38);
       lv_obj_set_pos(s_denSeg[i], 736 - 8 - (DEN_COUNT - i) * 86, (ROW_H - 38) / 2);
+      uiButton(s_denSeg[i]);
       lv_obj_set_style_radius(s_denSeg[i], R_MD, 0);
-      lv_obj_set_style_border_width(s_denSeg[i], 0, 0);
       lv_obj_add_event_cb(s_denSeg[i], onDensity, LV_EVENT_CLICKED, (void*)(intptr_t)i);
       lv_obj_t* l = lv_label_create(s_denSeg[i]);
       lv_label_set_text(l, kDen[i]);
@@ -742,8 +768,8 @@ void uiSettingsInit(lv_obj_t* parent) {
       s_clkSeg[i] = lv_btn_create(cr);
       lv_obj_set_size(s_clkSeg[i], 82, 38);
       lv_obj_set_pos(s_clkSeg[i], 736 - 8 - (2 - i) * 86, (ROW_H - 38) / 2);
+      uiButton(s_clkSeg[i]);
       lv_obj_set_style_radius(s_clkSeg[i], R_MD, 0);
-      lv_obj_set_style_border_width(s_clkSeg[i], 0, 0);
       lv_obj_add_event_cb(s_clkSeg[i], onClock, LV_EVENT_CLICKED, (void*)(intptr_t)i);
       lv_obj_t* l = lv_label_create(s_clkSeg[i]);
       lv_label_set_text(l, kClk[i]);
@@ -768,8 +794,8 @@ void uiSettingsInit(lv_obj_t* parent) {
     lv_obj_t* pageBtn = lv_btn_create(fr);
     lv_obj_set_size(pageBtn, 60, 38);
     lv_obj_set_pos(pageBtn, 736 - 8 - 60, (ROW_H - 38) / 2);
+    uiButton(pageBtn);
     lv_obj_set_style_radius(pageBtn, R_MD, 0);
-    lv_obj_set_style_border_width(pageBtn, 0, 0);
     lv_obj_set_style_bg_color(pageBtn, C_EDGE, 0);
     lv_obj_add_event_cb(pageBtn, onFavPage, LV_EVENT_CLICKED, nullptr);
     lv_obj_t* pl = lv_label_create(pageBtn);
@@ -797,8 +823,8 @@ void uiSettingsInit(lv_obj_t* parent) {
       lv_obj_t* up = lv_btn_create(s_favRow[i]);
       lv_obj_set_size(up, 44, 32);
       lv_obj_set_pos(up, 736 - 8 - 96, 2);
-      lv_obj_set_style_radius(up, 6, 0);
-      lv_obj_set_style_border_width(up, 0, 0);
+      uiButton(up);
+      lv_obj_set_style_radius(up, R_SM, 0);
       lv_obj_set_style_bg_color(up, C_EDGE, 0);
       lv_obj_add_event_cb(up, onFavUp, LV_EVENT_CLICKED, (void*)(intptr_t)i);
       lv_obj_t* ul = lv_label_create(up);
@@ -809,8 +835,8 @@ void uiSettingsInit(lv_obj_t* parent) {
       lv_obj_t* rm = lv_btn_create(s_favRow[i]);
       lv_obj_set_size(rm, 44, 32);
       lv_obj_set_pos(rm, 736 - 8 - 44, 2);
-      lv_obj_set_style_radius(rm, 6, 0);
-      lv_obj_set_style_border_width(rm, 0, 0);
+      uiButton(rm);
+      lv_obj_set_style_radius(rm, R_SM, 0);
       lv_obj_set_style_bg_color(rm, C_EDGE, 0);
       lv_obj_add_event_cb(rm, onFavDrop, LV_EVENT_CLICKED, (void*)(intptr_t)i);
       lv_obj_t* rl = lv_label_create(rm);
@@ -836,8 +862,8 @@ void uiSettingsInit(lv_obj_t* parent) {
         lv_obj_t* t = lv_btn_create(r);
         lv_obj_set_size(t, 76, 38);
         lv_obj_set_pos(t, 736 - 8 - 76, (ROW_H - 38) / 2);
+        uiButton(t);
         lv_obj_set_style_radius(t, R_MD, 0);
-        lv_obj_set_style_border_width(t, 0, 0);
         lv_obj_set_style_bg_color(t, C_EDGE, 0);
         lv_obj_add_event_cb(t, onProxyTest, LV_EVENT_CLICKED, nullptr);
         lv_obj_t* l = lv_label_create(t);
@@ -855,8 +881,8 @@ void uiSettingsInit(lv_obj_t* parent) {
         lv_obj_t* cbtn = lv_btn_create(r);
         lv_obj_set_size(cbtn, 88, 38);
         lv_obj_set_pos(cbtn, 736 - 8 - 88, (ROW_H - 38) / 2);
+        uiButton(cbtn);
         lv_obj_set_style_radius(cbtn, R_MD, 0);
-        lv_obj_set_style_border_width(cbtn, 0, 0);
         lv_obj_set_style_bg_color(cbtn, C_EDGE, 0);
         lv_obj_add_event_cb(cbtn, i == 2 ? onClearToken : onClearPass,
                             LV_EVENT_CLICKED, nullptr);
@@ -869,41 +895,47 @@ void uiSettingsInit(lv_obj_t* parent) {
     label(p, 16, 380, "Edit the proxy URL and add teams in the browser", C_INK3, F_MICRO);
 
     // ── timezone sub-view ──────────────────────────────────────────────────
-    s_tzView = glassPanel(s_root, 16, 60, 768, 404, 14);
+    s_tzView = glassPanel(s_root, 16, 60, 768, 404, R_LG);
     lv_obj_add_flag(s_tzView, LV_OBJ_FLAG_HIDDEN);
-    label(s_tzView, 20, 16, "TIME ZONE", C_INK3, F_MICRO);
-
-    lv_obj_t* back = lv_btn_create(s_tzView);
-    lv_obj_set_size(back, 88, 36);
-    lv_obj_set_pos(back, 768 - 20 - 88, 10);
-    lv_obj_set_style_radius(back, R_MD, 0);
-    lv_obj_set_style_border_width(back, 0, 0);
-    lv_obj_set_style_bg_color(back, C_EDGE, 0);
-    lv_obj_add_event_cb(back, onTzClose, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* bl = lv_label_create(back);
-    lv_label_set_text(bl, "DONE");
-    lv_obj_set_style_text_font(bl, F_MICRO, 0);
-    lv_obj_center(bl);
+    // "< NETWORK", not a second DONE. Two identical DONE buttons sat 64 px
+    // apart doing opposite things: this one returns to the Network pane, the
+    // one behind it closes settings entirely.
+    //
+    // It also sat at x=632 — the only back affordance on the panel that was
+    // not on the left — at 116x36 against the other five's 48x34 and 54x44.
+    // Left, and the pane caption moves along behind it: a title after the
+    // return chip is what every bar screen already does.
+    lv_obj_t* back = backChip(s_tzView, "NETWORK", onTzClose, 10);
+    lv_obj_update_layout(s_tzView);          // the chip is content-sized
+    label(s_tzView, BACK_X + lv_obj_get_width(back) + 12, 16, "TIME ZONE",
+          C_INK3, F_MICRO);
 
     for (uint8_t k = 0; k < TZ_PER; k++) {
       const int col = k % TZ_COLS, rw = k / TZ_COLS;
       s_tzBtn[k] = lv_btn_create(s_tzView);
       lv_obj_set_size(s_tzBtn[k], 356, 38);
       lv_obj_set_pos(s_tzBtn[k], 20 + col * 372, 52 + rw * 42);
+      uiButton(s_tzBtn[k]);
       lv_obj_set_style_radius(s_tzBtn[k], R_MD, 0);
-      lv_obj_set_style_border_width(s_tzBtn[k], 0, 0);
       lv_obj_add_event_cb(s_tzBtn[k], onTzPick, LV_EVENT_CLICKED, (void*)(intptr_t)k);
       s_tzBtnLbl[k] = lv_label_create(s_tzBtn[k]);
       lv_obj_set_style_text_font(s_tzBtnLbl[k], F_BODY, 0);   // city names
       lv_label_set_text(s_tzBtnLbl[k], "");
       lv_obj_align(s_tzBtnLbl[k], LV_ALIGN_LEFT_MID, 12, 0);
+      s_tzTick[k] = lv_label_create(s_tzBtn[k]);
+      lv_obj_set_style_text_font(s_tzTick[k], F_BODY, 0);
+      lv_obj_set_style_text_color(s_tzTick[k], C_INK, 0);
+      lv_label_set_text(s_tzTick[k], "IN USE");
+      lv_obj_set_style_text_font(s_tzTick[k], F_MICRO, 0);
+      lv_obj_align(s_tzTick[k], LV_ALIGN_RIGHT_MID, -12, 0);
+      lv_obj_add_flag(s_tzTick[k], LV_OBJ_FLAG_HIDDEN);
     }
 
     lv_obj_t* more = lv_btn_create(s_tzView);
     lv_obj_set_size(more, 120, 40);
     lv_obj_set_pos(more, 20, 52 + TZ_ROWS * 42 + 6);
+    uiButton(more);
     lv_obj_set_style_radius(more, R_MD, 0);
-    lv_obj_set_style_border_width(more, 0, 0);
     lv_obj_set_style_bg_color(more, C_EDGE, 0);
     lv_obj_add_event_cb(more, onTzPage, LV_EVENT_CLICKED, nullptr);
     lv_obj_t* ml = lv_label_create(more);
@@ -924,8 +956,8 @@ void uiSettingsInit(lv_obj_t* parent) {
     lv_obj_t* rb = lv_btn_create(p);
     lv_obj_set_size(rb, 150, 44);
     lv_obj_set_pos(rb, 16, 16 + 5 * ROW_PITCH + 8);
+    uiButton(rb);
     lv_obj_set_style_radius(rb, R_MD, 0);
-    lv_obj_set_style_border_width(rb, 0, 0);
     lv_obj_set_style_bg_color(rb, C_EDGE, 0);
     lv_obj_add_event_cb(rb, onReboot, LV_EVENT_CLICKED, nullptr);
     lv_obj_t* l = lv_label_create(rb);
