@@ -14,7 +14,8 @@
 #include "../ui/imgscale.h"
 
 // Cache hit rate answers "why are my tiles letter badges", which is almost
-// always because the logo build was never run.
+// always because the logo build was never run. Counted in logoResolve(), the
+// one path both getters share — see the note there.
 static uint16_t s_hits, s_misses;
 uint16_t logoCacheHits()   { return s_hits; }
 uint16_t logoCacheMisses() { return s_misses; }
@@ -81,28 +82,42 @@ static Slot* victim() {
   return best;
 }
 
-const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
+/**
+ * Resolve a team to a slot holding a drawable blob, counting the hit or miss.
+ *
+ * ONE place, because the count has to follow what the SCREEN got. It used to
+ * live in logoGet(), which every consumer stopped calling when they moved to
+ * logoGetScaled() for their own size — six callers, none of them counted — so
+ * the figure was structurally pinned at "0 hit, 0 miss" and the console's Logo
+ * cache row said nothing. That row exists to answer "why are my tiles letter
+ * badges", which is the question a dead counter is worst at.
+ */
+static Slot* logoResolve(const char* league, const char* abbr) {
   // Leaderboard and grid tiles have no team on a side, so they ask with an
   // empty abbreviation. That is not a cache miss to be filled — the proxy has
   // nothing to give, and requesting it produced a 400 on every single refresh.
+  // It is not a miss to be COUNTED either: it would dilute the ratio with rows
+  // that were never going to have a mark.
   if (!abbr || !*abbr) return nullptr;
   char key[16];
   snprintf(key, sizeof key, "%s:%s", league, abbr);
   Slot* s = find(key);
-  if (!s) return nullptr;
-  s->lastUse = ++s_tick;
-  const bool got = !(s->miss || !s->data);
+  const bool got = s && !s->miss && s->data;
   got ? (void)s_hits++ : (void)s_misses++;
-  return got ? &s->dsc : nullptr;
+  if (!got) return nullptr;
+  s->lastUse = ++s_tick;
+  return s;
+}
+
+const lv_img_dsc_t* logoGet(const char* league, const char* abbr) {
+  Slot* s = logoResolve(league, abbr);
+  return s ? &s->dsc : nullptr;
 }
 
 const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t size) {
-  if (!abbr || !*abbr || !size) return nullptr;
-  char key[16];
-  snprintf(key, sizeof key, "%s:%s", league, abbr);
-  Slot* s = find(key);
-  if (!s || s->miss || !s->data) return nullptr;
-  s->lastUse = ++s_tick;
+  if (!size) return nullptr;
+  Slot* s = logoResolve(league, abbr);
+  if (!s) return nullptr;
   if (size == LOGO_SIZE) return &s->dsc;
   for (uint8_t i = 0; i < s->scN; i++)
     if (s->sc[i].size == size) return &s->sc[i].dsc;
@@ -119,7 +134,8 @@ const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t
     // Every consumer already treats nullptr as "no logo" and falls back to the
     // colour badge, which is correct and looks deliberate. A missing mark is a
     // smaller error than a mark four times its slot.
-    Serial.printf("[logo] %s: >4 scaled sizes requested (%u) — no logo\n", key, size);
+    Serial.printf("[logo] %s:%s: >4 scaled sizes requested (%u) — no logo\n",
+                  league, abbr, size);
     return nullptr;
   }
   uint8_t* buf = (uint8_t*)heap_caps_malloc((size_t)size * size * 3, MALLOC_CAP_SPIRAM);
