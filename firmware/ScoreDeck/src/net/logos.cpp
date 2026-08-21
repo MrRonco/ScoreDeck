@@ -328,6 +328,14 @@ void logoTick() {
     if (gi < 0 || gi >= g_gameCount) continue;
     if (logoWantPair(g_board[gi])) return;
   }
+
+  // FOUR surfaces. The idle screen's NEXT UP card draws two marks of its own
+  // and belongs to no board layout, so none of the walks above can reach it.
+  // It is also the surface most likely to be the ONLY thing on screen — a
+  // fresh install, or any morning before the first game — which is exactly
+  // when nothing else is around to have warmed the cache for it.
+  const Game* nx = uiIdleNextGame();
+  if (nx && logoWantPair(*nx)) return;
 }
 
 

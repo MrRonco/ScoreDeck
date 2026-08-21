@@ -344,8 +344,11 @@ int main(int argc, char** argv) {
         printf("%s%s @ %s", ledger++ ? ", " : "", g_board[gi].away.abbr, g_board[gi].home.abbr);
       }
       printf("%s\n", ledger ? "" : "(none)");
+      const Game* nx = uiIdleNextGame();
+      printf("IDLE    %s\n", nx ? "" : "(none, idle not showing)");
+      if (nx) printf("        %s @ %s\n", nx->away.abbr, nx->home.abbr);
       printf("reachable: old walk %d game(s), new walk %d game(s)\n",
-             tiles, tiles + ledger + (hero >= 0 ? 1 : 0));
+             tiles, tiles + ledger + (hero >= 0 ? 1 : 0) + (nx ? 1 : 0));
     } else {
       fprintf(stderr, "--measure: expected alert|idle|poll|logos\n");
       SDL_Quit(); return 2;

@@ -450,6 +450,18 @@ static void idleCompose(bool bare) {
   s_ampmDy = dy;                       // the a.m./p.m. mark is placed per-tick
 }
 
+/**
+ * The fixture on the NEXT UP card, or nullptr when the idle screen is not the
+ * one showing. The logo fetcher needs it: NEXT UP is a logo surface like the
+ * hero and the ledger, and a surface the fetcher cannot enumerate can only
+ * ever fill in by luck — off a mark some other screen happened to pull first.
+ * On the first evening of a fresh install there is no such luck.
+ */
+const Game* uiIdleNextGame() {
+  if (!s_root || lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN)) return nullptr;
+  return nextGame();
+}
+
 void uiIdleTick() {
   // Deliberately NOT gated on visibility. uiIdleRefresh() runs before
   // uiShow(SCR_IDLE), so an early return here left the clock, the countdown
