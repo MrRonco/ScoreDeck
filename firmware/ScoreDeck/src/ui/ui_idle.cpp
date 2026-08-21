@@ -247,17 +247,28 @@ void uiIdleInit(lv_obj_t* parent) {
     return im;
   };
 
+  // BOTH sides read mark-then-name, on the same 42 px offset. This card used
+  // to bookend them — away mark, away name ... home name, home mark — which is
+  // the matchup-poster arrangement and reads fine in isolation. It is the only
+  // place on the panel that does it. The hero, the tiles and the results
+  // ledger all put the mark before the name, so the home side here was the one
+  // team on the device whose mark sat on the wrong side of its abbreviation,
+  // and next to three surfaces that agree it read as a mistake rather than a
+  // flourish. Consistency is worth more than the symmetry.
+  //
+  // The home group keeps its old left edge at 148, so the gutter between the
+  // two teams is unchanged; only the pair's internal order swaps.
   s_nextBadgeA = teamBadge(nextCard, "", 0x5D6D7E, 34);
   lv_obj_set_pos(s_nextBadgeA, 24, 56);
   s_nextLblA = lv_obj_get_child(s_nextBadgeA, 0);
   s_nextLogoA = logoAt(24, 56);
   s_nextAway = lbl(nextCard, 66, 64, C_INK, F_ABBR);
 
-  s_nextHome = lbl(nextCard, 148, 64, C_INK2, F_ABBR);
   s_nextBadgeH = teamBadge(nextCard, "", 0x5D6D7E, 34);
-  lv_obj_set_pos(s_nextBadgeH, 206, 56);
+  lv_obj_set_pos(s_nextBadgeH, 148, 56);
   s_nextLblH = lv_obj_get_child(s_nextBadgeH, 0);
-  s_nextLogoH = logoAt(206, 56);
+  s_nextLogoH = logoAt(148, 56);
+  s_nextHome = lbl(nextCard, 190, 64, C_INK2, F_ABBR);
 
   // The countdown is the reason this screen exists, so it gets the hero face.
   // F_HERO covers digits plus '-' ':' 'H' 'M' and NOTHING ELSE — the "NOW"
