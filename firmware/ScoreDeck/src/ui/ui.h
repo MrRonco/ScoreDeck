@@ -160,6 +160,11 @@ void uiLedgerLayout(bool railOpen);
 /** As above, but for an explicit card count — the row centres when k < 3. */
 void uiLedgerLayoutK(bool railOpen, int k);
 lv_obj_t* uiLedgerRoot();
+/** Game index shown in result card `k`, or -1 when the card is empty or the
+ *  whole row is hidden. The visibility gate matters: uiLedgerHide() leaves the
+ *  slot map intact, so without it a grid layout would keep reporting the teams
+ *  the featured layout was showing before it. */
+int8_t uiLedgerGame(uint8_t k);
 
 /** Game index shown in tile `slot`, or -1. Lets the logo fetcher bound its
  *  working set to what is actually on screen. */

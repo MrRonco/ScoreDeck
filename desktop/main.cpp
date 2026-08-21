@@ -315,8 +315,39 @@ int main(int argc, char** argv) {
       pump(200);
       printf("poll-nochange  %u px total, %u flushing passes, worst pass %u px\n",
              total, passes, worstPass);
+    } else if (!strcmp(measure, "logos")) {
+      // What the logo fetcher can SEE. logoTick() asks each on-screen surface
+      // which game it is showing and fetches the first mark it has no blob
+      // for; a surface it does not ask about can never fill in. It used to ask
+      // the tile strip alone, and in the featured layout the tile strip is the
+      // one surface whose teams are not the ones being looked at — the hero is
+      // excluded from a slot by construction and a ledger final never had one.
+      // So this prints the reachable set per surface: if TILES is empty while
+      // HERO and LEDGER are not, the old walk fetched nothing at all.
+      for (int i = 0; i < 3; i++) { lv_refr_now(nullptr); lv_timer_handler(); }
+      const int8_t hero = uiHeroGameIdx();
+      int tiles = 0, ledger = 0;
+      printf("HERO    %s", hero >= 0 ? "" : "(none)");
+      if (hero >= 0) printf("%s @ %s", g_board[hero].away.abbr, g_board[hero].home.abbr);
+      printf("\n");
+      printf("TILES   ");
+      for (uint8_t t = 0; t < TILES_PER_PAGE; t++) {
+        const int8_t gi = uiBoardTileGame(t);
+        if (gi < 0 || gi >= g_gameCount) continue;
+        printf("%s%s @ %s", tiles++ ? ", " : "", g_board[gi].away.abbr, g_board[gi].home.abbr);
+      }
+      printf("%s\n", tiles ? "" : "(none)");
+      printf("LEDGER  ");
+      for (int k = 0; k < uiLedgerCount(); k++) {
+        const int8_t gi = uiLedgerGame((uint8_t)k);
+        if (gi < 0 || gi >= g_gameCount) continue;
+        printf("%s%s @ %s", ledger++ ? ", " : "", g_board[gi].away.abbr, g_board[gi].home.abbr);
+      }
+      printf("%s\n", ledger ? "" : "(none)");
+      printf("reachable: old walk %d game(s), new walk %d game(s)\n",
+             tiles, tiles + ledger + (hero >= 0 ? 1 : 0));
     } else {
-      fprintf(stderr, "--measure: expected alert|idle|poll\n");
+      fprintf(stderr, "--measure: expected alert|idle|poll|logos\n");
       SDL_Quit(); return 2;
     }
     SDL_Quit();

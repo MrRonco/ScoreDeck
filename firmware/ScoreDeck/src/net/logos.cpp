@@ -123,7 +123,10 @@ const lv_img_dsc_t* logoGetScaled(const char* league, const char* abbr, uint16_t
     return nullptr;
   }
   uint8_t* buf = (uint8_t*)heap_caps_malloc((size_t)size * size * 3, MALLOC_CAP_SPIRAM);
-  if (!buf) return &s->dsc;
+  // Same refusal as above, same reason: a caller that asked for `size` cannot
+  // tell it was handed 48, so PSRAM pressure would render full-size club marks
+  // inside 24 px slots rather than degrading to the colour badge.
+  if (!buf) return nullptr;
   imgScaleRgb565A8(s->data + 4, LOGO_SIZE, LOGO_SIZE, buf, size, size);
   Slot::Scaled& v = s->sc[s->scN++];
   v.size = size;
@@ -262,6 +265,15 @@ bool logoRequest(const char* league, const char* abbr) {
   return true;
 }
 
+/** Request the first side of this game we have no blob for, away before home
+ *  so the marks fill in the reading order they are drawn in. True when this
+ *  game had something to ask for, which ends the tick — one logo per call. */
+static bool logoWantPair(const Game& g) {
+  if (!logoKnown(g.league, g.away.abbr)) { logoRequest(g.league, g.away.abbr); return true; }
+  if (!logoKnown(g.league, g.home.abbr)) { logoRequest(g.league, g.home.abbr); return true; }
+  return false;
+}
+
 /**
  * Ask for one missing logo per call, for a team actually on screen. Called from
  * loop() so it never competes with the state poll for the single TLS slot.
@@ -272,12 +284,33 @@ void logoTick() {
   // 48-game night wants 96 logos against a 36-slot cache — every refresh would
   // evict something it was about to need and fetch it again, forever. Bounding
   // the working set to one page is what makes the cache a cache.
+  //
+  // "On screen" is THREE surfaces, not one. This used to walk the tile strip
+  // alone — which in the FEATURE layout is the one surface whose teams the
+  // user is NOT looking at. The hero is excluded from a tile slot by
+  // construction (ui_board.cpp skips `i == heroIdx`), and a ledger final never
+  // had a slot to begin with. So on a quiet night with a single live game the
+  // strip is EMPTY, this loop had nothing to iterate, and a cold cache stayed
+  // cold forever: every mark on the panel a letter badge, with no way back
+  // short of a busier slate promoting the board to a grid. It survived because
+  // a warm cache from an earlier grid render hid it — until a reflash, which
+  // clears PSRAM and lands straight on FEATURE.
+  //
+  // Hero first: it carries the largest marks, so it is what the eye misses.
+  const int8_t hero = uiHeroGameIdx();
+  if (hero >= 0 && hero < g_gameCount && logoWantPair(g_board[hero])) return;
+
   for (uint8_t slot = 0; slot < TILES_PER_PAGE; slot++) {
     const int8_t gi = uiBoardTileGame(slot);
     if (gi < 0 || gi >= g_gameCount) continue;
-    const Game& g = g_board[gi];
-    if (!logoKnown(g.league, g.home.abbr)) { logoRequest(g.league, g.home.abbr); return; }
-    if (!logoKnown(g.league, g.away.abbr)) { logoRequest(g.league, g.away.abbr); return; }
+    if (logoWantPair(g_board[gi])) return;
+  }
+
+  const int nCards = uiLedgerCount();
+  for (int k = 0; k < nCards; k++) {
+    const int8_t gi = uiLedgerGame((uint8_t)k);
+    if (gi < 0 || gi >= g_gameCount) continue;
+    if (logoWantPair(g_board[gi])) return;
   }
 }
 

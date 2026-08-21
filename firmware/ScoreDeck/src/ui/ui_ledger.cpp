@@ -214,6 +214,10 @@ void uiLedgerInit(lv_obj_t* parent) {
 lv_obj_t* uiLedgerRoot() { return s_root; }
 /** How many result cards the last render actually filled. */
 int uiLedgerCount() { return s_k < 0 ? 0 : s_k; }
+int8_t uiLedgerGame(uint8_t k) {
+  if (!s_rootVis || k >= RES_MAX) return -1;
+  return s_slotGame[k];
+}
 
 /**
  * Lay the row on the SAME x grid as the tiles above it, so the two cannot

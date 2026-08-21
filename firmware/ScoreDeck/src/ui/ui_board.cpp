@@ -1596,7 +1596,13 @@ void uiBoardRefresh() {
                      d.gridTop + r * (d.tileH + d.gut) + yOff);
     }
   }
-  for (; slot < per; slot++) {
+  // To TILES_PER_PAGE, not `per`. s_tile is a zero-initialised static, so an
+  // untouched slot reports gameIdx 0 — a VALID index into g_board — and the
+  // sparser layouts never write past their own `per`. Every slot above it kept
+  // claiming to show g_board[0] forever, which is what the logo fetcher walks
+  // to decide what is on screen. Clearing the whole array is what makes
+  // uiBoardTileGame() answer the question it is asked.
+  for (; slot < TILES_PER_PAGE; slot++) {
     s_tile[slot].gameIdx = -1;
     setHiddenCached(s_tile[slot].root, &s_tile[slot].cUsed, true);
   }
